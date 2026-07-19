@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -210,7 +211,7 @@ final class ProcessUtils {
                 .flatMap(ProcessUtils::pathCandidates)
                 .map(ProcessUtils::canonicalPath)
                 .flatMap(Optional::stream)
-                .anyMatch(path -> path.startsWith(project))).orElse(false);
+                .anyMatch(path -> belongsToProject(path, project))).orElse(false);
     }
 
     private static Stream<String> pathCandidates(String argument) {
@@ -233,6 +234,19 @@ final class ProcessUtils {
         } catch (IOException | InvalidPathException ignored) {
             return Optional.empty();
         }
+    }
+
+    private static boolean belongsToProject(Path path, Path project) {
+        for (Path current = path; current != null; current = current.getParent()) {
+            try {
+                if (Files.isSameFile(current, project)) {
+                    return true;
+                }
+            } catch (IOException ignored) {
+                // Keep checking parents when a classpath entry disappeared after the process started.
+            }
+        }
+        return false;
     }
 
     private static String normalizedCommandLine(String value) {
