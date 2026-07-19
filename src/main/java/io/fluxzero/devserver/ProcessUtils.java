@@ -37,7 +37,7 @@ import java.util.stream.Stream;
 
 final class ProcessUtils {
     static final String PROCESS_STARTED_AT = "processStartedAt";
-    private static final Duration FORCE_STOP_TIMEOUT = Duration.ofMillis(500);
+    private static final Duration FORCE_STOP_TIMEOUT = Duration.ofSeconds(2);
     private static final Duration OUTPUT_DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
     private ProcessUtils() {
