@@ -79,7 +79,7 @@ public record DevSession(
                               ServiceStatus.stopped("commands"),
                               ServiceStatus.stopped("frontend"),
                               ServiceStatus.stopped("mcp"),
-                              now, now, now);
+                              currentProcessStartedAt(now), now, now);
     }
 
     DevSession withStatus(String status) {
@@ -219,6 +219,12 @@ public record DevSession(
 
     private static long currentPid() {
         return ManagementFactory.getRuntimeMXBean().getPid();
+    }
+
+    private static long currentProcessStartedAt(long fallback) {
+        return ProcessHandle.current().info().startInstant()
+                .map(Instant::toEpochMilli)
+                .orElse(fallback);
     }
 
     public record Observability(String sessionDirectory, String combinedLog, String events, String problems,

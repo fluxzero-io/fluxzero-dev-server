@@ -130,8 +130,8 @@ public final class DevServerControlMain {
         System.out.println(DevServerMain.STOPPING_MESSAGE);
         System.out.flush();
         Duration timeout = arguments.force() ? Duration.ZERO : Duration.ofSeconds(2);
-        boolean owned = ProcessUtils.stopIfCommandLineContains(
-                session.pid(), session.projectDirectory(), timeout);
+        boolean owned = ProcessUtils.stopIfOwned(
+                session.pid(), session.projectDirectory(), session.startedAt(), timeout);
         if (!owned && ProcessUtils.isAlive(session.pid())) {
             throw new IllegalStateException("Refusing to stop PID " + session.pid()
                                             + " because it is not owned by this project");
