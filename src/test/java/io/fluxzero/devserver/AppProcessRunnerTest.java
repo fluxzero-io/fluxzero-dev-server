@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import io.fluxzero.devserver.fixture.FixtureAppMain;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
@@ -141,6 +143,7 @@ class AppProcessRunnerTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "The fake op executable is a POSIX shell test fixture")
     void resolvesConfiguredSecretsOnlyInsideFakeOnePasswordChild(@TempDir Path projectDirectory) throws Exception {
         Path fakeOp = projectDirectory.resolve("fake-op");
         Path capture = projectDirectory.resolve("captured-reference.env");

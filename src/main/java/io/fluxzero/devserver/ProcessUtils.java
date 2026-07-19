@@ -23,6 +23,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -188,12 +189,31 @@ final class ProcessUtils {
             return false;
         }
         ProcessHandle process = handle.get();
-        String commandLine = process.info().commandLine().orElse("");
-        if (!commandLine.contains(marker)) {
+        if (!containsOwnershipMarker(process.info(), marker)) {
             return false;
         }
         stopTree(process, timeout);
         return true;
+    }
+
+    private static boolean containsOwnershipMarker(ProcessHandle.Info info, String marker) {
+        String expected = normalizedCommandLine(marker);
+        if (info.commandLine().map(ProcessUtils::normalizedCommandLine)
+                .filter(commandLine -> commandLine.contains(expected)).isPresent()) {
+            return true;
+        }
+        return info.arguments().stream().flatMap(java.util.Arrays::stream)
+                .map(ProcessUtils::normalizedCommandLine)
+                .anyMatch(argument -> argument.contains(expected));
+    }
+
+    private static String normalizedCommandLine(String value) {
+        String normalized = value.replace('\\', '/');
+        return isWindows() ? normalized.toLowerCase(Locale.ROOT) : normalized;
+    }
+
+    private static boolean isWindows() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 
     record ProcessResult(int exitCode, List<String> output) {

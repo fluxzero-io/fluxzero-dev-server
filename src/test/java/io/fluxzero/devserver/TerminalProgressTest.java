@@ -141,20 +141,23 @@ class TerminalProgressTest {
         assertTrue(output.contains("\033[36mTests started\033[0m"), output);
         assertTrue(output.contains("\033[1;31mTests failed\033[0m"), output);
         assertTrue(output.contains("\033[36m[q]\033[0m quit   \033[36m[d]\033[0m detach   "
-                                   + "\033[36m[Ctrl+C]\033[0m stop\n\n"), output);
+                                   + "\033[36m[Ctrl+C]\033[0m stop" + System.lineSeparator().repeat(2)), output);
     }
 
     @Test
     void linksExactLogLocationsWhenReplayingInteractiveOutput() {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        Path projectDirectory = Path.of("/tmp/example project");
         try (TerminalProgress progress = new TerminalProgress(
                 true, new PrintStream(bytes, true, StandardCharsets.UTF_8))) {
             progress.printReplayedLine("  Details       .fluxzero/dev/logs/session/dev.log:42",
-                                       Path.of("/tmp/example project"));
+                                       projectDirectory);
         }
 
         String output = bytes.toString(StandardCharsets.UTF_8);
-        assertTrue(output.contains("\033]8;;file:///tmp/example%20project/.fluxzero/dev/logs/session/dev.log#42"),
+        String target = projectDirectory.resolve(".fluxzero/dev/logs/session/dev.log")
+                .toAbsolutePath().normalize().toUri().toASCIIString() + "#42";
+        assertTrue(output.contains("\033]8;;" + target),
                    output);
         assertTrue(output.contains(".fluxzero/dev/logs/session/dev.log:42"), output);
         assertTrue(output.contains("\033[36m"), output);
@@ -163,14 +166,17 @@ class TerminalProgressTest {
     @Test
     void usesIntellijFileLocationSyntaxInJetBrainsTerminals() {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        Path projectDirectory = Path.of("/tmp/example project");
         try (TerminalProgress progress = new TerminalProgress(
                 true, new PrintStream(bytes, true, StandardCharsets.UTF_8), Clock.systemUTC(), true)) {
             progress.printReplayedLine("  Details       .fluxzero/dev/logs/session/dev.log:42",
-                                       Path.of("/tmp/example project"));
+                                       projectDirectory);
         }
 
         String output = bytes.toString(StandardCharsets.UTF_8);
-        assertTrue(output.contains("file:///tmp/example%20project/.fluxzero/dev/logs/session/dev.log:42:1"), output);
+        String target = projectDirectory.resolve(".fluxzero/dev/logs/session/dev.log")
+                .toAbsolutePath().normalize().toUri().toASCIIString() + ":42:1";
+        assertTrue(output.contains(target), output);
         assertFalse(output.contains("\033]8;;"), output);
     }
 

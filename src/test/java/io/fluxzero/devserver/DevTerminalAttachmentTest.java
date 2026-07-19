@@ -44,7 +44,8 @@ class DevTerminalAttachmentTest {
         String firstOutput = attach(project, "d\n");
 
         assertTrue(firstOutput.contains("Fluxzero dev server ready"), firstOutput);
-        assertTrue(firstOutput.contains("[q] quit   [d] detach   [Ctrl+C] stop\n\n"), firstOutput);
+        assertTrue(firstOutput.contains("[q] quit   [d] detach   [Ctrl+C] stop"
+                                        + System.lineSeparator().repeat(2)), firstOutput);
         assertTrue(firstOutput.contains("Fluxzero dev continues in the background."), firstOutput);
         DevAttachCursorStore.Cursor cursor = new DevAttachCursorStore(project)
                 .read(session.sessionId()).orElseThrow();
@@ -56,7 +57,7 @@ class DevTerminalAttachmentTest {
 
         assertTrue(secondOutput.contains("Fluxzero dev attached"), secondOutput);
         assertTrue(secondOutput.contains("Frontend change detected"), secondOutput);
-        assertFalse(secondOutput.contains("Fluxzero dev server ready\n"), secondOutput);
+        assertFalse(secondOutput.contains("Fluxzero dev server ready" + System.lineSeparator()), secondOutput);
         assertEquals(Files.size(log), new DevAttachCursorStore(project)
                 .read(session.sessionId()).orElseThrow().offset());
     }
