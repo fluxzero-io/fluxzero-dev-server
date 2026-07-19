@@ -113,10 +113,12 @@ final class ProcessUtils {
 
     static void stopTree(Process process, Duration timeout) {
         stopTree(process.toHandle(), timeout);
+        awaitStopped(process, FORCE_STOP_TIMEOUT);
     }
 
     static void forceStopTree(Process process) {
         forceStopTree(process.toHandle(), FORCE_STOP_TIMEOUT);
+        awaitStopped(process, FORCE_STOP_TIMEOUT);
     }
 
     private static void forceStopTree(ProcessHandle handle, Duration timeout) {
@@ -145,6 +147,21 @@ final class ProcessUtils {
         while (processes.stream().anyMatch(ProcessHandle::isAlive) && System.nanoTime() < deadline) {
             try {
                 TimeUnit.MILLISECONDS.sleep(10);
+            } catch (InterruptedException e) {
+                interrupted = true;
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void awaitStopped(Process process, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        boolean interrupted = false;
+        while (process.isAlive() && System.nanoTime() < deadline) {
+            try {
+                process.waitFor(10, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
                 interrupted = true;
             }
