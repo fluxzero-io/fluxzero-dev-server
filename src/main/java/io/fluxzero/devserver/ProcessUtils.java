@@ -15,9 +15,11 @@
 package io.fluxzero.devserver;
 
 import java.io.BufferedReader;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -29,6 +31,8 @@ import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 final class ProcessUtils {
     private static final Duration FORCE_STOP_TIMEOUT = Duration.ofMillis(500);
@@ -196,9 +200,39 @@ final class ProcessUtils {
                 .filter(commandLine -> commandLine.contains(expected)).isPresent()) {
             return true;
         }
-        return info.arguments().stream().flatMap(java.util.Arrays::stream)
+        if (info.arguments().stream().flatMap(java.util.Arrays::stream)
                 .map(ProcessUtils::normalizedCommandLine)
-                .anyMatch(argument -> argument.contains(expected));
+                .anyMatch(argument -> argument.contains(expected))) {
+            return true;
+        }
+        return canonicalPath(marker).map(project -> info.arguments().stream()
+                .flatMap(java.util.Arrays::stream)
+                .flatMap(ProcessUtils::pathCandidates)
+                .map(ProcessUtils::canonicalPath)
+                .flatMap(Optional::stream)
+                .anyMatch(path -> path.startsWith(project))).orElse(false);
+    }
+
+    private static Stream<String> pathCandidates(String argument) {
+        Stream.Builder<String> candidates = Stream.builder();
+        candidates.add(argument);
+        int separator = argument.indexOf('=');
+        if (separator >= 0 && separator + 1 < argument.length()) {
+            candidates.add(argument.substring(separator + 1));
+        }
+        if (argument.indexOf(File.pathSeparatorChar) >= 0) {
+            Stream.of(argument.split(Pattern.quote(File.pathSeparator))).forEach(candidates::add);
+        }
+        return candidates.build();
+    }
+
+    private static Optional<Path> canonicalPath(String value) {
+        try {
+            Path path = Path.of(value);
+            return path.isAbsolute() ? Optional.of(path.toRealPath()) : Optional.empty();
+        } catch (IOException | InvalidPathException ignored) {
+            return Optional.empty();
+        }
     }
 
     private static String normalizedCommandLine(String value) {

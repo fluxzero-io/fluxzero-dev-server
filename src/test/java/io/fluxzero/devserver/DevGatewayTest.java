@@ -100,14 +100,11 @@ public class DevGatewayTest {
 
     @Test
     void immediatelyReclaimsThePublicPortAfterGatewayShutdown() throws Exception {
-        int port;
-        try (ServerSocket available = new ServerSocket(0)) {
-            port = available.getLocalPort();
-        }
         try (TestUpstream backend = TestUpstream.start("backend");
              TestUpstream frontend = TestUpstream.start("frontend")) {
             DevGateway first = DevGateway.start(backend.url(), frontend.url(), () -> true,
-                                                FrontendConfig.DEFAULT_BACKEND_PATHS, port);
+                                                FrontendConfig.DEFAULT_BACKEND_PATHS, 0);
+            int port = first.port();
             first.close();
 
             try (DevGateway restarted = DevGateway.start(backend.url(), frontend.url(), () -> true,
