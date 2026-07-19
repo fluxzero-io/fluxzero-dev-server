@@ -42,6 +42,17 @@ class ProcessUtilsTest {
     }
 
     @Test
+    void gracefulStopWaitsForForcedProcessTermination() throws Exception {
+        Process process = ProcessUtils.start(
+                javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+
+        ProcessUtils.stopTree(process, Duration.ZERO);
+
+        assertFalse(process.isAlive());
+    }
+
+    @Test
     void interruptedRunHardStopsItsProcessBeforeReturning() throws Exception {
         AtomicReference<Process> started = new AtomicReference<>();
         AtomicReference<Throwable> failure = new AtomicReference<>();

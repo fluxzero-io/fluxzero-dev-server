@@ -147,24 +147,18 @@ final class ProcessUtils {
         if (!handle.isAlive()) {
             return;
         }
-        List<ProcessHandle> descendants = handle.descendants().toList().reversed();
-        descendants.forEach(ProcessHandle::destroy);
-        handle.destroy();
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (handle.isAlive() && System.nanoTime() < deadline) {
-            try {
-                TimeUnit.MILLISECONDS.sleep(20);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+        List<ProcessHandle> processes = new ArrayList<>(handle.descendants().toList().reversed());
+        processes.add(handle);
+        processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroy);
+        awaitStopped(processes, timeout);
+
+        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive).forEach(process -> {
+            if (!processes.contains(process)) {
+                processes.add(process);
             }
-        }
-        descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
-        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive)
-                .forEach(ProcessHandle::destroyForcibly);
-        if (handle.isAlive()) {
-            handle.destroyForcibly();
-        }
+        });
+        processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
+        awaitStopped(processes, FORCE_STOP_TIMEOUT);
     }
 
     static boolean isAlive(long pid) {
