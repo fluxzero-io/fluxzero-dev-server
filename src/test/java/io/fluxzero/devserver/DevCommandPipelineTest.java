@@ -144,9 +144,11 @@ class DevCommandPipelineTest {
                 assertEquals(firstHash, store.readCommandStatus().orElseThrow().commands().getFirst().hash());
 
                 writeCreateUserCommand(command, "Grace");
+                status.set(null);
                 pipeline.requestRun();
 
                 assertTrue(awaitProcessed(processedNames, "Grace", 2));
+                assertTrue(awaitStatus(status, "succeeded"));
                 DevCommandStatus.Entry entry = store.readCommandStatus().orElseThrow().commands().getFirst();
                 assertEquals("succeeded", entry.state());
                 assertTrue(entry.detail().contains("processed by app"));

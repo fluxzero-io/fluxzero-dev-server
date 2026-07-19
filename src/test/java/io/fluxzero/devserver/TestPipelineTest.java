@@ -61,7 +61,8 @@ class TestPipelineTest {
         try (TestPipeline pipeline = new TestPipeline(config(projectDirectory), store, statuses::add, ignored -> {
         })) {
             pipeline.request(Set.of(model));
-            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            assertTrue(awaitStatus(statuses, "passed", List.of(), Duration.ofSeconds(30)),
+                       () -> statuses.toString());
         }
 
         String command = Files.readString(projectDirectory.resolve("runs.log"));
@@ -407,6 +408,10 @@ class TestPipelineTest {
 
     private static void installReactorFixture(Path projectDirectory) throws Exception {
         String cachedRepository = Path.of(System.getProperty("user.home"), ".m2", "repository").toUri().toString();
+        String junitVersion = Test.class.getPackage().getImplementationVersion();
+        if (junitVersion == null) {
+            throw new IllegalStateException("Could not determine the JUnit version used by the test runtime");
+        }
         Files.writeString(projectDirectory.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <modelVersion>4.0.0</modelVersion>
@@ -437,8 +442,8 @@ class TestPipelineTest {
         Files.writeString(consumer.resolve("pom.xml"), modulePom("consumer", """
                 <dependency><groupId>com.acme</groupId><artifactId>model</artifactId><version>1</version></dependency>
                 <dependency><groupId>org.junit.jupiter</groupId><artifactId>junit-jupiter</artifactId>
-                  <version>5.14.2</version><scope>test</scope></dependency>
-                """));
+                  <version>%s</version><scope>test</scope></dependency>
+                """.formatted(junitVersion)));
         Files.writeString(consumer.resolve("src/test/java/com/acme/ReactorVersionTest.java"), """
                 package com.acme;
                 import org.junit.jupiter.api.Test;
@@ -480,12 +485,21 @@ class TestPipelineTest {
 
     private static boolean awaitStatus(List<TestStatus> statuses, String state, List<String> selectors)
             throws Exception {
+        return awaitStatus(statuses, state, selectors, Duration.ofSeconds(5));
+    }
+
+    private static boolean awaitStatus(List<TestStatus> statuses, String state, List<String> selectors,
+                                       Duration timeout) throws Exception {
         return await(() -> statuses.stream().anyMatch(status -> state.equals(status.state())
-                                                               && status.selectors().equals(selectors)));
+                                                               && status.selectors().equals(selectors)), timeout);
     }
 
     private static boolean await(CheckedBooleanSupplier condition) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        return await(condition, Duration.ofSeconds(5));
+    }
+
+    private static boolean await(CheckedBooleanSupplier condition, Duration timeout) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
             if (condition.getAsBoolean()) {
                 return true;

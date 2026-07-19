@@ -107,7 +107,7 @@ class DevServerMainTest {
                     .redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
 
             ProcessResult stop = runControl(projectDirectory, "stop");
-            assertEquals(0, stop.exitCode());
+            assertEquals(0, stop.exitCode(), stop.output());
             assertStopOrder(stop.output());
             assertTrue(process.waitFor(5, TimeUnit.SECONDS), "controlled dev server did not exit");
             assertTrue(logs.waitFor(3, TimeUnit.SECONDS), "log follower did not exit after dev server stop");
@@ -132,7 +132,7 @@ class DevServerMainTest {
 
             ProcessResult stop = runControl(projectDirectory, "stop");
 
-            assertEquals(0, stop.exitCode());
+            assertEquals(0, stop.exitCode(), stop.output());
             assertStopOrder(stop.output());
             assertTrue(process.waitFor(5, TimeUnit.SECONDS), "controlled dev server did not exit");
         } finally {
@@ -165,7 +165,8 @@ class DevServerMainTest {
     private static Process startServer(Path projectDirectory) throws IOException {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         return new ProcessBuilder(
-                java.toString(), "-cp", System.getProperty("java.class.path"), DevServerMain.class.getName(),
+                java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                "-cp", System.getProperty("java.class.path"), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
                 "--idp", "external")
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();

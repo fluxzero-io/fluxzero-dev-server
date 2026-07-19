@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
@@ -30,6 +31,7 @@ final class MavenBuildCoordinator implements AutoCloseable {
     private static final Duration TEST_CANCELLATION_TIMEOUT = Duration.ofSeconds(2);
 
     private final ReentrantLock lock = new ReentrantLock(true);
+    private final Condition compileFinished = lock.newCondition();
     private final AtomicBoolean compilePending = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private final AtomicReference<Process> activeTest = new AtomicReference<>();
@@ -50,9 +52,18 @@ final class MavenBuildCoordinator implements AutoCloseable {
             }
             return action.get();
         } finally {
-            compilePending.set(false);
             if (locked) {
+                compilePending.set(false);
+                compileFinished.signalAll();
                 lock.unlock();
+            } else {
+                lock.lock();
+                try {
+                    compilePending.set(false);
+                    compileFinished.signalAll();
+                } finally {
+                    lock.unlock();
+                }
             }
         }
     }
@@ -62,6 +73,9 @@ final class MavenBuildCoordinator implements AutoCloseable {
         lock.lockInterruptibly();
         AtomicReference<Process> started = new AtomicReference<>();
         try {
+            while (compilePending.get()) {
+                compileFinished.await();
+            }
             if (closed.get()) {
                 throw new InterruptedException("Maven build coordinator is closed");
             }
