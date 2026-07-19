@@ -29,6 +29,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ProcessUtilsTest {
 
     @Test
+    void processTreeStopNeverStopsTheCurrentProcess() {
+        ProcessUtils.stopTree(ProcessHandle.current(), Duration.ZERO);
+
+        assertTrue(ProcessHandle.current().isAlive());
+    }
+
+    @Test
     void forceStopTreeWaitsUntilParentAndDescendantHaveExited() throws Exception {
         Process process = ProcessUtils.start(
                 javaCommand(ProcessTreeFixture.class), Path.of("."), Map.of(), ignored -> {

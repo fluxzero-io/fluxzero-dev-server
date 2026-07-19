@@ -120,20 +120,22 @@ final class ProcessUtils {
     }
 
     private static void forceStopTree(ProcessHandle handle, Duration timeout) {
-        if (!handle.isAlive()) {
+        if (!handle.isAlive() || isCurrentProcess(handle)) {
             return;
         }
-        List<ProcessHandle> processes = new ArrayList<>(handle.descendants().toList().reversed());
+        List<ProcessHandle> processes = new ArrayList<>(handle.descendants()
+                .filter(ProcessUtils::isNotCurrentProcess).toList().reversed());
         processes.add(handle);
         processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
 
         // A shell may spawn one last descendant while it is being terminated. Capture and kill those as well.
-        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive).forEach(process -> {
-            if (!processes.contains(process)) {
-                processes.add(process);
-            }
-            process.destroyForcibly();
-        });
+        handle.descendants().filter(ProcessUtils::isNotCurrentProcess).toList().reversed().stream()
+                .filter(ProcessHandle::isAlive).forEach(process -> {
+                    if (!processes.contains(process)) {
+                        processes.add(process);
+                    }
+                    process.destroyForcibly();
+                });
         awaitStopped(processes, timeout);
     }
 
@@ -150,21 +152,31 @@ final class ProcessUtils {
     }
 
     static void stopTree(ProcessHandle handle, Duration timeout) {
-        if (!handle.isAlive()) {
+        if (!handle.isAlive() || isCurrentProcess(handle)) {
             return;
         }
-        List<ProcessHandle> processes = new ArrayList<>(handle.descendants().toList().reversed());
+        List<ProcessHandle> processes = new ArrayList<>(handle.descendants()
+                .filter(ProcessUtils::isNotCurrentProcess).toList().reversed());
         processes.add(handle);
         processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroy);
         awaitStopped(processes, timeout);
 
-        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive).forEach(process -> {
-            if (!processes.contains(process)) {
-                processes.add(process);
-            }
-        });
+        handle.descendants().filter(ProcessUtils::isNotCurrentProcess).toList().reversed().stream()
+                .filter(ProcessHandle::isAlive).forEach(process -> {
+                    if (!processes.contains(process)) {
+                        processes.add(process);
+                    }
+                });
         processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
         awaitStopped(processes, FORCE_STOP_TIMEOUT);
+    }
+
+    private static boolean isNotCurrentProcess(ProcessHandle process) {
+        return !isCurrentProcess(process);
+    }
+
+    private static boolean isCurrentProcess(ProcessHandle process) {
+        return process.pid() == ProcessHandle.current().pid();
     }
 
     static boolean isAlive(long pid) {
