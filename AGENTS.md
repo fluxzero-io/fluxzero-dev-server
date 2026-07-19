@@ -49,6 +49,8 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
   changes.
 - Use only public SDK, test-server, and proxy APIs. If a missing capability belongs to one of those components,
   add a small public integration point in the owning repository instead of reaching into internals here.
+- Do not locate or build a sibling SDK checkout from this build or its tests. SDK compatibility is selected by
+  the explicit `fluxzero.version` property and its artifacts must already be installed or published.
 - Keep application compilation and application replacement separate. A failed compile or startup must leave the
   last ready application running.
 - Preserve single-flight/coalescing behavior for compiles and tests. Rapid saves must make forward progress

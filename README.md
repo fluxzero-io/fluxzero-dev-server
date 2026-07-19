@@ -30,6 +30,17 @@ On Windows:
 
 The build creates both the regular Maven artifact and an executable standalone JAR under `target/`.
 
+While the corresponding SDK changes are still unreleased, `<fluxzero.version>` is `0-SNAPSHOT`. Install the
+matching SDK branch before building this repository:
+
+```shell
+cd ../fluxzero-sdk-java
+./mvnw -B -pl test-server,proxy -am -DskipTests install
+```
+
+The dev server build deliberately does not locate or build a sibling SDK checkout itself. Override
+`-Dfluxzero.version=...` when verifying against another installed or published SDK version.
+
 ## Test
 
 Run the default unit and integration suite:

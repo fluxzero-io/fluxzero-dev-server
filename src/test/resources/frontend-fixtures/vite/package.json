@@ -1,0 +1,9 @@
+{
+  "name": "fluxzero-vite-dev-gateway-smoke",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "devDependencies": {
+    "vite": "8.1.4"
+  }
+}

@@ -1,0 +1,198 @@
+/*
+ * Copyright (c) Fluxzero IP B.V. or its affiliates. All Rights Reserved.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.fluxzero.devserver;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
+
+final class ProcessUtils {
+    private static final Duration FORCE_STOP_TIMEOUT = Duration.ofMillis(500);
+
+    private ProcessUtils() {
+    }
+
+    static Process start(List<String> command, Path directory, Map<String, String> environment,
+                         Consumer<String> outputConsumer) throws IOException {
+        return startWithStreams(command, directory, environment, output -> outputConsumer.accept(
+                "stderr".equals(output.stream()) ? "[stderr] " + output.line() : output.line()));
+    }
+
+    static Process startWithStreams(List<String> command, Path directory, Map<String, String> environment,
+                                    Consumer<ProcessOutput> outputConsumer) throws IOException {
+        ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).redirectErrorStream(false);
+        builder.environment().putAll(environment);
+        Process process = builder.start();
+        readOutput(process.getInputStream(), "stdout", outputConsumer);
+        readOutput(process.getErrorStream(), "stderr", outputConsumer);
+        return process;
+    }
+
+    private static void readOutput(java.io.InputStream input, String stream,
+                                   Consumer<ProcessOutput> outputConsumer) {
+        Thread.ofPlatform().daemon(true).name("fluxzero-dev-process-" + stream).start(() -> {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    outputConsumer.accept(new ProcessOutput(stream, line));
+                }
+            } catch (IOException ignored) {
+                // Process output is best-effort diagnostic information.
+            }
+        });
+    }
+
+    static ProcessResult run(List<String> command, Path directory, Map<String, String> environment,
+                             Consumer<String> outputConsumer) throws IOException, InterruptedException {
+        return run(command, directory, environment, outputConsumer, ignored -> {
+        });
+    }
+
+    static ProcessResult run(List<String> command, Path directory, Map<String, String> environment,
+                             Consumer<String> outputConsumer, Consumer<Process> processConsumer)
+            throws IOException, InterruptedException {
+        List<String> output = Collections.synchronizedList(new ArrayList<>());
+        Process process = start(command, directory, environment, line -> {
+            output.add(line);
+            outputConsumer.accept(line);
+        });
+        processConsumer.accept(process);
+        try {
+            int exitCode = process.waitFor();
+            synchronized (output) {
+                return new ProcessResult(exitCode, List.copyOf(output));
+            }
+        } catch (InterruptedException e) {
+            forceStopTree(process);
+            throw e;
+        }
+    }
+
+    static void stopTree(Process process, Duration timeout) {
+        stopTree(process.toHandle(), timeout);
+    }
+
+    static void forceStopTree(Process process) {
+        forceStopTree(process.toHandle(), FORCE_STOP_TIMEOUT);
+    }
+
+    private static void forceStopTree(ProcessHandle handle, Duration timeout) {
+        if (!handle.isAlive()) {
+            return;
+        }
+        List<ProcessHandle> processes = new ArrayList<>(handle.descendants().toList().reversed());
+        processes.add(handle);
+        processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
+
+        // A shell may spawn one last descendant while it is being terminated. Capture and kill those as well.
+        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive).forEach(process -> {
+            if (!processes.contains(process)) {
+                processes.add(process);
+            }
+            process.destroyForcibly();
+        });
+        awaitStopped(processes, timeout);
+    }
+
+    private static void awaitStopped(List<ProcessHandle> processes, Duration timeout) {
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (processes.stream().anyMatch(ProcessHandle::isAlive) && System.nanoTime() < deadline) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(10);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
+    }
+
+    static void stopTree(ProcessHandle handle, Duration timeout) {
+        if (!handle.isAlive()) {
+            return;
+        }
+        List<ProcessHandle> descendants = handle.descendants().toList().reversed();
+        descendants.forEach(ProcessHandle::destroy);
+        handle.destroy();
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (handle.isAlive() && System.nanoTime() < deadline) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(20);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
+        descendants.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroyForcibly);
+        handle.descendants().toList().reversed().stream().filter(ProcessHandle::isAlive)
+                .forEach(ProcessHandle::destroyForcibly);
+        if (handle.isAlive()) {
+            handle.destroyForcibly();
+        }
+    }
+
+    static boolean isAlive(long pid) {
+        try {
+            return ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
+    static boolean stopIfCommandLineContains(Long pid, String marker, Duration timeout) {
+        if (pid == null || marker == null || marker.isBlank()) {
+            return false;
+        }
+        Optional<ProcessHandle> handle;
+        try {
+            handle = ProcessHandle.of(pid).filter(ProcessHandle::isAlive);
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+        if (handle.isEmpty()) {
+            return false;
+        }
+        ProcessHandle process = handle.get();
+        String commandLine = process.info().commandLine().orElse("");
+        if (!commandLine.contains(marker)) {
+            return false;
+        }
+        stopTree(process, timeout);
+        return true;
+    }
+
+    record ProcessResult(int exitCode, List<String> output) {
+        boolean success() {
+            return exitCode == 0;
+        }
+
+        String tail(int maxLines) {
+            int start = Math.max(0, output.size() - maxLines);
+            return String.join(System.lineSeparator(), output.subList(start, output.size()));
+        }
+    }
+
+    record ProcessOutput(String stream, String line) {
+    }
+}
