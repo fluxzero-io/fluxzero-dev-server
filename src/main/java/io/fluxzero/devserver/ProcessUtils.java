@@ -141,13 +141,16 @@ final class ProcessUtils {
 
     private static void awaitStopped(List<ProcessHandle> processes, Duration timeout) {
         long deadline = System.nanoTime() + timeout.toNanos();
+        boolean interrupted = false;
         while (processes.stream().anyMatch(ProcessHandle::isAlive) && System.nanoTime() < deadline) {
             try {
                 TimeUnit.MILLISECONDS.sleep(10);
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                return;
+                interrupted = true;
             }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
         }
     }
 

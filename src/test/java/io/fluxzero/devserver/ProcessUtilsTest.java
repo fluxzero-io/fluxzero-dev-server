@@ -49,6 +49,24 @@ class ProcessUtilsTest {
     }
 
     @Test
+    void forceStopTreeWaitsDespiteCallerInterruptionAndRestoresInterruptStatus() throws Exception {
+        Process process = ProcessUtils.start(
+                javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+
+        Thread.currentThread().interrupt();
+        try {
+            ProcessUtils.forceStopTree(process);
+
+            assertFalse(process.isAlive());
+            assertTrue(Thread.currentThread().isInterrupted());
+        } finally {
+            Thread.interrupted();
+            ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
     void gracefulStopWaitsForForcedProcessTermination() throws Exception {
         Process process = ProcessUtils.start(
                 javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
