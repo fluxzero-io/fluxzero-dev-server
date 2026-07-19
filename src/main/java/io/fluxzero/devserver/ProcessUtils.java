@@ -25,11 +25,13 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 final class ProcessUtils {
     private static final Duration FORCE_STOP_TIMEOUT = Duration.ofMillis(500);
+    private static final Duration OUTPUT_DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
     private ProcessUtils() {
     }
@@ -42,16 +44,22 @@ final class ProcessUtils {
 
     static Process startWithStreams(List<String> command, Path directory, Map<String, String> environment,
                                     Consumer<ProcessOutput> outputConsumer) throws IOException {
+        return startCaptured(command, directory, environment, outputConsumer).process();
+    }
+
+    private static StartedProcess startCaptured(List<String> command, Path directory, Map<String, String> environment,
+                                                Consumer<ProcessOutput> outputConsumer) throws IOException {
         ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).redirectErrorStream(false);
         builder.environment().putAll(environment);
         Process process = builder.start();
-        readOutput(process.getInputStream(), "stdout", outputConsumer);
-        readOutput(process.getErrorStream(), "stderr", outputConsumer);
-        return process;
+        CountDownLatch outputComplete = new CountDownLatch(2);
+        readOutput(process.getInputStream(), "stdout", outputConsumer, outputComplete);
+        readOutput(process.getErrorStream(), "stderr", outputConsumer, outputComplete);
+        return new StartedProcess(process, outputComplete);
     }
 
     private static void readOutput(java.io.InputStream input, String stream,
-                                   Consumer<ProcessOutput> outputConsumer) {
+                                   Consumer<ProcessOutput> outputConsumer, CountDownLatch outputComplete) {
         Thread.ofPlatform().daemon(true).name("fluxzero-dev-process-" + stream).start(() -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
                 String line;
@@ -60,6 +68,8 @@ final class ProcessUtils {
                 }
             } catch (IOException ignored) {
                 // Process output is best-effort diagnostic information.
+            } finally {
+                outputComplete.countDown();
             }
         });
     }
@@ -74,13 +84,17 @@ final class ProcessUtils {
                              Consumer<String> outputConsumer, Consumer<Process> processConsumer)
             throws IOException, InterruptedException {
         List<String> output = Collections.synchronizedList(new ArrayList<>());
-        Process process = start(command, directory, environment, line -> {
+        StartedProcess startedProcess = startCaptured(command, directory, environment, processOutput -> {
+            String line = "stderr".equals(processOutput.stream())
+                    ? "[stderr] " + processOutput.line() : processOutput.line();
             output.add(line);
             outputConsumer.accept(line);
         });
+        Process process = startedProcess.process();
         processConsumer.accept(process);
         try {
             int exitCode = process.waitFor();
+            startedProcess.awaitOutput();
             synchronized (output) {
                 return new ProcessResult(exitCode, List.copyOf(output));
             }
@@ -194,5 +208,11 @@ final class ProcessUtils {
     }
 
     record ProcessOutput(String stream, String line) {
+    }
+
+    private record StartedProcess(Process process, CountDownLatch outputComplete) {
+        void awaitOutput() throws InterruptedException {
+            outputComplete.await(OUTPUT_DRAIN_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+        }
     }
 }

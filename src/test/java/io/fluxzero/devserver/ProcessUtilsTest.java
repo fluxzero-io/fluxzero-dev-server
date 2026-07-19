@@ -22,7 +22,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessUtilsTest {
 
@@ -64,6 +66,20 @@ class ProcessUtilsTest {
         if (failure.get() != null) {
             throw new AssertionError("Process runner failed", failure.get());
         }
+    }
+
+    @Test
+    void completedRunIncludesAllProcessOutput() throws Exception {
+        ProcessUtils.ProcessResult result = ProcessUtils.run(
+                javaCommand(BurstOutputFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+
+        assertTrue(result.success());
+        assertEquals(1_000, result.output().size());
+        assertTrue(result.output().contains("stdout-0"));
+        assertTrue(result.output().contains("stdout-499"));
+        assertTrue(result.output().contains("[stderr] stderr-0"));
+        assertTrue(result.output().contains("[stderr] stderr-499"));
     }
 
     private static Process awaitProcess(AtomicReference<Process> started, Duration timeout)
@@ -112,6 +128,15 @@ class ProcessUtilsTest {
     public static final class SleepingFixture {
         public static void main(String[] args) throws Exception {
             Thread.sleep(Duration.ofMinutes(1));
+        }
+    }
+
+    public static final class BurstOutputFixture {
+        public static void main(String[] args) {
+            for (int i = 0; i < 500; i++) {
+                System.out.println("stdout-" + i);
+                System.err.println("stderr-" + i);
+            }
         }
     }
 }

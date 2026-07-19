@@ -22,7 +22,6 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -54,21 +53,16 @@ class DevServerMainTest {
     @Test
     void reportsStoppedAfterSignalCleanup(@TempDir Path projectDirectory) throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
+        Path outputFile = projectDirectory.resolve("dev-server.out");
         Process process = new ProcessBuilder(
-                java.toString(), "-cp", System.getProperty("java.class.path"),
+                java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                "-cp", System.getProperty("java.class.path"),
                 DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(),
                 "--no-watch", "--no-compile-on-start", "--no-tests", "--idp", "external")
                 .redirectErrorStream(true)
+                .redirectOutput(outputFile.toFile())
                 .start();
-        ByteArrayOutputStream outputBytes = new ByteArrayOutputStream();
-        Thread outputReader = Thread.ofPlatform().daemon(true).start(() -> {
-            try {
-                process.getInputStream().transferTo(outputBytes);
-            } catch (IOException ignored) {
-                // Process termination may close the parent-side stream after all available output was read.
-            }
-        });
         try {
             Path sessionFile = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY)
                     .resolve(DevSessionStore.SESSION_FILE);
@@ -79,8 +73,7 @@ class DevServerMainTest {
                        "failed to signal dev server");
 
             assertTrue(process.waitFor(5, TimeUnit.SECONDS), "dev server did not stop after one signal");
-            outputReader.join(1_000);
-            String output = outputBytes.toString(StandardCharsets.UTF_8);
+            String output = Files.readString(outputFile);
             int stopping = output.indexOf(DevServerMain.STOPPING_MESSAGE);
             int stopped = output.indexOf(DevServerMain.STOPPED_MESSAGE);
             assertTrue(stopping >= 0 && stopped > stopping, output);
