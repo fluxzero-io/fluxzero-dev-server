@@ -89,7 +89,11 @@ class DevServerWholeAppE2EIT {
                 new TerminalProgress(false, new PrintStream(terminal, true, UTF_8))).start();
              RawFluxzeroClient rawClient = new RawFluxzeroClient("ws://localhost:" + waitForRuntimePort(project))) {
             waitForAppState(project, "running");
-            String startupOutput = terminal.toString(UTF_8);
+            String startupOutput = await("startup terminal outcome", () -> {
+                String output = terminal.toString(UTF_8);
+                return output.contains("Fluxzero dev server ready")
+                       || output.contains("Fluxzero dev could not start") ? output : null;
+            });
             assertTrue(startupOutput.contains("Fluxzero dev server ready"), startupOutput);
             assertTrue(startupOutput.contains("Backend       http://localhost:"), startupOutput);
             assertFalse(startupOutput.contains("Fluxzero dev could not start"), startupOutput);
