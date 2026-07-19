@@ -181,8 +181,10 @@ class DevServerLifecycleTest {
                 });
         try {
             assertTrue(orphan.isAlive());
+            long processStartedAt = ProcessUtils.startedAt(orphan).orElseThrow();
             stale = withPid(stale.withApp(DevSession.ServiceStatus.running(
-                    "app", null, null, orphan.pid(), "running build 7")), unusedPid());
+                    "app", null, null, orphan.pid(), "running build 7").withMetadata(
+                    Map.of(ProcessUtils.PROCESS_STARTED_AT, Long.toString(processStartedAt)))), unusedPid());
             new DevSessionStore(projectDirectory).writeSession(stale);
 
             try (DevServer devServer = new DevServer(config).start()) {
@@ -190,7 +192,9 @@ class DevServerLifecycleTest {
                     ProcessHandle.Info info = orphan.info();
                     return "Failed to stop owned orphan with marker " + ownershipMarker
                            + "; commandLine=" + info.commandLine().orElse("<unavailable>")
-                           + "; arguments=" + info.arguments().map(java.util.Arrays::toString).orElse("<unavailable>");
+                           + "; arguments=" + info.arguments().map(java.util.Arrays::toString).orElse("<unavailable>")
+                           + "; expectedStartedAt=" + processStartedAt
+                           + "; actualStartedAt=" + info.startInstant().orElse(null);
                 });
                 assertEquals("running", devServer.session().status());
             }

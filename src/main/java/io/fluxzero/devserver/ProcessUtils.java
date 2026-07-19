@@ -36,6 +36,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 final class ProcessUtils {
+    static final String PROCESS_STARTED_AT = "processStartedAt";
     private static final Duration FORCE_STOP_TIMEOUT = Duration.ofMillis(500);
     private static final Duration OUTPUT_DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
@@ -175,6 +176,10 @@ final class ProcessUtils {
     }
 
     static boolean stopIfCommandLineContains(Long pid, String marker, Duration timeout) {
+        return stopIfOwned(pid, marker, null, timeout);
+    }
+
+    static boolean stopIfOwned(Long pid, String marker, Long processStartedAt, Duration timeout) {
         if (pid == null || marker == null || marker.isBlank()) {
             return false;
         }
@@ -188,11 +193,24 @@ final class ProcessUtils {
             return false;
         }
         ProcessHandle process = handle.get();
-        if (!containsOwnershipMarker(process.info(), marker)) {
+        if (!containsOwnershipMarker(process.info(), marker)
+            && !matchesStartTime(process.info(), processStartedAt)) {
             return false;
         }
         stopTree(process, timeout);
         return true;
+    }
+
+    static Optional<Long> startedAt(Process process) {
+        return process == null ? Optional.empty() : process.info().startInstant()
+                .map(java.time.Instant::toEpochMilli);
+    }
+
+    private static boolean matchesStartTime(ProcessHandle.Info info, Long expected) {
+        return expected != null && info.startInstant()
+                .map(java.time.Instant::toEpochMilli)
+                .filter(actual -> actual.equals(expected))
+                .isPresent();
     }
 
     private static boolean containsOwnershipMarker(ProcessHandle.Info info, String marker) {

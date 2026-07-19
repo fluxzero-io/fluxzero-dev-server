@@ -512,8 +512,10 @@ public class DevServer implements AutoCloseable {
             }
             try {
                 long pid = Long.parseLong(entry.getValue());
+                String prefix = entry.getKey().substring(0, entry.getKey().length() - "pid".length());
                 DevSession.ServiceStatus process = new DevSession.ServiceStatus(
-                        entry.getKey(), "running", null, null, pid, "previous dev application");
+                        entry.getKey(), "running", null, null, pid, "previous dev application",
+                        processIdentityMetadata(status.metadata().get(prefix + ProcessUtils.PROCESS_STARTED_AT)));
                 cleaned |= cleanupOrphan(entry.getKey(), process, ownershipMarker);
             } catch (NumberFormatException ignored) {
                 // Ignore malformed stale metadata and leave unrelated processes untouched.
@@ -526,11 +528,12 @@ public class DevServer implements AutoCloseable {
         if (status == null || status.pid() == null) {
             return false;
         }
-        boolean stopped = ProcessUtils.stopIfCommandLineContains(
-                status.pid(), ownershipMarker, Duration.ofSeconds(2));
+        Long processStartedAt = processStartedAt(status);
+        boolean stopped = ProcessUtils.stopIfOwned(
+                status.pid(), ownershipMarker, processStartedAt, Duration.ofSeconds(2));
         if (!stopped) {
-            stopped = ProcessUtils.stopIfCommandLineContains(
-                    status.pid(), config.projectDirectory().toString(), Duration.ofSeconds(2));
+            stopped = ProcessUtils.stopIfOwned(
+                    status.pid(), config.projectDirectory().toString(), processStartedAt, Duration.ofSeconds(2));
         }
         if (stopped) {
             print("[session] stopped stale " + name + " process " + status.pid());
@@ -539,6 +542,19 @@ public class DevServer implements AutoCloseable {
                   + " alone because it is not recognisable as owned by this project");
         }
         return stopped;
+    }
+
+    private static Map<String, String> processIdentityMetadata(String startedAt) {
+        return startedAt == null ? Map.of() : Map.of(ProcessUtils.PROCESS_STARTED_AT, startedAt);
+    }
+
+    private static Long processStartedAt(DevSession.ServiceStatus status) {
+        try {
+            String value = status.metadata().get(ProcessUtils.PROCESS_STARTED_AT);
+            return value == null ? null : Long.parseLong(value);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
     }
 
     private ReloadTiming startCandidateApps(BuildSnapshot snapshot) {
@@ -758,6 +774,8 @@ public class DevServer implements AutoCloseable {
                     metadata.put(prefix + "pid", Long.toString(app.pid()));
                     metadata.put(prefix + "clientId", app.clientId());
                     metadata.put(prefix + "applicationName", app.applicationName());
+                    app.startedAt().ifPresent(startedAt -> metadata.put(
+                            prefix + ProcessUtils.PROCESS_STARTED_AT, Long.toString(startedAt)));
                     metadata.put(prefix + "environment",
                                  String.join(",", app.environmentNames().stream().sorted().toList()));
                     metadata.put(prefix + "secrets", String.join(",", app.secretNames().stream().sorted().toList()));
@@ -766,6 +784,10 @@ public class DevServer implements AutoCloseable {
                 });
         failures.forEach((application, failure) -> metadata.put("application." + application + ".failure", failure));
         Long pid = currentApps.size() == 1 ? currentApps.values().iterator().next().pid() : null;
+        if (currentApps.size() == 1) {
+            currentApps.values().iterator().next().startedAt().ifPresent(startedAt -> metadata.put(
+                    ProcessUtils.PROCESS_STARTED_AT, Long.toString(startedAt)));
+        }
         updateAppStatus(new DevSession.ServiceStatus("app", state, null, null, pid, detail).withMetadata(metadata));
     }
 

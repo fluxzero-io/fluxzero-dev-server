@@ -93,6 +93,34 @@ class ProcessUtilsTest {
         assertTrue(result.output().contains("[stderr] stderr-499"));
     }
 
+    @Test
+    void exactProcessStartTimeCanProveOwnershipWithoutACommandMarker() throws Exception {
+        Process process = ProcessUtils.start(
+                javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+        long startedAt = ProcessUtils.startedAt(process).orElseThrow();
+
+        assertTrue(ProcessUtils.stopIfOwned(
+                process.pid(), "marker-that-is-not-present", startedAt, Duration.ZERO));
+        assertFalse(process.isAlive());
+    }
+
+    @Test
+    void mismatchedProcessStartTimeDoesNotProveOwnership() throws Exception {
+        Process process = ProcessUtils.start(
+                javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+        try {
+            long startedAt = ProcessUtils.startedAt(process).orElseThrow();
+
+            assertFalse(ProcessUtils.stopIfOwned(
+                    process.pid(), "marker-that-is-not-present", startedAt - 1, Duration.ZERO));
+            assertTrue(process.isAlive());
+        } finally {
+            ProcessUtils.forceStopTree(process);
+        }
+    }
+
     private static Process awaitProcess(AtomicReference<Process> started, Duration timeout)
             throws InterruptedException {
         long deadline = System.nanoTime() + timeout.toNanos();

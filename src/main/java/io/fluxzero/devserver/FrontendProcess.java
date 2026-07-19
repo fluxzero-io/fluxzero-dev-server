@@ -155,27 +155,37 @@ final class FrontendProcess implements AutoCloseable {
         }
         Process setup = setupProcess;
         if (setupRunning) {
-            return DevSession.ServiceStatus.running("frontend", internalUrl, port(internalUrl),
-                                                    setup == null ? null : setup.pid(), "running frontend setup")
-                    .withState("starting", "running frontend setup");
+            return withProcessIdentity(DevSession.ServiceStatus.running(
+                    "frontend", internalUrl, port(internalUrl),
+                    setup == null ? null : setup.pid(), "running frontend setup")
+                                               .withState("starting", "running frontend setup"), setup);
         }
         Process current = process;
         if (recoveryInProgress.get()) {
-            return DevSession.ServiceStatus.running("frontend", internalUrl, port(internalUrl),
-                                                    current == null ? null : current.pid(), "restarting frontend")
-                    .withState("starting", "restarting frontend");
+            return withProcessIdentity(DevSession.ServiceStatus.running(
+                    "frontend", internalUrl, port(internalUrl),
+                    current == null ? null : current.pid(), "restarting frontend")
+                                               .withState("starting", "restarting frontend"), current);
         }
         if (current == null || !current.isAlive()) {
             return DevSession.ServiceStatus.running("frontend", internalUrl, port(internalUrl), null,
                                                     "waiting to launch frontend command")
                     .withState("starting", "waiting to launch frontend command");
         }
-        return ready.get()
+        DevSession.ServiceStatus status = ready.get()
                 ? DevSession.ServiceStatus.running("frontend", internalUrl, port(internalUrl), current.pid(),
                                                    config.command())
                 : DevSession.ServiceStatus.running("frontend", internalUrl, port(internalUrl), current.pid(),
                                                    waitingDetail("waiting for frontend readiness"))
                         .withState("starting", waitingDetail("waiting for frontend readiness"));
+        return withProcessIdentity(status, current);
+    }
+
+    private static DevSession.ServiceStatus withProcessIdentity(DevSession.ServiceStatus status, Process process) {
+        return ProcessUtils.startedAt(process)
+                .map(startedAt -> status.withMetadata(Map.of(
+                        ProcessUtils.PROCESS_STARTED_AT, Long.toString(startedAt))))
+                .orElse(status);
     }
 
     String internalUrl() {

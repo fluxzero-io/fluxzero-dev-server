@@ -38,6 +38,10 @@ record AppInstance(String launchId, String applicationName, long buildNumber, St
         return process.pid();
     }
 
+    java.util.Optional<Long> startedAt() {
+        return ProcessUtils.startedAt(process);
+    }
+
     CompletableFuture<Process> onExit() {
         return process.onExit();
     }
