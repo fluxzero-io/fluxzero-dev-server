@@ -135,6 +135,7 @@ class DevMcpServerTest {
                 client.initialize();
 
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
+                assertEquals("development", client.getServerInfo().version());
                 assertEquals(5, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());

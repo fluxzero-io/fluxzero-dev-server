@@ -1,0 +1,69 @@
+name: Verify
+
+on:
+  workflow_call:
+
+env:
+  BUILD_ENVIRONMENT: github
+
+jobs:
+  build:
+    name: Build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+            maven: ./mvnw
+          - name: macOS
+            os: macos-latest
+            maven: ./mvnw
+          - name: Windows
+            os: windows-latest
+            maven: .\mvnw.cmd
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Build and test
+        run: ${{ matrix.maven }} -B clean install
+
+  application-e2e:
+    name: Application E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Test complete application workflows
+        run: ./mvnw -B verify -Pdev-server-e2e
+
+  frontend-e2e:
+    name: Frontend E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Install Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: src/test/resources/frontend-fixtures/**/package-lock.json
+      - name: Test Vite and Angular workflows
+        run: ./mvnw -B verify -Pdev-server-frontend-e2e

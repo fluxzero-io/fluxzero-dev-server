@@ -38,6 +38,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerMainTest {
 
     @Test
+    void reportsDevelopmentVersionFromClasses() {
+        assertEquals("Fluxzero Dev Server development", DevServerMain.versionLine());
+    }
+
+    @Test
     void explainsIncompatibleResolvedArtifacts() {
         assertEquals(
                 "required class io.fluxzero.testserver.metrics.TestServerMetricsMonitor is missing from the resolved "

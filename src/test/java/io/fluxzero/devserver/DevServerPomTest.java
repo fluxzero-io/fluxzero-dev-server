@@ -21,15 +21,19 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServerPomTest {
 
     @Test
-    void standalonePomOwnsBuildAndFluxzeroDependencyVersion() throws Exception {
+    void standalonePomOwnsReleaseCoordinatesAndFluxzeroDependencyVersion() throws Exception {
         Document pom = readPom(Path.of("pom.xml"));
 
         assertEquals(0, pom.getElementsByTagName("parent").getLength());
-        assertEquals("0-SNAPSHOT", property(pom, "fluxzero.version"));
+        assertEquals("io.fluxzero.tools", element(pom, "groupId"));
+        assertEquals("fluxzero-dev-server", element(pom, "artifactId"));
+        assertTrue(element(pom, "version").matches("(?:[1-9]\\d*-SNAPSHOT|[1-9]\\d*\\.\\d+\\.\\d+)"));
+        assertTrue(property(pom, "fluxzero.version").matches("[1-9]\\d*\\.\\d+\\.\\d+"));
         assertEquals("true", element(pom, "shadedArtifactAttached"));
         assertEquals("standalone", element(pom, "shadedClassifierName"));
     }

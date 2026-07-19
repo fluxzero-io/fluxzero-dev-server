@@ -31,6 +31,10 @@ public final class DevServerMain {
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length == 1 && "--version".equals(args[0])) {
+            System.out.println(versionLine());
+            return;
+        }
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
         DevServer server;
         try {
@@ -92,5 +96,9 @@ public final class DevServerMain {
         }
         String message = failure.getMessage();
         return message == null || message.isBlank() ? failure.getClass().getSimpleName() : message;
+    }
+
+    static String versionLine() {
+        return "Fluxzero Dev Server " + DevServerVersion.current();
     }
 }

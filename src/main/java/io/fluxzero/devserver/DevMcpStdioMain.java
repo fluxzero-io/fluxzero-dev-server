@@ -103,7 +103,7 @@ public final class DevMcpStdioMain {
                 JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(new ObjectMapper());
                 StdioServerTransportProvider transport = new StdioServerTransportProvider(jsonMapper, input, output);
                 McpSyncServer server = McpServer.sync(transport)
-                        .serverInfo("fluxzero-dev-stdio", "0-SNAPSHOT")
+                        .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
                         .instructions("Read-only stdio adapter for the active Fluxzero development environment.")
                         .capabilities(McpSchema.ServerCapabilities.builder()
                                               .tools(false)

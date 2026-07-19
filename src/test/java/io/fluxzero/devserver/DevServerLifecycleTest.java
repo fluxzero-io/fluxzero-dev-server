@@ -87,6 +87,7 @@ class DevServerLifecycleTest {
             assertEquals(session.mcp().url(), json.path("mcp").path("url").asText());
             assertEquals(mcpTokenFile.toString(), json.path("mcp").path("metadata").path("tokenFile").asText());
             assertTrue(json.path("sessionId").isTextual());
+            assertEquals("development", json.path("devServerVersion").asText());
             assertTrue(json.path("heartbeatAt").asLong() > 0);
         }
 
@@ -269,7 +270,8 @@ class DevServerLifecycleTest {
     }
 
     private static DevSession withPid(DevSession session, long pid) {
-        return new DevSession(session.sessionId(), pid, session.projectDirectory(), session.observability(),
+        return new DevSession(session.sessionId(), pid, session.devServerVersion(), session.projectDirectory(),
+                              session.observability(),
                               session.status(),
                               session.runtime(), session.proxy(), session.gateway(), session.idp(), session.app(),
                               session.reload(), session.compile(),

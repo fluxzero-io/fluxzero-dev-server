@@ -25,6 +25,7 @@ import java.util.UUID;
 public record DevSession(
         String sessionId,
         long pid,
+        String devServerVersion,
         String projectDirectory,
         Observability observability,
         String status,
@@ -44,6 +45,8 @@ public record DevSession(
         long updatedAt
 ) {
     public DevSession {
+        devServerVersion = devServerVersion == null || devServerVersion.isBlank()
+                ? DevServerVersion.current() : devServerVersion;
         observability = observability == null ? Observability.forSession(Path.of(projectDirectory), sessionId)
                 : observability;
         runtime = defaultStatus(runtime, "runtime");
@@ -62,7 +65,7 @@ public record DevSession(
     static DevSession empty(DevServerConfig config) {
         long now = Instant.now().toEpochMilli();
         String sessionId = UUID.randomUUID().toString();
-        return new DevSession(sessionId, currentPid(), config.projectDirectory().toString(),
+        return new DevSession(sessionId, currentPid(), DevServerVersion.current(), config.projectDirectory().toString(),
                               Observability.forSession(config.projectDirectory(), sessionId),
                               "starting",
                               ServiceStatus.stopped("runtime"),
@@ -81,7 +84,8 @@ public record DevSession(
 
     DevSession withStatus(String status) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -89,7 +93,7 @@ public record DevSession(
 
     DevSession withStoppedServices(String detail) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, "stopped",
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, "stopped",
                               runtime.asStopped(detail),
                               proxy.asStopped(detail),
                               gateway.asStopped(detail),
@@ -106,7 +110,8 @@ public record DevSession(
 
     DevSession withHeartbeat() {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, now, now);
@@ -114,7 +119,8 @@ public record DevSession(
 
     DevSession withRuntime(ServiceStatus runtime) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -122,7 +128,8 @@ public record DevSession(
 
     DevSession withProxy(ServiceStatus proxy) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -130,14 +137,16 @@ public record DevSession(
 
     DevSession withGateway(ServiceStatus gateway) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests, commands, frontend, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withIdp(ServiceStatus idp) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -145,7 +154,8 @@ public record DevSession(
 
     DevSession withApp(ServiceStatus app) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -153,7 +163,8 @@ public record DevSession(
 
     DevSession withReload(ServiceStatus reload) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -161,7 +172,8 @@ public record DevSession(
 
     DevSession withCompile(ServiceStatus compile) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -169,7 +181,8 @@ public record DevSession(
 
     DevSession withTests(ServiceStatus tests) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -177,7 +190,8 @@ public record DevSession(
 
     DevSession withCommands(ServiceStatus commands) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -185,7 +199,8 @@ public record DevSession(
 
     DevSession withFrontend(ServiceStatus frontend) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
                               commands, frontend, mcp, startedAt, heartbeatAt, now);
@@ -193,7 +208,8 @@ public record DevSession(
 
     DevSession withMcp(ServiceStatus mcp) {
         long now = Instant.now().toEpochMilli();
-        return new DevSession(sessionId, pid, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp,
                               app, reload, compile, tests, commands, frontend, mcp, startedAt, heartbeatAt, now);
     }
 

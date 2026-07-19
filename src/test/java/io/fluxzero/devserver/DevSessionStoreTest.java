@@ -163,7 +163,8 @@ class DevSessionStoreTest {
     }
 
     private static DevSession withPid(DevSession session, long pid) {
-        return new DevSession(session.sessionId(), pid, session.projectDirectory(), session.observability(),
+        return new DevSession(session.sessionId(), pid, session.devServerVersion(), session.projectDirectory(),
+                              session.observability(),
                               session.status(), session.runtime(), session.proxy(), session.gateway(), session.idp(),
                               session.app(), session.reload(), session.compile(), session.tests(), session.commands(),
                               session.frontend(), session.mcp(), session.startedAt(), session.heartbeatAt(),

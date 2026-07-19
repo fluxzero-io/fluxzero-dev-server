@@ -30,16 +30,9 @@ On Windows:
 
 The build creates both the regular Maven artifact and an executable standalone JAR under `target/`.
 
-While the corresponding SDK changes are still unreleased, `<fluxzero.version>` is `0-SNAPSHOT`. Install the
-matching SDK branch before building this repository:
-
-```shell
-cd ../fluxzero-sdk-java
-./mvnw -B -pl test-server,proxy -am -DskipTests install
-```
-
-The dev server build deliberately does not locate or build a sibling SDK checkout itself. Override
-`-Dfluxzero.version=...` when verifying against another installed or published SDK version.
+The build uses an exact published Fluxzero SDK version. It deliberately does not locate or build a sibling SDK
+checkout. Override `-Dfluxzero.version=...` only when verifying against another installed or published SDK
+version.
 
 ## Test
 
@@ -77,7 +70,7 @@ the npm cache is incomplete. Custom executable locations can be supplied with `-
 After building, start the standalone server for another project with:
 
 ```shell
-java -jar target/dev-server-0-SNAPSHOT-standalone.jar --project-dir /path/to/project
+java -jar target/fluxzero-dev-server-1-SNAPSHOT-standalone.jar --project-dir /path/to/project
 ```
 
 For normal use, install the Fluxzero CLI and run this from the application project instead:
@@ -85,6 +78,35 @@ For normal use, install the Fluxzero CLI and run this from the application proje
 ```shell
 fz dev
 ```
+
+Launchers resolve the latest compatible stable `1.x` release from Maven Central. A specific development or
+snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
+in the local Maven repository.
+
+The published Maven coordinates are:
+
+```text
+io.fluxzero.tools:fluxzero-dev-server:<version>
+io.fluxzero.tools:fluxzero-dev-server:<version>:standalone
+```
+
+Every push to `main` that passes the cross-platform build, whole-application tests, frontend framework tests, and
+release packaging validation produces a semantic release. A fresh-repository smoke test then verifies the
+published Central artifact before the GitHub release is created. The first release is `1.0.0`; breaking launcher,
+configuration, session, or control protocol changes require a new major version.
+
+Dependabot tracks the Fluxzero SDK BOM independently. Non-major SDK updates are automatically merged only after
+the full pull-request verification succeeds; that merge then produces a patch release of the dev server. Other
+SDK releases do not trigger this repository directly.
+
+### Release Repository Setup
+
+Before the first `main` release, the GitHub repository must be public and have access to the same Maven Central
+Actions secrets as the SDK repository: `OSSRH_USERNAME`, `OSSRH_PASSWORD`, `OSSRH_SIGNING_KEY`, and
+`OSSRH_SIGNING_PASSPHRASE`. The Dependabot secret store must contain
+`DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` and `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY`; that GitHub App needs write
+access to contents and pull requests in this repository. Central namespace ownership for `io.fluxzero.tools` is
+shared with the Fluxzero CLI artifacts.
 
 Project-level configuration belongs in `.fluxzero/dev.yaml`. Ephemeral session state, diagnostics, test impact
 data, and combined logs are written below `.fluxzero/dev/` in the application project and should not be committed.

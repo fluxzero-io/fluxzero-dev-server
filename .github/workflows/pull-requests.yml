@@ -1,0 +1,11 @@
+name: Build PR
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  verify:
+    name: Verify pull request
+    if: github.actor != 'dependabot[bot]'
+    uses: ./.github/workflows/verify.yml

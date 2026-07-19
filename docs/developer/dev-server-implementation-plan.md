@@ -452,19 +452,20 @@ Goal: gebruikers en agents starten de dev environment via stabiele Fluxzero-comm
 
 DoD status:
 
-- Een gedeelde launcher resolveert `io.fluxzero:dev-server` op de Fluxzero SDK/BOM-versie van het project met de project-local Maven wrapper.
+- Een gedeelde launcher resolveert de nieuwste stabiele `io.fluxzero.tools:fluxzero-dev-server` `1.x` release met de project-local Maven of Gradle wrapper.
 - `fluxzero dev` start de dev server foreground, geeft relevante configuratie door en laat `Ctrl+C` de child JVM graceful stoppen.
 - De enige Java- of Kotlin-entrypoint met JVM-signature `public static void main(String[])` wordt na compile automatisch gedetecteerd; een expliciete main class is alleen nodig bij ambiguiteit.
 - `fluxzero mcp` is een protocol-schone stdio-ingang die alleen de projectdirectory nodig heeft en via `DevMcpStdioMain` de actieve session ontdekt.
 - Installatie en self-upgrade bieden zowel `fz` als het equivalente `fluxzero` executable commando.
 - `fluxzero:dev` in de Fluxzero Maven plugin biedt dezelfde launcher als fallback wanneer de globale CLI niet is geinstalleerd.
 - Maven wordt niet als MCP stdio-wrapper gebruikt, omdat Maven-output stdout kan vervuilen; agents gebruiken daarvoor de CLI-ingang.
-- `--dev-server-version` en `FLUXZERO_DEV_SERVER_VERSION` kunnen de automatisch gedetecteerde projectversie overschrijven voor lokale SDK-development.
-- Resolver-output wordt project-local gecachet en alleen hergebruikt zolang versie en classpath geldig zijn.
+- De concrete dev-serverversie wordt in `session.json` vastgelegd, zodat attach, status, logs, stop en MCP dezelfde versie blijven gebruiken terwijl de environment draait.
+- `--dev-server-version` en `FLUXZERO_DEV_SERVER_VERSION` kunnen de nieuwste stabiele versie overschrijven voor lokale of prerelease-development.
+- Versiemetadata en resolver-output worden project-local gecachet; bij een tijdelijk onbereikbaar Maven Central kan een eerder gevonden compatibele `1.x` release worden gebruikt.
 
 Backlog:
 
-- [x] Slice 17.1: gedeelde projectversie-detectie, Maven-wrapperselectie, launcher-POM en classpath-resolutie.
+- [x] Slice 17.1: gedeelde compatible-versieresolutie, wrapperselectie, launcher-POM/-build en classpath-resolutie.
 - [x] Slice 17.2: gedeelde foreground child-process lifecycle en volledige dev-server argumentdoorgifte.
 - [x] Slice 17.3: `fluxzero dev` en protocol-schone `fluxzero mcp` CLI-commands.
 - [x] Slice 17.4: `fluxzero:dev` Maven Mojo boven dezelfde launcher-core.
@@ -876,8 +877,43 @@ Backlog:
 - [x] Slice 32.10: behoud `q`/`quit` en `d`/`detach` als regelcommando's die Enter vereisen en schakel pas binnen het
   quit-menu over op directe pijltoetsnavigatie.
 
+## Phase 33: Independent 1.x Releases And Compatible Launchers
+
+Goal: de dev server wordt onafhankelijk van SDK en CLI uitgebracht, terwijl iedere launcher automatisch de nieuwste
+compatibele stabiele release gebruikt zonder een draaiende environment onderweg van versie te laten wisselen.
+
+DoD status:
+
+- Maven Central publiceert `io.fluxzero.tools:fluxzero-dev-server` als dunne en `standalone` artifactlijn.
+- De eerste release is `1.0.0`; iedere groene push naar `main` krijgt daarna volgens Conventional Commits een
+  SemVer-release binnen major 1, totdat een bewuste incompatibele wijziging major 2 vereist.
+- Pull requests doorlopen Linux, macOS, Windows, whole-app en echte Vite/Angular-verificatie voordat ze kunnen mergen.
+- Dependabot volgt de Fluxzero BOM; een niet-major SDK-update wordt pas na dezelfde verificatie automatisch gemerged
+  en veroorzaakt vervolgens een patchrelease van de dev server.
+- CLI, Maven plugin en Gradle plugin kiezen voor een nieuwe environment de nieuwste stabiele `1.x` uit Maven Central.
+- `session.json` bewaart de concrete dev-serverversie; attach, status, logs, stop en MCP blijven diezelfde versie
+  gebruiken zolang de environment bestaat.
+- Een expliciete versieoverride blijft beschikbaar voor lokale snapshots en prereleases; bij tijdelijk onbereikbaar
+  Maven Central mag de laatst succesvol gevonden compatibele release worden gebruikt.
+
+Backlog:
+
+- [x] Slice 33.1: publieke `io.fluxzero.tools` coordinates, release-manifestmetadata en veilige `--version` smoke-entrypoint.
+- [x] Slice 33.2: gated push-to-main releaseworkflow met herhaalbare tagberekening, signing, Central-publicatie en fresh-repository smoke.
+- [x] Slice 33.3: Dependabot SDK-BOM updates met expliciete volledige verificatie vóór auto-merge.
+- [x] Slice 33.4: latest-compatible `1.x` resolver, offline cache, session pinning en Maven/Gradle artifactresolutie.
+- [x] Slice 33.5: unit-, packaging-, whole-app-, frontend- en volledige CLI/pluginverificatie.
+- [ ] Slice 33.6: repository publiek maken, Actions/Dependabot-secrets toekennen en release `1.0.0` plus Central/CLI smoke uitvoeren.
+
 ## Verification So Far
 
+- [x] Phase 33 default suite: 183 dev-servertests groen.
+- [x] Phase 33 whole-app profiel: 14 complete source-, compile-, rolling-reload-, command- en testimpactscenario's groen.
+- [x] Phase 33 frontend profiel: echte Vite- en Angular-installatie, gateway, websocket en hot-reloadproeven groen.
+- [x] Phase 33 release packaging: dunne, standalone, sources- en Javadoc-artifacts plus Central deploy-profiel groen;
+  standalone manifest bevat dev-server- en exacte SDK-versie en `java -jar ... --version` is zelfstandig uitvoerbaar.
+- [x] Phase 33 CLI: volledige Gradle-build en gerichte launcher/Maven/Gradle-plugintests groen, inclusief stable-versieselectie,
+  offline fallback en version-pinned actieve sessies.
 - [x] `./mvnw clean install`
 - [x] `./mvnw -pl sdk -am -Dtest=TestFixtureObservationRecorderTest -Dsurefire.failIfNoSpecifiedTests=false test`
 - [x] `./mvnw -pl dev-server -am -Dtest=DevServerConfigTest,DevSessionStoreTest,TestPlannerTest,DevServerLifecycleTest,AppProcessRunnerTest -Dsurefire.failIfNoSpecifiedTests=false test`

@@ -1,0 +1,59 @@
+name: Dependabot Auto-Merge
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  metadata:
+    name: Inspect dependency update
+    if: >-
+      github.actor == 'dependabot[bot]' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      github.repository == 'fluxzero-io/fluxzero-dev-server'
+    runs-on: ubuntu-latest
+    outputs:
+      dependency-names: ${{ steps.metadata.outputs.dependency-names }}
+      package-ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}
+      update-type: ${{ steps.metadata.outputs.update-type }}
+
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ github.token }}
+
+  verify:
+    name: Verify dependency update
+    needs: metadata
+    uses: ./.github/workflows/verify.yml
+
+  auto-merge-sdk:
+    name: Enable SDK auto-merge
+    needs: [metadata, verify]
+    if: >-
+      needs.metadata.outputs.package-ecosystem == 'maven' &&
+      contains(needs.metadata.outputs.dependency-names, 'io.fluxzero:fluxzero-bom') &&
+      needs.metadata.outputs.update-type != 'version-update:semver-major'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create app token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Enable auto-merge after required checks
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge "$PR_URL" --auto --rebase

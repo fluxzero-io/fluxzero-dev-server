@@ -73,7 +73,7 @@ final class DevMcpServer implements AutoCloseable {
                             .build();
 
             mcpServer = McpServer.sync(transport)
-                    .serverInfo("fluxzero-dev", "0-SNAPSHOT")
+                    .serverInfo("fluxzero-dev", DevServerVersion.current())
                     .instructions("Read-only access to the active Fluxzero development environment.")
                     .capabilities(McpSchema.ServerCapabilities.builder()
                                           .tools(false)

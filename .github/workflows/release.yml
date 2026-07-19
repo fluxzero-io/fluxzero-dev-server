@@ -1,0 +1,193 @@
+name: Release
+
+on:
+  push:
+    branches: [ main ]
+    tags-ignore:
+      - "[0-9]+.[0-9]+.[0-9]+"
+  workflow_dispatch:
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+env:
+  BUILD_ENVIRONMENT: github
+
+jobs:
+  verify:
+    name: Verify release
+    uses: ./.github/workflows/verify.yml
+
+  version:
+    name: Determine version
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.new_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Select explicit or initial release version
+        id: existing
+        shell: bash
+        run: |
+          git fetch --tags --force
+          current=$(git tag --points-at "$GITHUB_SHA" --sort=-version:refname \
+            | awk '/^[0-9]+\.[0-9]+\.[0-9]+$/ { print; exit }')
+          if [ -n "$current" ]; then
+            echo "selected=$current" >> "$GITHUB_OUTPUT"
+          elif git tag --list '[0-9]*.[0-9]*.[0-9]*' | grep -q .; then
+            echo "selected=" >> "$GITHUB_OUTPUT"
+          else
+            echo "selected=1.0.0" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Calculate semantic version
+        id: version
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ github.token }}
+          tag_prefix: ""
+          default_bump: patch
+          custom_tag: ${{ steps.existing.outputs.selected }}
+          custom_release_rules: "deps:patch:Dependency updates"
+          dry_run: true
+
+  package:
+    name: Package release
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Set release version
+        run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
+      - name: Build Central release bundle
+        run: ./mvnw -B clean install -Pdeploy -Dgpg.skip -DskipPublishing=true
+      - name: Verify standalone manifest
+        shell: bash
+        run: |
+          SDK_VERSION=$(./mvnw -q help:evaluate -Dexpression=fluxzero.version -DforceStdout)
+          unzip -p target/fluxzero-dev-server-${{ needs.version.outputs.version }}-standalone.jar META-INF/MANIFEST.MF > target/standalone-manifest.txt
+          grep -F "Implementation-Version: ${{ needs.version.outputs.version }}" target/standalone-manifest.txt
+          grep -F "Fluxzero-SDK-Version: $SDK_VERSION" target/standalone-manifest.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-artifacts
+          path: |
+            target/fluxzero-dev-server-${{ needs.version.outputs.version }}.jar
+            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-standalone.jar
+            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-sources.jar
+            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-javadoc.jar
+
+  tag:
+    name: Tag release
+    needs: [version, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Create release tag
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          git fetch origin --force --tags
+          if git rev-parse -q --verify "refs/tags/$RELEASE_VERSION" >/dev/null; then
+            test "$(git rev-list -n 1 "$RELEASE_VERSION")" = "$GITHUB_SHA"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag "$RELEASE_VERSION" "$GITHUB_SHA"
+            git push origin "refs/tags/$RELEASE_VERSION"
+          fi
+
+  central:
+    name: Publish to Maven Central
+    needs: [version, tag]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java and Maven credentials
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          server-id: central
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+      - name: Set release version
+        run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
+      - name: Publish release
+        run: ./mvnw -B deploy -Pdeploy -DskipTests
+        env:
+          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          MAVEN_GPG_KEY: ${{ secrets.OSSRH_SIGNING_KEY }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.OSSRH_SIGNING_PASSPHRASE }}
+
+  central-smoke:
+    name: Verify published artifact
+    needs: [version, central]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+      - name: Resolve standalone artifact from Central
+        env:
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+          SMOKE_REPOSITORY: ${{ runner.temp }}/central-smoke
+        shell: bash
+        run: |
+          for attempt in $(seq 1 40); do
+            if ./mvnw -q -Dmaven.repo.local="$SMOKE_REPOSITORY" \
+                org.apache.maven.plugins:maven-dependency-plugin:3.11.0:get \
+                -Dartifact="io.fluxzero.tools:fluxzero-dev-server:$RELEASE_VERSION:jar:standalone" \
+                -Dtransitive=false \
+                -DremoteRepositories=central::default::https://repo.maven.apache.org/maven2; then
+              break
+            fi
+            if [ "$attempt" = 40 ]; then
+              echo "Release did not become resolvable from Maven Central" >&2
+              exit 1
+            fi
+            sleep 15
+          done
+          java -jar "$SMOKE_REPOSITORY/io/fluxzero/tools/fluxzero-dev-server/$RELEASE_VERSION/fluxzero-dev-server-$RELEASE_VERSION-standalone.jar" --version
+
+  github-release:
+    name: Publish GitHub release
+    needs: [version, central-smoke, package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: release-artifacts
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.version.outputs.version }}
+        run: >-
+          gh release create "$RELEASE_VERSION"
+          release-artifacts/*
+          --repo "$GITHUB_REPOSITORY"
+          --title "Fluxzero Dev Server $RELEASE_VERSION"
+          --generate-notes
