@@ -40,6 +40,7 @@ final class FrontendProcess implements AutoCloseable {
 
     private final FrontendConfig config;
     private final DevServerConfig devConfig;
+    private final String ownershipMarker;
     private volatile Process process;
     private volatile Process setupProcess;
     private final String internalUrl;
@@ -56,10 +57,12 @@ final class FrontendProcess implements AutoCloseable {
     private volatile long unavailableSinceNanos = -1;
     private volatile String probeFailure;
 
-    private FrontendProcess(DevServerConfig devConfig, FrontendConfig config, Process process, String internalUrl,
+    private FrontendProcess(DevServerConfig devConfig, FrontendConfig config, String ownershipMarker,
+                            Process process, String internalUrl,
                             Consumer<DevSession.ServiceStatus> statusConsumer) {
         this.devConfig = devConfig;
         this.config = config;
+        this.ownershipMarker = ownershipMarker;
         this.process = process;
         this.internalUrl = internalUrl;
         this.statusConsumer = statusConsumer;
@@ -84,19 +87,26 @@ final class FrontendProcess implements AutoCloseable {
 
     static FrontendProcess prepare(DevServerConfig devConfig, Consumer<DevSession.ServiceStatus> statusConsumer,
                                    Consumer<String> output) {
+        return prepare(devConfig, devConfig.projectDirectory().toString(), statusConsumer, output);
+    }
+
+    static FrontendProcess prepare(DevServerConfig devConfig, String ownershipMarker,
+                                   Consumer<DevSession.ServiceStatus> statusConsumer, Consumer<String> output) {
         FrontendConfig config = devConfig.frontend();
         if (config.mode() == FrontendConfig.Mode.NONE) {
-            return new FrontendProcess(devConfig, config, null, null, statusConsumer);
+            return new FrontendProcess(devConfig, config, ownershipMarker, null, null, statusConsumer);
         }
         try {
             if (config.mode() == FrontendConfig.Mode.EXTERNAL_URL) {
-                FrontendProcess frontend = new FrontendProcess(devConfig, config, null, config.url(), statusConsumer);
+                FrontendProcess frontend = new FrontendProcess(
+                        devConfig, config, ownershipMarker, null, config.url(), statusConsumer);
                 frontend.startReadinessMonitor(output);
                 return frontend;
             }
             int port = availablePort();
             String internalUrl = "http://127.0.0.1:" + port;
-            FrontendProcess frontend = new FrontendProcess(devConfig, config, null, internalUrl, statusConsumer);
+            FrontendProcess frontend = new FrontendProcess(
+                    devConfig, config, ownershipMarker, null, internalUrl, statusConsumer);
             frontend.startReadinessMonitor(output);
             return frontend;
         } catch (IOException e) {
@@ -247,7 +257,7 @@ final class FrontendProcess implements AutoCloseable {
         long startedNanos = System.nanoTime();
         try {
             Process started = ProcessUtils.start(
-                    shellCommand(config.setupCommand(), devConfig.projectDirectory().toString()),
+                    shellCommand(config.setupCommand(), ownershipMarker),
                     workingDirectory(), environment(), line -> output.accept("[frontend] [setup] " + line));
             setupProcess = started;
             if (closed.get()) {
@@ -280,7 +290,7 @@ final class FrontendProcess implements AutoCloseable {
         }
         String commandValue = config.command().replace("{port}", Integer.toString(port(internalUrl)));
         Process started = ProcessUtils.start(
-                shellCommand(commandValue, devConfig.projectDirectory().toString()), workingDirectory(), environment(),
+                shellCommand(commandValue, ownershipMarker), workingDirectory(), environment(),
                 line -> output.accept("[frontend] " + line));
         process = started;
         if (closed.get()) {
@@ -433,9 +443,9 @@ final class FrontendProcess implements AutoCloseable {
         return port < 0 ? null : port;
     }
 
-    private static List<String> shellCommand(String command, String projectDirectory) {
+    private static List<String> shellCommand(String command, String ownershipMarker) {
         boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
-        String marker = "fluxzero-dev-project=" + projectDirectory;
+        String marker = "fluxzero-dev-owner=" + ownershipMarker;
         return windows
                 ? List.of("cmd", "/d", "/s", "/c", command + " & rem " + marker)
                 : List.of("sh", "-c", command, marker);

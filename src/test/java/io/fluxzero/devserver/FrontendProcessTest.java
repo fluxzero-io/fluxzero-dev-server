@@ -168,8 +168,12 @@ class FrontendProcessTest {
                 DevServerConfig.DEFAULT_DEBOUNCE,
                 FrontendConfig.command("sleep 30 & echo $! > child.pid; wait"), List.of());
 
-        try (FrontendProcess frontend = FrontendProcess.start(config, "http://localhost:1234", ignored -> {
+        String sessionId = "frontend-session-1";
+        try (FrontendProcess frontend = FrontendProcess.prepare(config, sessionId, ignored -> {
+        }, ignored -> {
         })) {
+            frontend.launch(ignored -> {
+            });
             long parentPid = frontend.status().pid();
             Path childPidFile = projectDirectory.resolve("child.pid");
             assertTrue(await(() -> Files.isRegularFile(childPidFile)));
@@ -178,7 +182,7 @@ class FrontendProcessTest {
             assertTrue(ProcessUtils.isAlive(childPid));
 
             assertTrue(ProcessUtils.stopIfCommandLineContains(
-                    parentPid, projectDirectory.toString(), Duration.ofSeconds(2)));
+                    parentPid, sessionId, Duration.ofSeconds(2)));
 
             assertTrue(await(() -> !ProcessUtils.isAlive(parentPid)));
             assertTrue(await(() -> !ProcessUtils.isAlive(childPid)));

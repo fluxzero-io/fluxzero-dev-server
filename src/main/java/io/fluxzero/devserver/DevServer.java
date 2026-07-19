@@ -411,7 +411,8 @@ public class DevServer implements AutoCloseable {
 
     private void startFrontend() {
         try {
-            frontendProcess = FrontendProcess.prepare(config, this::updateFrontendStatus, this::print);
+            frontendProcess = FrontendProcess.prepare(
+                    config, session.sessionId(), this::updateFrontendStatus, this::print);
             updateFrontendStatus(frontendProcess.status());
         } catch (RuntimeException e) {
             updateFrontendStatus(DevSession.ServiceStatus.failed("frontend", e.getMessage()));
@@ -492,16 +493,16 @@ public class DevServer implements AutoCloseable {
             } else if (active) {
                 print("[session] stale dev session detected: " + previous.sessionId());
             }
-            boolean appCleaned = cleanupApplicationOrphans(previous.app());
-            boolean frontendCleaned = cleanupOrphan("frontend", previous.frontend());
+            boolean appCleaned = cleanupApplicationOrphans(previous.app(), previous.sessionId());
+            boolean frontendCleaned = cleanupOrphan("frontend", previous.frontend(), previous.sessionId());
             if (active || appCleaned || frontendCleaned) {
                 sessionStore.writeSession(previous.withStoppedServices("stale dev session cleaned up"));
             }
         });
     }
 
-    private boolean cleanupApplicationOrphans(DevSession.ServiceStatus status) {
-        boolean cleaned = cleanupOrphan("app", status);
+    private boolean cleanupApplicationOrphans(DevSession.ServiceStatus status, String ownershipMarker) {
+        boolean cleaned = cleanupOrphan("app", status, ownershipMarker);
         if (status == null) {
             return cleaned;
         }
@@ -513,7 +514,7 @@ public class DevServer implements AutoCloseable {
                 long pid = Long.parseLong(entry.getValue());
                 DevSession.ServiceStatus process = new DevSession.ServiceStatus(
                         entry.getKey(), "running", null, null, pid, "previous dev application");
-                cleaned |= cleanupOrphan(entry.getKey(), process);
+                cleaned |= cleanupOrphan(entry.getKey(), process, ownershipMarker);
             } catch (NumberFormatException ignored) {
                 // Ignore malformed stale metadata and leave unrelated processes untouched.
             }
@@ -521,12 +522,16 @@ public class DevServer implements AutoCloseable {
         return cleaned;
     }
 
-    private boolean cleanupOrphan(String name, DevSession.ServiceStatus status) {
+    private boolean cleanupOrphan(String name, DevSession.ServiceStatus status, String ownershipMarker) {
         if (status == null || status.pid() == null) {
             return false;
         }
         boolean stopped = ProcessUtils.stopIfCommandLineContains(
-                status.pid(), config.projectDirectory().toString(), Duration.ofSeconds(2));
+                status.pid(), ownershipMarker, Duration.ofSeconds(2));
+        if (!stopped) {
+            stopped = ProcessUtils.stopIfCommandLineContains(
+                    status.pid(), config.projectDirectory().toString(), Duration.ofSeconds(2));
+        }
         if (stopped) {
             print("[session] stopped stale " + name + " process " + status.pid());
         } else if ("running".equals(status.state()) && ProcessUtils.isAlive(status.pid())) {

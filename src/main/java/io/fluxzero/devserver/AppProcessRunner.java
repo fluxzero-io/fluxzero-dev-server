@@ -78,6 +78,7 @@ final class AppProcessRunner {
         List<String> command = new ArrayList<>();
         command.add(javaExecutable());
         command.add("--enable-native-access=ALL-UNNAMED");
+        command.add("-Dfluxzero.dev.session=" + sessionId);
         command.addAll(environmentSystemProperties(application));
         command.add("-cp");
         command.add(classpath(application));

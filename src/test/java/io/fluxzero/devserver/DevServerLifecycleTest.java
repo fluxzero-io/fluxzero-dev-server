@@ -170,23 +170,28 @@ class DevServerLifecycleTest {
                 DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
                 DevServerConfig.DEFAULT_DEBOUNCE,
                 FrontendConfig.none(), null);
+        DevSession stale = DevSession.empty(config).withStatus("running");
+        String ownershipMarker = stale.sessionId();
         Process orphan = ProcessUtils.start(List.of(
                 javaExecutable(),
-                "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                "-Dfluxzero.dev.session=" + ownershipMarker,
                 "-cp", testClassesDirectory().toString(),
                 FixtureAppMain.class.getName()),
                                             projectDirectory, Map.of(), ignored -> {
                 });
         try {
             assertTrue(orphan.isAlive());
-            DevSession stale = withPid(DevSession.empty(config).withStatus("running")
-                                               .withApp(DevSession.ServiceStatus.running(
-                                                       "app", null, null, orphan.pid(), "running build 7")),
-                                       unusedPid());
+            stale = withPid(stale.withApp(DevSession.ServiceStatus.running(
+                    "app", null, null, orphan.pid(), "running build 7")), unusedPid());
             new DevSessionStore(projectDirectory).writeSession(stale);
 
             try (DevServer devServer = new DevServer(config).start()) {
-                assertTrue(awaitStopped(orphan));
+                assertTrue(awaitStopped(orphan), () -> {
+                    ProcessHandle.Info info = orphan.info();
+                    return "Failed to stop owned orphan with marker " + ownershipMarker
+                           + "; commandLine=" + info.commandLine().orElse("<unavailable>")
+                           + "; arguments=" + info.arguments().map(java.util.Arrays::toString).orElse("<unavailable>");
+                });
                 assertEquals("running", devServer.session().status());
             }
         } finally {
