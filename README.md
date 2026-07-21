@@ -79,6 +79,21 @@ For normal use, install the Fluxzero CLI and run this from the application proje
 fz dev
 ```
 
+Project-local controls remain available after detaching. `fz dev list` can be run from any directory and shows
+all globally registered environments, including stale registrations left by an unexpected process stop:
+
+```shell
+fz dev list
+fz dev status --project-dir /path/to/project
+fz dev logs --project-dir /path/to/project --follow
+fz dev stop --project-dir /path/to/project
+fz dev list --json
+```
+
+The global index under `~/.fluxzero/dev/environments/` contains only project paths and session/process identity.
+Current status, URLs, and application names are read from each project's `.fluxzero/dev/session.json`; MCP tokens,
+resolved environment variables, and other secrets are never copied into the index.
+
 Launchers resolve the latest compatible stable `1.x` release from Maven Central. A specific development or
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.

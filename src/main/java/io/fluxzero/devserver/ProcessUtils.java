@@ -207,6 +207,18 @@ final class ProcessUtils {
         }
     }
 
+    static boolean isAlive(long pid, long expectedStartedAt) {
+        try {
+            return ProcessHandle.of(pid).filter(ProcessHandle::isAlive)
+                    .filter(process -> process.info().startInstant()
+                            .map(instant -> instant.toEpochMilli() == expectedStartedAt)
+                            .orElse(true))
+                    .isPresent();
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     static boolean stopIfCommandLineContains(Long pid, String marker, Duration timeout) {
         return stopIfOwned(pid, marker, null, timeout);
     }

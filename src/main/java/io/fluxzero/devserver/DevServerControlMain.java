@@ -27,7 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
-/** Project-local lifecycle controls for a running Fluxzero dev environment. */
+/** Project-local lifecycle controls and global discovery for Fluxzero dev environments. */
 public final class DevServerControlMain {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
@@ -38,6 +38,7 @@ public final class DevServerControlMain {
         Arguments arguments = Arguments.parse(args);
         int exitCode = switch (arguments.action()) {
             case "status" -> status(arguments);
+            case "list" -> list(arguments);
             case "logs" -> logs(arguments);
             case "stop" -> stop(arguments);
             case "wait" -> waitForStartup(arguments);
@@ -74,6 +75,42 @@ public final class DevServerControlMain {
             System.out.println("In-memory runtime data was lost; startup commands will run again next time.");
         }
         return active(session) ? 0 : 1;
+    }
+
+    private static int list(Arguments arguments) throws Exception {
+        List<DevEnvironmentRegistry.Environment> environments = DevEnvironmentRegistry.global().list();
+        if (arguments.json()) {
+            System.out.println(OBJECT_MAPPER.writeValueAsString(new EnvironmentList(
+                    environments,
+                    environments.stream().filter(DevEnvironmentRegistry.Environment::active).count(),
+                    environments.stream().filter(environment -> !environment.active()).count())));
+            return 0;
+        }
+        if (environments.isEmpty()) {
+            System.out.println("No Fluxzero dev environments found.");
+            return 0;
+        }
+        int statusWidth = Math.max("STATUS".length(), environments.stream()
+                .mapToInt(environment -> environment.status().length()).max().orElse(0));
+        int projectWidth = Math.max("PROJECT".length(), environments.stream()
+                .map(DevEnvironmentRegistry.Environment::projectDirectory)
+                .map(DevServerControlMain::displayPath)
+                .mapToInt(String::length).max().orElse(0));
+        int appsWidth = Math.max("APPLICATIONS".length(), environments.stream()
+                .map(DevServerControlMain::displayApplications).mapToInt(String::length).max().orElse(0));
+        String format = "%-" + statusWidth + "s  %-" + projectWidth + "s  %-" + appsWidth + "s  %s%n";
+        System.out.printf(format, "STATUS", "PROJECT", "APPLICATIONS", "URL");
+        for (DevEnvironmentRegistry.Environment environment : environments) {
+            System.out.printf(format, environment.status(), displayPath(environment.projectDirectory()),
+                              displayApplications(environment), environment.url() == null ? "-" : environment.url());
+            if (environment.detail() != null) {
+                System.out.println("  " + environment.detail());
+            }
+        }
+        long active = environments.stream().filter(DevEnvironmentRegistry.Environment::active).count();
+        long stale = environments.size() - active;
+        System.out.printf("%n%d active, %d stale.%n", active, stale);
+        return 0;
     }
 
     private static int probe(Arguments arguments) {
@@ -140,7 +177,17 @@ public final class DevServerControlMain {
         while (ProcessUtils.isAlive(session.pid()) && System.nanoTime() < deadline) {
             TimeUnit.MILLISECONDS.sleep(25);
         }
-        store.reconcileUnexpectedStop();
+        if (ProcessUtils.isAlive(session.pid())) {
+            store.reconcileUnexpectedStop();
+        } else {
+            DevSession stopped = store.readSession()
+                    .filter(currentSession -> session.sessionId().equals(currentSession.sessionId()))
+                    .orElse(session)
+                    .withStoppedServices("stopped through dev control")
+                    .withStatus("stopped");
+            store.writeSession(stopped);
+            DevEnvironmentRegistry.global().unregister(session);
+        }
         System.out.println(DevServerMain.STOPPED_MESSAGE);
         return 0;
     }
@@ -235,6 +282,16 @@ public final class DevServerControlMain {
         };
     }
 
+    private static String displayPath(String path) {
+        String home = Path.of(System.getProperty("user.home")).toAbsolutePath().normalize().toString();
+        return path.equals(home) ? "~" : path.startsWith(home + java.io.File.separator)
+                ? "~" + path.substring(home.length()) : path;
+    }
+
+    private static String displayApplications(DevEnvironmentRegistry.Environment environment) {
+        return environment.applications().isEmpty() ? "-" : String.join(",", environment.applications());
+    }
+
     private static Path bootstrapLog(Arguments arguments) {
         return arguments.projectDirectory().resolve(DevSessionStore.DEV_DIRECTORY).resolve("bootstrap.log");
     }
@@ -247,7 +304,8 @@ public final class DevServerControlMain {
                              boolean force, boolean allowEmpty, String application, long pid, long timeoutMillis) {
         static Arguments parse(String[] args) {
             if (args.length == 0) {
-                throw new IllegalArgumentException("Expected dev control action: attach, status, logs, stop or wait");
+                throw new IllegalArgumentException(
+                        "Expected dev control action: attach, list, status, logs, stop or wait");
             }
             String action = args[0];
             Path projectDirectory = Path.of("").toAbsolutePath().normalize();
@@ -278,5 +336,8 @@ public final class DevServerControlMain {
             return new Arguments(action, projectDirectory, json, follow, errors, force, allowEmpty, application,
                                  pid, timeoutMillis);
         }
+    }
+
+    private record EnvironmentList(List<DevEnvironmentRegistry.Environment> environments, long active, long stale) {
     }
 }
