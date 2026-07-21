@@ -187,6 +187,7 @@ class DevServerMainTest {
             assertEquals(0, stop.exitCode(), stop.output());
             assertTrue(ordersProcess.waitFor(5, TimeUnit.SECONDS), "orders dev server did not stop");
             assertTrue(awaitRegistrySize(registryDirectory, 1), "controlled stop did not unregister environment");
+            assertEquals("stopped", new DevSessionStore(orders).readSession().orElseThrow().status());
 
             reportingProcess.destroyForcibly();
             assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");

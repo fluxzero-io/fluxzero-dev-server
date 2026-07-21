@@ -177,7 +177,17 @@ public final class DevServerControlMain {
         while (ProcessUtils.isAlive(session.pid()) && System.nanoTime() < deadline) {
             TimeUnit.MILLISECONDS.sleep(25);
         }
-        store.reconcileUnexpectedStop();
+        if (ProcessUtils.isAlive(session.pid())) {
+            store.reconcileUnexpectedStop();
+        } else {
+            DevSession stopped = store.readSession()
+                    .filter(currentSession -> session.sessionId().equals(currentSession.sessionId()))
+                    .orElse(session)
+                    .withStoppedServices("stopped through dev control")
+                    .withStatus("stopped");
+            store.writeSession(stopped);
+            DevEnvironmentRegistry.global().unregister(session);
+        }
         System.out.println(DevServerMain.STOPPED_MESSAGE);
         return 0;
     }
