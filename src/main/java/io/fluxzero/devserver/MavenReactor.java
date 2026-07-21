@@ -71,6 +71,9 @@ final class MavenReactor {
     List<ApplicationBuild> applications(DevServerConfig config) {
         try {
             List<Candidate> candidates = new ArrayList<>();
+            Map<Module, List<String>> ambiguousModules = new LinkedHashMap<>();
+            boolean explicitSelection = (config.mainClass() != null && !config.mainClass().isBlank())
+                                        || !config.applications().isEmpty();
             for (Module module : modules) {
                 List<String> detected = MainClassDetector.candidates(module.classesDirectory());
                 String configured = module.configuredMainClass();
@@ -78,8 +81,10 @@ final class MavenReactor {
                     candidates.add(new Candidate(module, configured));
                 } else if (detected.size() == 1) {
                     candidates.add(new Candidate(module, detected.getFirst()));
-                } else {
+                } else if (explicitSelection) {
                     detected.forEach(mainClass -> candidates.add(new Candidate(module, mainClass)));
+                } else if (!detected.isEmpty()) {
+                    ambiguousModules.put(module, detected);
                 }
             }
             if ((config.mainClass() != null && !config.mainClass().isBlank()) || !config.applications().isEmpty()) {
@@ -100,6 +105,9 @@ final class MavenReactor {
             List<Candidate> activeCandidates = selectedCandidates.isEmpty() ? List.copyOf(candidates)
                     : selectedCandidates.stream().map(SelectedCandidate::candidate).distinct().toList();
             if (activeCandidates.isEmpty()) {
+                if (!ambiguousModules.isEmpty()) {
+                    throw new IllegalStateException(ambiguousMainClasses(ambiguousModules));
+                }
                 if (multiModule()) {
                     throw new IllegalStateException("No application main classes found in Maven reactor");
                 }
@@ -208,6 +216,16 @@ final class MavenReactor {
         }
         return candidate.module().artifactId() == null
                 ? candidate.module().relativeName() : candidate.module().artifactId();
+    }
+
+    private static String ambiguousMainClasses(Map<Module, List<String>> modules) {
+        String details = modules.entrySet().stream().map(entry -> {
+            String module = entry.getKey().artifactId() == null
+                    ? entry.getKey().relativeName() : entry.getKey().artifactId();
+            return module + ": " + String.join(", ", entry.getValue());
+        }).collect(java.util.stream.Collectors.joining("; "));
+        return "Multiple main classes found in unconfigured Maven modules (" + details
+               + "). Configure a module main class or select one with --app <main-class>.";
     }
 
     private static String simpleName(String className) {

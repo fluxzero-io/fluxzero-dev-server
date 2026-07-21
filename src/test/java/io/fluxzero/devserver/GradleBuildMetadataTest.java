@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GradleBuildMetadataTest {
@@ -70,6 +71,35 @@ class GradleBuildMetadataTest {
         assertEquals("gradle-compile", initial.mode());
         assertEquals("Gradle build changed", initial.reason());
         assertEquals(List.of("fluxzeroDevMetadata"), source.goals());
+    }
+
+    @Test
+    void requiresExplicitSelectionWhenGradleModuleHasMultipleMainClasses(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("build.gradle.kts"), "plugins { java }");
+        Path classes = compile(project, "com.example.App", """
+                package com.example;
+                public class App { public static void main(String[] args) { } }
+                """);
+        compile(project, "com.example.ImportData", """
+                package com.example;
+                public class ImportData { public static void main(String[] args) { } }
+                """);
+        Path dependency = Files.createFile(project.resolve("dependency.jar"));
+        writeMetadata(project, classes, dependency);
+        GradleBuildMetadata metadata = GradleBuildMetadata.load(project);
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class, () -> metadata.applications(DevServerConfig.defaults(project)));
+        assertTrue(exception.getMessage().contains("Multiple main classes found in unconfigured Gradle modules"));
+
+        DevServerConfig defaults = DevServerConfig.defaults(project);
+        DevServerConfig selectedConfig = new DevServerConfig(
+                defaults.projectDirectory(), defaults.mainClass(), defaults.applicationName(), defaults.namespace(),
+                defaults.watch(), defaults.compileOnStart(), defaults.testsEnabled(), defaults.startupTimeout(),
+                defaults.gracefulShutdownTimeout(), defaults.debounce(), defaults.frontend(), defaults.appArgs(),
+                defaults.fastCompilerEnabled(), defaults.environment(), List.of("ImportData"),
+                defaults.gatewayPort(), defaults.idpMode());
+        assertEquals("com.example.ImportData", metadata.applications(selectedConfig).getFirst().mainClass());
     }
 
     private static void writeMetadata(Path project, Path classes, Path dependency) throws Exception {

@@ -572,8 +572,7 @@ public class DevServer implements AutoCloseable {
                     "starting build " + snapshot.buildNumber() + " for " + applications.size() + " app(s)"));
             for (ApplicationBuild application : applications) {
                 PendingReadiness pending = new PendingReadiness(
-                        application.applicationName(), appProcessRunner.clientId(snapshot, application),
-                        new CompletableFuture<>());
+                        appProcessRunner.clientId(snapshot, application), new CompletableFuture<>());
                 readiness.put(application.launchId(), pending);
                 appReadiness.put(pending.clientId(), pending);
                 try {
@@ -729,11 +728,15 @@ public class DevServer implements AutoCloseable {
         metricsRegistration = TestServerMetricsMonitor.monitor((event, metadata) -> {
             if (event instanceof ConnectEvent connectEvent) {
                 PendingReadiness pending = appReadiness.get(connectEvent.getClientId());
-                if (pending != null && pending.applicationName().equals(connectEvent.getClient())) {
+                if (pending != null && matchesReadinessClient(pending.clientId(), connectEvent)) {
                     pending.ready().complete(null);
                 }
             }
         });
+    }
+
+    static boolean matchesReadinessClient(String expectedClientId, ConnectEvent event) {
+        return expectedClientId.equals(event.getClientId());
     }
 
     private void updateRuntimeStatus(DevSession.ServiceStatus status) {
@@ -1256,10 +1259,10 @@ public class DevServer implements AutoCloseable {
         return display + ":" + position.line();
     }
 
-    private record PendingReadiness(String applicationName, String clientId, CompletableFuture<Void> ready,
+    private record PendingReadiness(String clientId, CompletableFuture<Void> ready,
                                     AtomicReference<String> failure) {
-        PendingReadiness(String applicationName, String clientId, CompletableFuture<Void> ready) {
-            this(applicationName, clientId, ready, new AtomicReference<>());
+        PendingReadiness(String clientId, CompletableFuture<Void> ready) {
+            this(clientId, ready, new AtomicReference<>());
         }
     }
 

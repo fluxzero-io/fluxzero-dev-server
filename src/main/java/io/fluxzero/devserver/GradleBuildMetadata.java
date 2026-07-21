@@ -48,9 +48,16 @@ record GradleBuildMetadata(List<Module> modules) {
 
     List<ApplicationBuild> applications(DevServerConfig config) {
         List<Candidate> candidates = new ArrayList<>();
+        Map<Module, List<String>> ambiguousModules = new LinkedHashMap<>();
+        boolean explicitSelection = (config.mainClass() != null && !config.mainClass().isBlank())
+                                    || !config.applications().isEmpty();
         for (Module module : modules) {
-            mainCandidates(module.mainClasses(), false).forEach(
-                    mainClass -> candidates.add(new Candidate(module, mainClass, false)));
+            List<String> detected = mainCandidates(module.mainClasses(), false);
+            if (explicitSelection || detected.size() <= 1) {
+                detected.forEach(mainClass -> candidates.add(new Candidate(module, mainClass, false)));
+            } else {
+                ambiguousModules.put(module, detected);
+            }
         }
         if ((config.mainClass() != null && !config.mainClass().isBlank()) || !config.applications().isEmpty()) {
             for (Module module : modules) {
@@ -69,6 +76,9 @@ record GradleBuildMetadata(List<Module> modules) {
         List<Candidate> active = selected.isEmpty() ? List.copyOf(candidates)
                 : selected.stream().map(Selected::candidate).distinct().toList();
         if (active.isEmpty()) {
+            if (!ambiguousModules.isEmpty()) {
+                throw new IllegalStateException(ambiguousMainClasses(ambiguousModules));
+            }
             throw new IllegalStateException("No application main classes found in Gradle projects");
         }
 
@@ -151,6 +161,14 @@ record GradleBuildMetadata(List<Module> modules) {
         return candidate.testApplication()
                 ? simpleName(candidate.mainClass()) + " (test app in " + candidate.module().path() + ")"
                 : candidate.module().name();
+    }
+
+    private static String ambiguousMainClasses(Map<Module, List<String>> modules) {
+        String details = modules.entrySet().stream()
+                .map(entry -> entry.getKey().name() + ": " + String.join(", ", entry.getValue()))
+                .collect(java.util.stream.Collectors.joining("; "));
+        return "Multiple main classes found in unconfigured Gradle modules (" + details
+               + "). Configure an application or select one with --app <main-class>.";
     }
 
     private static ApplicationBuild configured(ApplicationBuild discovered,
