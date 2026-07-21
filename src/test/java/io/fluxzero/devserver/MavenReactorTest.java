@@ -80,6 +80,39 @@ class MavenReactorTest {
     }
 
     @Test
+    void skipsAmbiguousUtilityModuleUnlessAMainClassIsExplicitlySelected(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>app</module><module>utilities</module></modules>
+                """));
+        writeModule(project, "app", configuredMainClass("com.acme.AppMain"));
+        writeModule(project, "utilities", "");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        compileMain(project.resolve("app"), "com.acme.AppTool");
+        compileMain(project.resolve("utilities"), "com.acme.ImportData");
+        compileMain(project.resolve("utilities"), "com.acme.ConvertIndex");
+        MavenReactor reactor = MavenReactor.load(project);
+
+        List<ApplicationBuild> automatic = reactor.applications(config(project));
+        assertEquals(List.of("com.acme.AppMain"), automatic.stream().map(ApplicationBuild::mainClass).toList());
+
+        List<ApplicationBuild> selected = reactor.applications(config(project, List.of("ImportData")));
+        assertEquals(List.of("com.acme.ImportData"), selected.stream().map(ApplicationBuild::mainClass).toList());
+    }
+
+    @Test
+    void explainsAmbiguousMainClassesWhenNoDefaultApplicationExists(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("tools", "jar", ""));
+        compileMain(project, "com.acme.ImportData");
+        compileMain(project, "com.acme.ConvertIndex");
+
+        IllegalStateException exception = assertThrows(
+                IllegalStateException.class, () -> MavenReactor.load(project).applications(config(project)));
+
+        assertTrue(exception.getMessage().contains("Multiple main classes found in unconfigured Maven modules"));
+        assertTrue(exception.getMessage().contains("--app <main-class>"));
+    }
+
+    @Test
     void discoversTestApplicationOnlyWhenItIsExplicitlySelected(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
                 <modules><module>app</module></modules>
@@ -166,6 +199,14 @@ class MavenReactorTest {
                   <groupId>com.acme</groupId><artifactId>%s</artifactId><version>1</version>
                 </dependency></dependencies>
                 """.formatted(artifactId);
+    }
+
+    private static String configuredMainClass(String mainClass) {
+        return """
+                <build><plugins><plugin><configuration>
+                  <mainClass>%s</mainClass>
+                </configuration></plugin></plugins></build>
+                """.formatted(mainClass);
     }
 
     private static void compileMain(Path module, String className) throws Exception {
