@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -127,6 +128,7 @@ class ProcessUtilsTest {
 
         assertTrue(ProcessUtils.stopIfOwned(
                 process.pid(), "marker-that-is-not-present", startedAt, Duration.ZERO));
+        assertTrue(process.waitFor(2, TimeUnit.SECONDS));
         assertFalse(process.isAlive());
     }
 

@@ -58,7 +58,7 @@ class DevServerMainTest {
         Process process = new ProcessBuilder(
                 java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + projectDirectory.resolve("registry"),
-                "-cp", System.getProperty("java.class.path"),
+                "-cp", testClassPath(),
                 DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(),
                 "--no-watch", "--no-compile-on-start", "--no-tests", "--idp", "external")
@@ -214,7 +214,7 @@ class DevServerMainTest {
         return new ProcessBuilder(
                 java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
-                "-cp", System.getProperty("java.class.path"), DevServerMain.class.getName(),
+                "-cp", testClassPath(), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
                 "--idp", "external")
                 .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
@@ -248,7 +248,7 @@ class DevServerMainTest {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         List<String> command = new java.util.ArrayList<>(List.of(
                 java.toString(), "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
-                "-cp", System.getProperty("java.class.path"), DevServerControlMain.class.getName(),
+                "-cp", testClassPath(), DevServerControlMain.class.getName(),
                 action, "--project-dir", projectDirectory.toString()));
         command.addAll(List.of(options));
         return new ProcessBuilder(command);
@@ -256,6 +256,10 @@ class DevServerMainTest {
 
     private static Path sessionFile(Path projectDirectory) {
         return projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve(DevSessionStore.SESSION_FILE);
+    }
+
+    private static String testClassPath() {
+        return System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
     }
 
     private static boolean awaitRunningSession(Path sessionFile) throws Exception {
