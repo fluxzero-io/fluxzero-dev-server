@@ -62,15 +62,15 @@ public final class DevServerMain {
             Thread watchdog = Thread.ofPlatform().daemon(true).name("fluxzero-dev-server-shutdown-watchdog")
                     .start(() -> haltAfterShutdownDeadline(shutdownReported, launcherOwnsShutdown));
             try {
-                server.close();
-            } finally {
-                if (registered.get()) {
+                if (registered.compareAndSet(true, false)) {
                     try {
                         registry.unregister(server.session());
                     } catch (RuntimeException ignored) {
                         // A stale registration is reconciled by the next global list operation.
                     }
                 }
+                server.close();
+            } finally {
                 watchdog.interrupt();
                 reportStopped(shutdownReported, launcherOwnsShutdown);
                 shutdown.countDown();

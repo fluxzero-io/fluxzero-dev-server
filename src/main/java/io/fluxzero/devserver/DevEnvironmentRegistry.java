@@ -21,7 +21,6 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -120,19 +119,29 @@ final class DevEnvironmentRegistry {
     }
 
     private void write(Path target, Registration registration) {
+        Path temporary = null;
         try {
             Files.createDirectories(directory);
-            Path temporary = Files.createTempFile(directory, target.getFileName().toString(), ".tmp");
+            temporary = Files.createTempFile(directory, target.getFileName().toString(), ".tmp");
             objectMapper.writeValue(temporary.toFile(), registration);
-            Files.move(temporary, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFileUtils.replace(temporary, target);
+            temporary = null;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to register Fluxzero dev environment in " + directory, e);
+        } finally {
+            if (temporary != null) {
+                try {
+                    Files.deleteIfExists(temporary);
+                } catch (IOException ignored) {
+                    // Temporary files are harmless and may be cleaned up by a later registration.
+                }
+            }
         }
     }
 
     private void delete(Path target) {
         try {
-            Files.deleteIfExists(target);
+            AtomicFileUtils.deleteIfExists(target);
         } catch (IOException e) {
             throw new IllegalStateException("Failed to unregister Fluxzero dev environment " + target, e);
         }

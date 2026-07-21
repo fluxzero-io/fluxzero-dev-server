@@ -23,7 +23,6 @@ import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
 
@@ -156,13 +155,23 @@ final class DevSessionStore {
     }
 
     private void writeJson(Path target, Object value) {
+        Path temp = null;
         try {
             prepareDirectory();
-            Path temp = Files.createTempFile(directory, target.getFileName().toString(), ".tmp");
+            temp = Files.createTempFile(directory, target.getFileName().toString(), ".tmp");
             objectMapper.writeValue(temp.toFile(), value);
-            Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            AtomicFileUtils.replace(temp, target);
+            temp = null;
         } catch (IOException e) {
             throw new IllegalStateException("Failed to write dev session file " + target, e);
+        } finally {
+            if (temp != null) {
+                try {
+                    Files.deleteIfExists(temp);
+                } catch (IOException ignored) {
+                    // Temporary files are harmless and may be cleaned up on the next session.
+                }
+            }
         }
     }
 
