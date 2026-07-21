@@ -61,8 +61,7 @@ final class DevEnvironmentRegistry {
 
     synchronized void unregister(DevSession session) {
         Path target = registrationFile(canonicalProject(Path.of(session.projectDirectory())));
-        readRegistration(target).filter(registration -> session.sessionId().equals(registration.sessionId()))
-                .ifPresent(ignored -> delete(target));
+        delete(target);
     }
 
     synchronized List<Environment> list() {

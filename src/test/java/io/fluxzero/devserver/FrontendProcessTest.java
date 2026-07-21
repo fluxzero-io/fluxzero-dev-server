@@ -176,7 +176,8 @@ class FrontendProcessTest {
             });
             long parentPid = frontend.status().pid();
             Path childPidFile = projectDirectory.resolve("child.pid");
-            assertTrue(await(() -> Files.isRegularFile(childPidFile)));
+            assertTrue(await(() -> Files.isRegularFile(childPidFile)
+                                     && !Files.readString(childPidFile).isBlank()));
             long childPid = Long.parseLong(Files.readString(childPidFile).strip());
             assertTrue(ProcessUtils.isAlive(parentPid));
             assertTrue(ProcessUtils.isAlive(childPid));
