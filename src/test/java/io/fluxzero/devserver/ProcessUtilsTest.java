@@ -131,6 +131,21 @@ class ProcessUtilsTest {
     }
 
     @Test
+    void livenessCheckRejectsReusedPidWithDifferentStartTime() throws Exception {
+        Process process = ProcessUtils.start(
+                javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {
+                });
+        try {
+            long startedAt = ProcessUtils.startedAt(process).orElseThrow();
+
+            assertTrue(ProcessUtils.isAlive(process.pid(), startedAt));
+            assertFalse(ProcessUtils.isAlive(process.pid(), startedAt - 1));
+        } finally {
+            ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
     void mismatchedProcessStartTimeDoesNotProveOwnership() throws Exception {
         Process process = ProcessUtils.start(
                 javaCommand(SleepingFixture.class), Path.of("."), Map.of(), ignored -> {

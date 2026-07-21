@@ -37,9 +37,17 @@ public final class DevServerMain {
         }
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
         DevServer server;
+        DevEnvironmentRegistry registry = DevEnvironmentRegistry.global();
+        AtomicBoolean registered = new AtomicBoolean();
         try {
             server = new DevServer(DevServerConfig.fromArgs(args));
             server.start();
+            try {
+                registry.register(server.session());
+                registered.set(true);
+            } catch (RuntimeException e) {
+                System.err.println("Warning: could not register this Fluxzero dev environment: " + e.getMessage());
+            }
         } catch (DevServerStartupException | IllegalArgumentException | LinkageError e) {
             System.err.println("Fluxzero dev could not start: " + startupFailureMessage(e));
             System.exit(2);
@@ -56,6 +64,13 @@ public final class DevServerMain {
             try {
                 server.close();
             } finally {
+                if (registered.get()) {
+                    try {
+                        registry.unregister(server.session());
+                    } catch (RuntimeException ignored) {
+                        // A stale registration is reconciled by the next global list operation.
+                    }
+                }
                 watchdog.interrupt();
                 reportStopped(shutdownReported, launcherOwnsShutdown);
                 shutdown.countDown();

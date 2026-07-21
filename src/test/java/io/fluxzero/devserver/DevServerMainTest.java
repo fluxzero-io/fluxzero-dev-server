@@ -31,9 +31,9 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-@EnabledOnOs({OS.LINUX, OS.MAC})
 class DevServerMainTest {
 
     @Test
@@ -51,11 +51,13 @@ class DevServerMainTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
     void reportsStoppedAfterSignalCleanup(@TempDir Path projectDirectory) throws Exception {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         Path outputFile = projectDirectory.resolve("dev-server.out");
         Process process = new ProcessBuilder(
                 java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + projectDirectory.resolve("registry"),
                 "-cp", System.getProperty("java.class.path"),
                 DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(),
@@ -115,6 +117,7 @@ class DevServerMainTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
     void controlMainStopsServerStartedThroughProjectPathAlias(@TempDir Path directory) throws Exception {
         Path projectDirectory = Files.createDirectory(directory.resolve("project"));
         Path projectAlias = directory.resolve("project-alias");
@@ -155,10 +158,62 @@ class DevServerMainTest {
         assertEquals("stale", store.readCommandStatus().orElseThrow().state());
     }
 
+    @Test
+    void globallyListsRunningAndUnexpectedlyStoppedEnvironments(@TempDir Path directory) throws Exception {
+        Path registryDirectory = directory.resolve("registry");
+        Path orders = Files.createDirectory(directory.resolve("orders"));
+        Path reporting = Files.createDirectory(directory.resolve("reporting"));
+        Process ordersProcess = startServer(orders, registryDirectory);
+        Process reportingProcess = startServer(reporting, registryDirectory);
+        try {
+            assertTrue(awaitRunningSession(sessionFile(orders)), "orders dev server did not become ready");
+            assertTrue(awaitRunningSession(sessionFile(reporting)), "reporting dev server did not become ready");
+            assertTrue(awaitRegistrySize(registryDirectory, 2), "dev environments were not globally registered");
+
+            ProcessResult list = runControl(orders, registryDirectory, "list");
+            assertEquals(0, list.exitCode(), list.output());
+            assertTrue(list.output().contains(orders.toString()), list.output());
+            assertTrue(list.output().contains(reporting.toString()), list.output());
+            assertTrue(list.output().contains("2 active, 0 stale."), list.output());
+
+            ProcessResult json = runControl(orders, registryDirectory, "list", "--json");
+            assertEquals(0, json.exitCode(), json.output());
+            var jsonOutput = new ObjectMapper().readTree(json.output());
+            assertEquals(2, jsonOutput.path("active").asInt());
+            assertEquals(2, jsonOutput.path("environments").size());
+            assertFalse(json.output().contains("token"), json.output());
+
+            ProcessResult stop = runControl(orders, registryDirectory, "stop");
+            assertEquals(0, stop.exitCode(), stop.output());
+            assertTrue(ordersProcess.waitFor(5, TimeUnit.SECONDS), "orders dev server did not stop");
+            assertTrue(awaitRegistrySize(registryDirectory, 1), "controlled stop did not unregister environment");
+
+            reportingProcess.destroyForcibly();
+            assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");
+            ProcessResult stale = runControl(reporting, registryDirectory, "list");
+            assertEquals(0, stale.exitCode(), stale.output());
+            assertFalse(stale.output().contains(orders.toString()), stale.output());
+            assertTrue(stale.output().contains(reporting.toString()), stale.output());
+            assertTrue(stale.output().contains("0 active, 1 stale."), stale.output());
+        } finally {
+            if (ordersProcess.isAlive()) {
+                ordersProcess.destroyForcibly();
+            }
+            if (reportingProcess.isAlive()) {
+                reportingProcess.destroyForcibly();
+            }
+        }
+    }
+
     private static Process startServer(Path projectDirectory) throws IOException {
+        return startServer(projectDirectory, projectDirectory.resolve("registry"));
+    }
+
+    private static Process startServer(Path projectDirectory, Path registryDirectory) throws IOException {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         return new ProcessBuilder(
                 java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
                 "-cp", System.getProperty("java.class.path"), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
                 "--idp", "external")
@@ -172,16 +227,28 @@ class DevServerMainTest {
     }
 
     private static ProcessResult runControl(Path projectDirectory, String action) throws Exception {
-        Process process = startControl(projectDirectory, action).redirectErrorStream(true).start();
+        return runControl(projectDirectory, projectDirectory.resolve("registry"), action);
+    }
+
+    private static ProcessResult runControl(Path projectDirectory, Path registryDirectory, String action,
+                                            String... options) throws Exception {
+        Process process = startControl(projectDirectory, registryDirectory, action, options)
+                .redirectErrorStream(true).start();
         String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
         assertTrue(process.waitFor(8, TimeUnit.SECONDS), "control process did not exit");
         return new ProcessResult(process.exitValue(), output);
     }
 
     private static ProcessBuilder startControl(Path projectDirectory, String action, String... options) {
+        return startControl(projectDirectory, projectDirectory.resolve("registry"), action, options);
+    }
+
+    private static ProcessBuilder startControl(Path projectDirectory, Path registryDirectory, String action,
+                                               String... options) {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         List<String> command = new java.util.ArrayList<>(List.of(
-                java.toString(), "-cp", System.getProperty("java.class.path"), DevServerControlMain.class.getName(),
+                java.toString(), "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
+                "-cp", System.getProperty("java.class.path"), DevServerControlMain.class.getName(),
                 action, "--project-dir", projectDirectory.toString()));
         command.addAll(List.of(options));
         return new ProcessBuilder(command);
@@ -204,6 +271,18 @@ class DevServerMainTest {
                 // Atomic session replacement may briefly race with the read on some file systems.
             }
             Thread.sleep(50);
+        }
+        return false;
+    }
+
+    private static boolean awaitRegistrySize(Path registryDirectory, int expected) throws Exception {
+        DevEnvironmentRegistry registry = new DevEnvironmentRegistry(registryDirectory);
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (registry.list().size() == expected) {
+                return true;
+            }
+            Thread.sleep(25);
         }
         return false;
     }

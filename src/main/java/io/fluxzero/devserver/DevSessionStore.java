@@ -119,7 +119,7 @@ final class DevSessionStore {
         }
         DevSession session = current.get();
         if ("stopped".equals(session.status()) || "stopped-unexpectedly".equals(session.status())
-            || ProcessUtils.isAlive(session.pid())) {
+            || ProcessUtils.isAlive(session.pid(), session.startedAt())) {
             return current;
         }
         String detail = "dev server process stopped unexpectedly; in-memory runtime data was lost";
