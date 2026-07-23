@@ -125,6 +125,14 @@ shared with the Fluxzero CLI artifacts.
 
 Project-level configuration belongs in `.fluxzero/dev.yaml`. Ephemeral session state, diagnostics, test impact
 data, and combined logs are written below `.fluxzero/dev/` in the application project and should not be committed.
+Print the configuration reference for the current dev-server version with:
+
+```shell
+fz dev config
+```
+
+The output is valid YAML and documents application selection, named application flavors, managed or external
+frontends, backend pass-through paths, 1Password secret references, and ordered startup commands.
 
 ## Development Principles
 
