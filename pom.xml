@@ -36,7 +36,7 @@
         <jetty.version>12.1.10</jetty.version>
         <jline.version>3.30.11</jline.version>
         <junit.version>6.1.1</junit.version>
-        <logback.version>1.5.37</logback.version>
+        <logback.version>1.6.0</logback.version>
         <lombok.version>1.18.46</lombok.version>
         <mcp.version>2.0.0</mcp.version>
         <skipPublishing>false</skipPublishing>
