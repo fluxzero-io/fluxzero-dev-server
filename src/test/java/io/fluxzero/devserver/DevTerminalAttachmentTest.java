@@ -87,7 +87,7 @@ class DevTerminalAttachmentTest {
 
         String output = attach(project, String.join("\n", "q", TerminalKeyReader.UP, TerminalKeyReader.DOWN,
                                                    TerminalKeyReader.DOWN, TerminalKeyReader.UP,
-                                                   TerminalKeyReader.UP, TerminalKeyReader.ENTER) + "\n", true);
+                                                   TerminalKeyReader.UP, TerminalKeyReader.ENTER, "d") + "\n", true);
 
         assertTrue(output.contains("› Keep running in background"), output);
         assertTrue(output.contains("› Return to live view"), output);
@@ -122,6 +122,26 @@ class DevTerminalAttachmentTest {
         assertEquals(2, exitCode);
         assertTrue(terminal.contains("Port 4200 is already in use"), terminal);
         assertFalse(terminal.contains("Fluxzero dev is not running"), terminal);
+    }
+
+    @Test
+    void closedTerminalIsReportedAsLostOwnerInsteadOfImplicitDetach(@TempDir Path project) throws Exception {
+        DevSession session = readySession(project);
+        new DevSessionStore(project).writeSession(session);
+        Path log = bootstrapLog(project);
+        Files.createDirectories(log.getParent());
+        Files.writeString(log, "Fluxzero dev server ready\n");
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        PrintStream output = new PrintStream(bytes, true, StandardCharsets.UTF_8);
+
+        int exitCode;
+        try (TerminalProgress progress = new TerminalProgress(false, output)) {
+            exitCode = new DevTerminalAttachment(
+                    project, InputStream.nullInputStream(), output, true, progress).run(ProcessHandle.current().pid());
+        }
+
+        assertEquals(DevTerminalAttachment.OWNER_DISCONNECTED_EXIT_CODE, exitCode);
+        assertFalse(bytes.toString(StandardCharsets.UTF_8).contains("continues in the background"));
     }
 
     private static String attach(Path project, String input) throws Exception {

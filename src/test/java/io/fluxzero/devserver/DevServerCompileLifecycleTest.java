@@ -144,6 +144,7 @@ class DevServerCompileLifecycleTest {
     }
 
     private static void installFakeMaven(Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
         Path mvnw = projectDirectory.resolve("mvnw");
         Files.writeString(mvnw, """
                 #!/bin/sh
@@ -182,6 +183,7 @@ class DevServerCompileLifecycleTest {
     }
 
     private static void installBlockingFakeMaven(Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
         Path mvnw = projectDirectory.resolve("mvnw");
         Files.writeString(mvnw, """
                 #!/bin/sh

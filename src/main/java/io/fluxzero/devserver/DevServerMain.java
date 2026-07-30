@@ -42,6 +42,7 @@ public final class DevServerMain {
         try {
             server = new DevServer(DevServerConfig.fromArgs(args));
             server.start();
+            server.shutdownRequested().thenRun(() -> System.exit(0));
             try {
                 registry.register(server.session());
                 registered.set(true);

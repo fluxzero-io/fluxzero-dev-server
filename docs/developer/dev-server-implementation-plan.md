@@ -905,6 +905,29 @@ Backlog:
 - [x] Slice 33.5: unit-, packaging-, whole-app-, frontend- en volledige CLI/pluginverificatie.
 - [ ] Slice 33.6: repository publiek maken, Actions/Dependabot-secrets toekennen en release `1.0.0` plus Central/CLI smoke uitvoeren.
 
+## Phase 34: Bounded Environment Ownership
+
+Goal: een development environment kan niet ongemerkt als login-agent of recursieve watcher achterblijven, terwijl
+bewust detached gebruik voorspelbaar en configureerbaar blijft.
+
+DoD:
+
+- Een map zonder Maven- of Gradle-root wordt vóór service-start en watcherregistratie geweigerd.
+- De CLI kan interactief een nieuw project in de huidige map of een submap initialiseren en start daarna dat project.
+- Alleen expliciete detach of background-start draagt ownership over; een verdwenen attached terminal stopt de omgeving.
+- macOS launchd-jobs hebben geen `RunAtLoad` en worden bij expliciete stop opgeruimd.
+- `fz dev stop --all` stopt alle geregistreerde omgevingen en ruimt stale en legacy launchd-registraties op.
+- Alle omgevingen hebben vanaf startup één via `dev.yaml` configureerbare inactivity timeout.
+
+Backlog:
+
+- [x] Slice 34.1: server-side projectrootvalidatie vóór embedded services en recursieve source watcher.
+- [x] Slice 34.2: interactieve CLI-initialisatie met current-folder, subfolder en cancel-keuze.
+- [x] Slice 34.3: expliciet attached ownershipprotocol en terminal-disconnect stop.
+- [x] Slice 34.4: launchd zonder login-restart plus project- en globale cleanup.
+- [x] Slice 34.5: `lifecycle.idleTimeout` met activity-based reset, ook vóór readiness.
+- [x] Slice 34.6: volledige dev-server- en CLI-build plus echte macOS launchd lifecycle-smoke.
+
 ## Verification So Far
 
 - [x] Phase 33 default suite: 183 dev-servertests groen.
@@ -1048,7 +1071,7 @@ Backlog:
   na `fz dev attach` eenmaal gereplayed; kale `fz dev` attach't direct; `q` gevolgd door `s` stopt supervisor en app
   en zet de sessie op `stopped`.
 - [x] Phase 32 lifecycle-/attachmentregressies: short en long commands, gemiste-outputreplay, sessiegebonden cursor,
-  EOF-detach, signal-stop en stop via een afwijkende projectpadalias zijn groen.
+  expliciete detach, signal-stop en stop via een afwijkende projectpadalias zijn groen.
 - [x] Live PTY-signaalproef na Slice 32.8: `Ctrl+C` publiceerde exact één stopregel en stopte supervisor, app, runtime
   en proxy; een tweede run met `d` liet dezelfde onderdelen aantoonbaar actief tot de expliciete `fz dev stop`.
 - [x] `./mvnw -B install` na Phase 32: alle 10 modules groen, inclusief 177 dev-servertests waarvan 16
@@ -1062,6 +1085,15 @@ Backlog:
 - [x] Live `fz dev` PTY-proef met een echte terminalidentiteit na Slice 32.10: een losse `q` bleef invoer en opende pas
   na Enter het menu;
   pijl-omlaag plus Enter stopte daarna de omgeving.
+- [x] Phase 34 project- en lifetimeregressies: starten buiten een Maven/Gradle-root faalt vóór service- of
+  watcherstart, terminal-EOF retourneert het ownership-signaal en één inactivity-timeout stopt zowel vóór als na
+  readiness éénmalig na de configureerbare activiteitgrens.
+- [x] `./mvnw -Dgpg.skip -DskipPublishing=true -B install -P deploy` na Phase 34: 207 tests groen en thin,
+  standalone, sources en Javadoc artifacts succesvol gebouwd en lokaal geïnstalleerd.
+- [x] `./gradlew check` in `fluxzero-cli` na Phase 34: alle 48 taken groen, inclusief CLI-initialisatie,
+  owner-disconnect, globale stop, Maven/Gradle-pluginchecks en runnable-jarverificatie.
+- [x] Echte macOS launchd-smoke: background-start met `RunAtLoad=false` en `LaunchOnlyOnce=true`, succesvolle
+  statusprobe, daarna `fz dev stop --force`; proces, job en project-plist waren alle drie verwijderd.
 
 ## Open Implementation Notes
 

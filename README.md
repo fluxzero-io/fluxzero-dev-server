@@ -87,8 +87,14 @@ fz dev list
 fz dev status --project-dir /path/to/project
 fz dev logs --project-dir /path/to/project --follow
 fz dev stop --project-dir /path/to/project
+fz dev stop --all
 fz dev list --json
 ```
+
+An attached environment is owned by its terminal and stops when that terminal closes or receives `Ctrl+C`.
+Use `d`, `detach`, or `fz dev --background` to transfer it explicitly to background ownership. Detached macOS
+jobs do not restart after login. `fz dev stop --all` stops every registered environment and removes stale
+registrations; this is also the migration path for detached jobs created by older CLI releases.
 
 The global index under `~/.fluxzero/dev/environments/` contains only project paths and session/process identity.
 Current status, URLs, and application names are read from each project's `.fluxzero/dev/session.json`; MCP tokens,
@@ -132,7 +138,10 @@ fz dev config
 ```
 
 The output is valid YAML and documents application selection, named application flavors, managed or external
-frontends, backend pass-through paths, 1Password secret references, and ordered startup commands.
+frontends, backend pass-through paths, 1Password secret references, ordered startup commands, and lifecycle
+timeouts. Environments stop after 24 hours without source, browser, build, test, command, or attach activity by
+default, including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`,
+or `disabled`; the limit applies in attached and detached mode.
 
 ## Development Principles
 

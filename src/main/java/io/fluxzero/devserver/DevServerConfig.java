@@ -42,6 +42,7 @@ import java.util.Objects;
  * @param gatewayPort             public frontend/backend gateway port; {@code 0} allocates a free dynamic port
  * @param idpMode                 managed local IDP or application-owned external IDP
  * @param applicationConfig       named per-application launch configurations loaded from project config
+ * @param idleTimeout             inactivity timeout for the environment; zero disables it
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -61,11 +62,13 @@ public record DevServerConfig(
         List<String> applications,
         int gatewayPort,
         IdpMode idpMode,
-        Map<String, DevApplicationConfig> applicationConfig
+        Map<String, DevApplicationConfig> applicationConfig,
+        Duration idleTimeout
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
     public static final Duration DEFAULT_DEBOUNCE = Duration.ofMillis(300);
+    public static final Duration DEFAULT_IDLE_TIMEOUT = Duration.ofHours(24);
 
     public DevServerConfig {
         projectDirectory = projectDirectory == null
@@ -87,6 +90,7 @@ public record DevServerConfig(
         }
         idpMode = idpMode == null ? IdpMode.MANAGED : idpMode;
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
+        idleTimeout = validateLifecycleTimeout(idleTimeout, DEFAULT_IDLE_TIMEOUT, "idleTimeout");
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -115,7 +119,7 @@ public record DevServerConfig(
     ) {
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
-             "local", List.of(), 0, IdpMode.MANAGED, Map.of());
+             "local", List.of(), 0, IdpMode.MANAGED, Map.of(), DEFAULT_IDLE_TIMEOUT);
     }
 
     public DevServerConfig(
@@ -134,7 +138,7 @@ public record DevServerConfig(
     ) {
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, false, "local", List.of(), 0,
-             IdpMode.MANAGED, Map.of());
+             IdpMode.MANAGED, Map.of(), DEFAULT_IDLE_TIMEOUT);
     }
 
     public DevServerConfig(
@@ -158,7 +162,32 @@ public record DevServerConfig(
     ) {
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
-             environment, applications, gatewayPort, idpMode, Map.of());
+             environment, applications, gatewayPort, idpMode, Map.of(), DEFAULT_IDLE_TIMEOUT);
+    }
+
+    public DevServerConfig(
+            Path projectDirectory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            boolean watch,
+            boolean compileOnStart,
+            boolean testsEnabled,
+            Duration startupTimeout,
+            Duration gracefulShutdownTimeout,
+            Duration debounce,
+            FrontendConfig frontend,
+            List<String> appArgs,
+            boolean fastCompilerEnabled,
+            String environment,
+            List<String> applications,
+            int gatewayPort,
+            IdpMode idpMode,
+            Map<String, DevApplicationConfig> applicationConfig
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
+             environment, applications, gatewayPort, idpMode, applicationConfig, DEFAULT_IDLE_TIMEOUT);
     }
 
     public static DevServerConfig defaults(Path projectDirectory) {
@@ -235,7 +264,9 @@ public record DevServerConfig(
                 parsed.flag("no-idp") ? IdpMode.EXTERNAL
                         : IdpMode.parse(parsed.value("idp", firstNonBlank(
                                 environment("FLUXZERO_DEV_IDP"), project.idp(), "managed"))),
-                project.applicationConfig());
+                project.applicationConfig(),
+                lifecycleDuration(parsed.value("idle-timeout", project.lifecycle().idleTimeout()),
+                                  DEFAULT_IDLE_TIMEOUT, "idleTimeout"));
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -285,6 +316,46 @@ public record DevServerConfig(
     private static String defaultApplicationName(Path projectDirectory) {
         Path fileName = projectDirectory.toAbsolutePath().normalize().getFileName();
         return fileName == null ? "fluxzero-dev-app" : fileName.toString();
+    }
+
+    static Duration lifecycleDuration(String value, Duration defaultValue, String name) {
+        if (value == null || value.isBlank()) {
+            return defaultValue;
+        }
+        String normalized = value.strip().toLowerCase(java.util.Locale.ROOT);
+        if (normalized.equals("disabled") || normalized.equals("off") || normalized.equals("none")) {
+            return Duration.ZERO;
+        }
+        try {
+            java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(\\d+)(ms|s|m|h|d)")
+                    .matcher(normalized);
+            Duration duration;
+            if (matcher.matches()) {
+                long amount = Long.parseLong(matcher.group(1));
+                duration = switch (matcher.group(2)) {
+                    case "ms" -> Duration.ofMillis(amount);
+                    case "s" -> Duration.ofSeconds(amount);
+                    case "m" -> Duration.ofMinutes(amount);
+                    case "h" -> Duration.ofHours(amount);
+                    case "d" -> Duration.ofDays(amount);
+                    default -> throw new IllegalStateException("Unexpected duration unit");
+                };
+            } else {
+                duration = Duration.parse(value.strip());
+            }
+            return validateLifecycleTimeout(duration, defaultValue, name);
+        } catch (RuntimeException e) {
+            throw new DevServerStartupException(
+                    name + " must be a duration such as 30m, 24h, PT24H, or disabled", e);
+        }
+    }
+
+    private static Duration validateLifecycleTimeout(Duration value, Duration defaultValue, String name) {
+        Duration result = value == null ? defaultValue : value;
+        if (result.isNegative()) {
+            throw new IllegalArgumentException(name + " must not be negative");
+        }
+        return result;
     }
 
     private record ParsedArgs(Map<String, List<String>> values) {

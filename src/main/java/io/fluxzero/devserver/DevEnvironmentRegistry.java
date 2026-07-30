@@ -60,8 +60,11 @@ final class DevEnvironmentRegistry {
     }
 
     synchronized void unregister(DevSession session) {
-        Path target = registrationFile(canonicalProject(Path.of(session.projectDirectory())));
-        delete(target);
+        unregister(Path.of(session.projectDirectory()));
+    }
+
+    synchronized void unregister(Path projectDirectory) {
+        delete(registrationFile(canonicalProject(projectDirectory)));
     }
 
     synchronized List<Environment> list() {

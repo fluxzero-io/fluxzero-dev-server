@@ -34,6 +34,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 final class DevTerminalAttachment {
+    static final int OWNER_DISCONNECTED_EXIT_CODE = 77;
     private static final Duration POLL_INTERVAL = Duration.ofMillis(100);
     private static final String INPUT_CLOSED = "\u0000-input-closed";
 
@@ -70,6 +71,7 @@ final class DevTerminalAttachment {
     }
 
     int run(long expectedPid) throws Exception {
+        new DevActivityStore(projectDirectory).touch();
         Path bootstrapLog = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("bootstrap.log");
         Optional<DevSession> initial = awaitSession(expectedPid, Duration.ofSeconds(5));
         if (initial.isEmpty()) {
@@ -123,8 +125,7 @@ final class DevTerminalAttachment {
                 String command = commands.poll();
                 if (INPUT_CLOSED.equals(command)) {
                     progress.stop();
-                    printDetached();
-                    return 0;
+                    return OWNER_DISCONNECTED_EXIT_CODE;
                 }
                 if (command != null) {
                     Action action = handle(command);

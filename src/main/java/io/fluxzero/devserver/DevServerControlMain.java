@@ -157,16 +157,61 @@ public final class DevServerControlMain {
     }
 
     private static int stop(Arguments arguments) throws Exception {
-        DevSessionStore store = store(arguments);
+        if (arguments.all()) {
+            return stopAll(arguments);
+        }
+        return stopOne(arguments.projectDirectory(), arguments.force(), true);
+    }
+
+    private static int stopAll(Arguments arguments) throws Exception {
+        DevEnvironmentRegistry registry = DevEnvironmentRegistry.global();
+        List<DevEnvironmentRegistry.Environment> environments = registry.list();
+        if (environments.isEmpty()) {
+            System.out.println("No Fluxzero dev environments found.");
+            return 0;
+        }
+        System.out.println(DevServerMain.STOPPING_MESSAGE);
+        System.out.flush();
+        int stopped = 0;
+        int stale = 0;
+        for (DevEnvironmentRegistry.Environment environment : environments) {
+            Path projectDirectory = Path.of(environment.projectDirectory());
+            Optional<DevSession> registeredSession;
+            try {
+                registeredSession = new DevSessionStore(projectDirectory).readSession()
+                        .filter(session -> environment.sessionId().equals(session.sessionId()));
+            } catch (RuntimeException ignored) {
+                registeredSession = Optional.empty();
+            }
+            if (registeredSession.isPresent() && active(registeredSession.get())) {
+                stopOne(projectDirectory, arguments.force(), false);
+                stopped++;
+            } else {
+                registry.unregister(projectDirectory);
+                stale++;
+            }
+        }
+        System.out.println(DevServerMain.STOPPED_MESSAGE);
+        System.out.printf("Stopped %d environment%s; removed %d stale registration%s.%n",
+                          stopped, stopped == 1 ? "" : "s", stale, stale == 1 ? "" : "s");
+        return 0;
+    }
+
+    private static int stopOne(Path projectDirectory, boolean force, boolean report) throws Exception {
+        DevSessionStore store = new DevSessionStore(projectDirectory);
         Optional<DevSession> current = store.reconcileUnexpectedStop();
         if (current.isEmpty() || !active(current.get())) {
-            System.out.println("Fluxzero dev is not running.");
+            if (report) {
+                System.out.println("Fluxzero dev is not running.");
+            }
             return 0;
         }
         DevSession session = current.get();
-        System.out.println(DevServerMain.STOPPING_MESSAGE);
-        System.out.flush();
-        Duration timeout = arguments.force() ? Duration.ZERO : Duration.ofSeconds(2);
+        if (report) {
+            System.out.println(DevServerMain.STOPPING_MESSAGE);
+            System.out.flush();
+        }
+        Duration timeout = force ? Duration.ZERO : Duration.ofSeconds(2);
         boolean owned = ProcessUtils.stopIfOwned(
                 session.pid(), session.projectDirectory(), session.startedAt(), timeout);
         if (!owned && ProcessUtils.isAlive(session.pid())) {
@@ -188,7 +233,9 @@ public final class DevServerControlMain {
             store.writeSession(stopped);
             DevEnvironmentRegistry.global().unregister(session);
         }
-        System.out.println(DevServerMain.STOPPED_MESSAGE);
+        if (report) {
+            System.out.println(DevServerMain.STOPPED_MESSAGE);
+        }
         return 0;
     }
 
@@ -301,7 +348,8 @@ public final class DevServerControlMain {
     }
 
     private record Arguments(String action, Path projectDirectory, boolean json, boolean follow, boolean errors,
-                             boolean force, boolean allowEmpty, String application, long pid, long timeoutMillis) {
+                             boolean force, boolean all, boolean allowEmpty, String application, long pid,
+                             long timeoutMillis) {
         static Arguments parse(String[] args) {
             if (args.length == 0) {
                 throw new IllegalArgumentException(
@@ -313,6 +361,7 @@ public final class DevServerControlMain {
             boolean follow = false;
             boolean errors = false;
             boolean force = false;
+            boolean all = false;
             boolean allowEmpty = false;
             String application = null;
             long pid = -1;
@@ -326,6 +375,7 @@ public final class DevServerControlMain {
                     case "--follow", "-f" -> follow = true;
                     case "--errors" -> errors = true;
                     case "--force" -> force = true;
+                    case "--all" -> all = true;
                     case "--allow-empty" -> allowEmpty = true;
                     case "--app" -> application = values.get(++index);
                     case "--pid" -> pid = Long.parseLong(values.get(++index));
@@ -333,7 +383,7 @@ public final class DevServerControlMain {
                     default -> throw new IllegalArgumentException("Unknown dev control option: " + value);
                 }
             }
-            return new Arguments(action, projectDirectory, json, follow, errors, force, allowEmpty, application,
+            return new Arguments(action, projectDirectory, json, follow, errors, force, all, allowEmpty, application,
                                  pid, timeoutMillis);
         }
     }

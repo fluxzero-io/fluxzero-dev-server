@@ -100,6 +100,7 @@ class DevServerConfigTest {
         DevServerConfig config = DevServerConfig.defaults(projectDirectory.resolve("nested").resolve(".."));
 
         assertEquals(projectDirectory.toAbsolutePath().normalize(), config.projectDirectory());
+        assertEquals(Duration.ofHours(24), config.idleTimeout());
     }
 
     @Test
@@ -115,6 +116,8 @@ class DevServerConfigTest {
                 port: 4200
                 idp: external
                 fastCompiler: true
+                lifecycle:
+                  idleTimeout: 4h
                 frontend:
                   directory: frontend
                   setupCommand: "npm install --prefer-offline --no-audit --no-fund"
@@ -140,6 +143,7 @@ class DevServerConfigTest {
         assertEquals(4200, defaults.gatewayPort());
         assertEquals(IdpMode.EXTERNAL, defaults.idpMode());
         assertTrue(defaults.fastCompilerEnabled());
+        assertEquals(Duration.ofHours(4), defaults.idleTimeout());
         assertEquals("npm start -- --port {port}", defaults.frontend().command());
         assertEquals("frontend", defaults.frontend().directory());
         assertEquals("npm install --prefer-offline --no-audit --no-fund",
@@ -189,6 +193,19 @@ class DevServerConfigTest {
                 DevServerStartupException.class,
                 () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
         assertTrue(exception.getMessage().contains("applicatons"));
+    }
+
+    @Test
+    void parsesLifecycleDurationsAndRejectsInvalidValues(@TempDir Path projectDirectory) {
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(),
+                "--idle-timeout", "30m"
+        });
+
+        assertEquals(Duration.ofMinutes(30), config.idleTimeout());
+        assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--idle-timeout", "eventually"
+        }));
     }
 
     @Test
