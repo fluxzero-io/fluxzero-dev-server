@@ -21,6 +21,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -28,6 +29,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class DevServerPreflightMainTest {
+
+    @Test
+    void rejectsDirectoryWithoutBuildProjectBeforeStartingServices(@TempDir Path project) {
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString()});
+
+        DevServerStartupException failure = assertThrows(
+                DevServerStartupException.class,
+                () -> DevServerPreflightMain.run(
+                        config, ignored -> DevServerPreflightMain.PortConflictChoice.cancel(), ignored -> { }));
+
+        assertEquals("No Maven or Gradle project found in '" + project
+                     + "'. Run fz dev from a project root or initialize a new project first.", failure.getMessage());
+    }
 
     @Test
     void acceptsAvailableConfiguredPort(@TempDir Path project) throws Exception {
@@ -99,6 +113,11 @@ class DevServerPreflightMainTest {
     }
 
     private static DevServerConfig config(Path project, int port) {
+        try {
+            Files.writeString(project.resolve("pom.xml"), "<project/>");
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
         return DevServerConfig.fromArgs(new String[]{
                 "--project-dir", project.toString(),
                 "--frontend-command", "frontend --port {port}",

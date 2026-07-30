@@ -119,10 +119,16 @@ public final class DevGateway implements AutoCloseable {
 
     static DevGateway start(String fluxzeroProxyUrl, String frontendUrl, BooleanSupplier frontendReady,
                             BooleanSupplier backendReady, List<String> backendPaths, int port) {
+        return start(fluxzeroProxyUrl, frontendUrl, frontendReady, backendReady, backendPaths, port, () -> { });
+    }
+
+    static DevGateway start(String fluxzeroProxyUrl, String frontendUrl, BooleanSupplier frontendReady,
+                            BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity) {
         Objects.requireNonNull(fluxzeroProxyUrl, "fluxzeroProxyUrl must not be null");
         Objects.requireNonNull(frontendUrl, "frontendUrl must not be null");
         Objects.requireNonNull(frontendReady, "frontendReady must not be null");
         Objects.requireNonNull(backendReady, "backendReady must not be null");
+        Objects.requireNonNull(activity, "activity must not be null");
         backendPaths = List.copyOf(Objects.requireNonNull(backendPaths, "backendPaths must not be null"));
         try {
             URI fluxzeroTarget = URI.create(withoutTrailingSlash(fluxzeroProxyUrl));
@@ -158,6 +164,7 @@ public final class DevGateway implements AutoCloseable {
             Handler httpHandler = new Handler.Wrapper(reverseProxy) {
                 @Override
                 public boolean handle(Request request, Response response, Callback callback) throws Exception {
+                    activity.run();
                     Route route = route(request, configuredBackendPaths);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);
@@ -186,6 +193,7 @@ public final class DevGateway implements AutoCloseable {
                 container.setMaxTextMessageSize(0);
                 container.setMaxFrameSize(0);
                 container.addMapping("/*", (request, response, callback) -> {
+                    activity.run();
                     Route route = route(request, configuredBackendPaths);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);

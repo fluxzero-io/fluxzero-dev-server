@@ -101,7 +101,10 @@ class DevServerStartupOutputTest {
                              new TerminalProgress(false, new PrintStream(output, true, StandardCharsets.UTF_8)));
     }
 
-    private static DevServerConfig config(Path projectDirectory, FrontendConfig frontend) {
+    private static DevServerConfig config(Path projectDirectory, FrontendConfig frontend) throws Exception {
+        if (Files.notExists(projectDirectory.resolve("pom.xml"))) {
+            Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
+        }
         return new DevServerConfig(
                 projectDirectory, null, "startup-output-test", null,
                 true, false, false,

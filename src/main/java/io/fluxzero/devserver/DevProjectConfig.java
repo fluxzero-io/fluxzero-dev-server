@@ -36,6 +36,7 @@ record DevProjectConfig(
         String idp,
         Boolean fastCompiler,
         Frontend frontend,
+        Lifecycle lifecycle,
         Map<String, DevCommandConfig> commands
 ) {
     static final Path FILE = Path.of(".fluxzero", "dev.yaml");
@@ -45,6 +46,7 @@ record DevProjectConfig(
         apps = apps == null ? List.of() : List.copyOf(apps);
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
+        lifecycle = lifecycle == null ? new Lifecycle(null, null) : lifecycle;
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
         commands.forEach((id, command) -> {
@@ -76,7 +78,8 @@ record DevProjectConfig(
     }
 
     private static DevProjectConfig empty() {
-        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), null, null, null, null, Map.of());
+        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), null, null, null, null, null,
+                                    Map.of());
     }
 
     private static String rootMessage(Throwable error) {
@@ -100,5 +103,8 @@ record DevProjectConfig(
                 }
             }
         }
+    }
+
+    record Lifecycle(String idleTimeout, String failedStartupTimeout) {
     }
 }

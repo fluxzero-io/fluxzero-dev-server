@@ -206,6 +206,35 @@ class DevServerMainTest {
         }
     }
 
+    @Test
+    void globallyStopsAllRegisteredEnvironments(@TempDir Path directory) throws Exception {
+        Path registryDirectory = directory.resolve("registry");
+        Path orders = Files.createDirectory(directory.resolve("orders"));
+        Path reporting = Files.createDirectory(directory.resolve("reporting"));
+        Process ordersProcess = startServer(orders, registryDirectory);
+        Process reportingProcess = startServer(reporting, registryDirectory);
+        try {
+            assertTrue(awaitRunningSession(sessionFile(orders)), "orders dev server did not become ready");
+            assertTrue(awaitRunningSession(sessionFile(reporting)), "reporting dev server did not become ready");
+            assertTrue(awaitRegistrySize(registryDirectory, 2), "dev environments were not globally registered");
+
+            ProcessResult stop = runControl(orders, registryDirectory, "stop", "--all", "--force");
+
+            assertEquals(0, stop.exitCode(), stop.output());
+            assertTrue(stop.output().contains("Stopped 2 environments"), stop.output());
+            assertTrue(ordersProcess.waitFor(5, TimeUnit.SECONDS), "orders dev server did not stop");
+            assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not stop");
+            assertTrue(awaitRegistrySize(registryDirectory, 0), "global stop did not clear registrations");
+        } finally {
+            if (ordersProcess.isAlive()) {
+                ordersProcess.destroyForcibly();
+            }
+            if (reportingProcess.isAlive()) {
+                reportingProcess.destroyForcibly();
+            }
+        }
+    }
+
     private static Process startServer(Path projectDirectory) throws IOException {
         return startServer(projectDirectory, projectDirectory.resolve("registry"));
     }

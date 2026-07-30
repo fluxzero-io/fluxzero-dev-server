@@ -115,6 +115,9 @@ class DevServerConfigTest {
                 port: 4200
                 idp: external
                 fastCompiler: true
+                lifecycle:
+                  idleTimeout: 4h
+                  failedStartupTimeout: disabled
                 frontend:
                   directory: frontend
                   setupCommand: "npm install --prefer-offline --no-audit --no-fund"
@@ -140,6 +143,8 @@ class DevServerConfigTest {
         assertEquals(4200, defaults.gatewayPort());
         assertEquals(IdpMode.EXTERNAL, defaults.idpMode());
         assertTrue(defaults.fastCompilerEnabled());
+        assertEquals(Duration.ofHours(4), defaults.idleTimeout());
+        assertEquals(Duration.ZERO, defaults.failedStartupTimeout());
         assertEquals("npm start -- --port {port}", defaults.frontend().command());
         assertEquals("frontend", defaults.frontend().directory());
         assertEquals("npm install --prefer-offline --no-audit --no-fund",
@@ -189,6 +194,21 @@ class DevServerConfigTest {
                 DevServerStartupException.class,
                 () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
         assertTrue(exception.getMessage().contains("applicatons"));
+    }
+
+    @Test
+    void parsesLifecycleDurationsAndRejectsInvalidValues(@TempDir Path projectDirectory) {
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(),
+                "--idle-timeout", "30m",
+                "--failed-startup-timeout", "PT45S"
+        });
+
+        assertEquals(Duration.ofMinutes(30), config.idleTimeout());
+        assertEquals(Duration.ofSeconds(45), config.failedStartupTimeout());
+        assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--idle-timeout", "eventually"
+        }));
     }
 
     @Test

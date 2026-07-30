@@ -73,6 +73,7 @@ public class DevServer implements AutoCloseable {
     private volatile DevSession session;
     private volatile DevSessionStore.DevSessionLock sessionLock;
     private volatile ScheduledFuture<?> heartbeatTask;
+    private volatile DevServerLifetime lifetime;
     private volatile Server runtimeServer;
     private volatile ProxyServer proxyServer;
     private volatile DevGateway devGateway;
@@ -99,6 +100,8 @@ public class DevServer implements AutoCloseable {
     private final AtomicBoolean frontendLaunched = new AtomicBoolean();
     private final AtomicBoolean browserReadyAnnounced = new AtomicBoolean();
     private final AtomicBoolean startupFailureAnnounced = new AtomicBoolean();
+    private final CompletableFuture<String> shutdownRequested = new CompletableFuture<>();
+    private final AtomicReference<String> shutdownDetail = new AtomicReference<>("dev server stopped");
     private volatile long startupStartedNanos;
 
     public DevServer(DevServerConfig config) {
@@ -122,6 +125,9 @@ public class DevServer implements AutoCloseable {
         if (runtimeServer != null) {
             return this;
         }
+        if (config.watch() || config.compileOnStart()) {
+            DevProjectLayout.requireBuildProject(config.projectDirectory());
+        }
         validatePublicPort();
         sessionLock = sessionStore.acquireLock();
         OnePasswordEnvironment.cleanupReferenceFiles(config.projectDirectory());
@@ -143,6 +149,8 @@ public class DevServer implements AutoCloseable {
             terminalProgress.start("Starting Fluxzero dev environment");
             updateSession(current -> current.withStatus("starting"));
             startHeartbeat();
+            lifetime = new DevServerLifetime(config, browserReadyAnnounced::get, this::requestShutdown);
+            lifetime.start(scheduler);
             startMcp();
             registerReadinessMonitor();
             startRuntime();
@@ -240,6 +248,7 @@ public class DevServer implements AutoCloseable {
         if (closed.get()) {
             return;
         }
+        activity();
         synchronized (compileLock) {
             if (closed.get()) {
                 return;
@@ -443,7 +452,7 @@ public class DevServer implements AutoCloseable {
         }
         devGateway = DevGateway.start(proxyUrl, frontendProcess.internalUrl(), frontendProcess::ready,
                                       () -> !currentApps.isEmpty(), config.frontend().backendPaths(),
-                                      effectiveGatewayPort);
+                                      effectiveGatewayPort, this::activity);
         publicUrl = devGateway.url();
         publicFluxzeroUrl = devGateway.backendUrl();
         updateGatewayStatus(DevSession.ServiceStatus.running(
@@ -462,6 +471,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void handleProjectChanges(Set<Path> changes) {
+        activity();
         Set<Path> frontendChanges = changes.stream().filter(sourceWatcher::frontendPath)
                 .collect(java.util.stream.Collectors.toUnmodifiableSet());
         if (!frontendChanges.isEmpty()) {
@@ -726,6 +736,7 @@ public class DevServer implements AutoCloseable {
 
     private void registerReadinessMonitor() {
         metricsRegistration = TestServerMetricsMonitor.monitor((event, metadata) -> {
+            activity();
             if (event instanceof ConnectEvent connectEvent) {
                 PendingReadiness pending = appReadiness.get(connectEvent.getClientId());
                 if (pending != null && matchesReadinessClient(pending.clientId(), connectEvent)) {
@@ -805,6 +816,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void updateTestStatus(TestStatus status) {
+        activity();
         updateSession(current -> current.withTests(new DevSession.ServiceStatus(
                 "tests", status.state(), null, null, null, status.reason())));
         devLogStore.observeStatus("test", "test", config.applicationName(), null, status.state(),
@@ -1047,6 +1059,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void printCompileOutput(String message) {
+        activity();
         print(message);
         CompileProgress progress = activeCompileProgress;
         if (progress != null) {
@@ -1104,7 +1117,8 @@ public class DevServer implements AutoCloseable {
         }
         sessionStore.invalidateCommandStatus(
                 session.sessionId(), "runtime session stopped; command will run again in the next session");
-        stopSession("dev server stopped");
+        stopSession(shutdownDetail.get());
+        closeQuietly(lifetime);
         closeQuietly(sourceWatcher);
         compileExecutor.shutdownNow();
         scheduler.shutdownNow();
@@ -1137,6 +1151,26 @@ public class DevServer implements AutoCloseable {
         closeQuietly(devLogStore);
         closeQuietly(terminalProgress);
         embeddedLogCapture = null;
+    }
+
+    CompletableFuture<String> shutdownRequested() {
+        return shutdownRequested;
+    }
+
+    private void requestShutdown(String detail) {
+        if (closed.get() || !shutdownDetail.compareAndSet("dev server stopped", detail)) {
+            return;
+        }
+        record("Stopping: " + detail);
+        terminalProgress.printActivity("Fluxzero dev server stopping", List.of("Reason: " + detail));
+        shutdownRequested.complete(detail);
+    }
+
+    private void activity() {
+        DevServerLifetime current = lifetime;
+        if (current != null) {
+            current.activity();
+        }
     }
 
     private static void awaitTermination(ExecutorService executor, Duration timeout) {
