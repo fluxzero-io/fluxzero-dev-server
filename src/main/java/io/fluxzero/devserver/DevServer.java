@@ -149,7 +149,7 @@ public class DevServer implements AutoCloseable {
             terminalProgress.start("Starting Fluxzero dev environment");
             updateSession(current -> current.withStatus("starting"));
             startHeartbeat();
-            lifetime = new DevServerLifetime(config, browserReadyAnnounced::get, this::requestShutdown);
+            lifetime = new DevServerLifetime(config, this::requestShutdown);
             lifetime.start(scheduler);
             startMcp();
             registerReadinessMonitor();

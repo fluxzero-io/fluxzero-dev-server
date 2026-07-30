@@ -917,7 +917,7 @@ DoD:
 - Alleen expliciete detach of background-start draagt ownership over; een verdwenen attached terminal stopt de omgeving.
 - macOS launchd-jobs hebben geen `RunAtLoad` en worden bij expliciete stop opgeruimd.
 - `fz dev stop --all` stopt alle geregistreerde omgevingen en ruimt stale en legacy launchd-registraties op.
-- Ready en nooit-ready omgevingen hebben afzonderlijke, via `dev.yaml` configureerbare inactivity timeouts.
+- Alle omgevingen hebben vanaf startup één via `dev.yaml` configureerbare inactivity timeout.
 
 Backlog:
 
@@ -925,7 +925,7 @@ Backlog:
 - [x] Slice 34.2: interactieve CLI-initialisatie met current-folder, subfolder en cancel-keuze.
 - [x] Slice 34.3: expliciet attached ownershipprotocol en terminal-disconnect stop.
 - [x] Slice 34.4: launchd zonder login-restart plus project- en globale cleanup.
-- [x] Slice 34.5: `lifecycle.idleTimeout` en `lifecycle.failedStartupTimeout` met activity-based reset.
+- [x] Slice 34.5: `lifecycle.idleTimeout` met activity-based reset, ook vóór readiness.
 - [x] Slice 34.6: volledige dev-server- en CLI-build plus echte macOS launchd lifecycle-smoke.
 
 ## Verification So Far
@@ -1086,8 +1086,8 @@ Backlog:
   na Enter het menu;
   pijl-omlaag plus Enter stopte daarna de omgeving.
 - [x] Phase 34 project- en lifetimeregressies: starten buiten een Maven/Gradle-root faalt vóór service- of
-  watcherstart, terminal-EOF retourneert het ownership-signaal en ready/nooit-ready timeouts stoppen éénmalig na
-  respectievelijk configureerbare activiteitgrenzen.
+  watcherstart, terminal-EOF retourneert het ownership-signaal en één inactivity-timeout stopt zowel vóór als na
+  readiness éénmalig na de configureerbare activiteitgrens.
 - [x] `./mvnw -Dgpg.skip -DskipPublishing=true -B install -P deploy` na Phase 34: 207 tests groen en thin,
   standalone, sources en Javadoc artifacts succesvol gebouwd en lokaal geïnstalleerd.
 - [x] `./gradlew check` in `fluxzero-cli` na Phase 34: alle 48 taken groen, inclusief CLI-initialisatie,

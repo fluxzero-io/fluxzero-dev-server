@@ -19,7 +19,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -29,21 +28,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerLifetimeTest {
 
     @Test
-    void usesShorterTimeoutUntilEnvironmentBecomesReady(@TempDir Path project) {
+    void stopsEnvironmentAfterConfiguredIdleTimeout(@TempDir Path project) {
         AtomicLong now = new AtomicLong(System.currentTimeMillis());
-        AtomicBoolean ready = new AtomicBoolean();
         AtomicReference<String> shutdown = new AtomicReference<>();
         DevServerLifetime lifetime = new DevServerLifetime(
-                Duration.ofHours(8), Duration.ofMinutes(10), ready::get, shutdown::set,
-                now::get, new DevActivityStore(project));
+                Duration.ofHours(24), shutdown::set, now::get, new DevActivityStore(project));
 
-        now.addAndGet(Duration.ofMinutes(9).toMillis());
+        now.addAndGet(Duration.ofHours(23).toMillis());
         lifetime.check();
         assertNull(shutdown.get());
 
-        now.addAndGet(Duration.ofMinutes(1).toMillis());
+        now.addAndGet(Duration.ofHours(1).toMillis());
         lifetime.check();
-        assertTrue(shutdown.get().contains("not ready for 10m"), shutdown.get());
+        assertTrue(shutdown.get().contains("idle for 1d"), shutdown.get());
     }
 
     @Test
@@ -51,8 +48,7 @@ class DevServerLifetimeTest {
         AtomicLong now = new AtomicLong(System.currentTimeMillis());
         AtomicReference<String> shutdown = new AtomicReference<>();
         DevServerLifetime lifetime = new DevServerLifetime(
-                Duration.ofHours(8), Duration.ofMinutes(10), () -> true, shutdown::set,
-                now::get, new DevActivityStore(project));
+                Duration.ofHours(8), shutdown::set, now::get, new DevActivityStore(project));
 
         now.addAndGet(Duration.ofHours(7).toMillis());
         lifetime.activity();
@@ -70,8 +66,7 @@ class DevServerLifetimeTest {
         AtomicLong now = new AtomicLong(System.currentTimeMillis());
         AtomicReference<String> shutdown = new AtomicReference<>();
         DevServerLifetime lifetime = new DevServerLifetime(
-                Duration.ZERO, Duration.ZERO, () -> true, shutdown::set,
-                now::get, new DevActivityStore(project));
+                Duration.ZERO, shutdown::set, now::get, new DevActivityStore(project));
 
         now.addAndGet(Duration.ofDays(100).toMillis());
         lifetime.check();

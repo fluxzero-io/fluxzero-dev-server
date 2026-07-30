@@ -100,6 +100,7 @@ class DevServerConfigTest {
         DevServerConfig config = DevServerConfig.defaults(projectDirectory.resolve("nested").resolve(".."));
 
         assertEquals(projectDirectory.toAbsolutePath().normalize(), config.projectDirectory());
+        assertEquals(Duration.ofHours(24), config.idleTimeout());
     }
 
     @Test
@@ -117,7 +118,6 @@ class DevServerConfigTest {
                 fastCompiler: true
                 lifecycle:
                   idleTimeout: 4h
-                  failedStartupTimeout: disabled
                 frontend:
                   directory: frontend
                   setupCommand: "npm install --prefer-offline --no-audit --no-fund"
@@ -144,7 +144,6 @@ class DevServerConfigTest {
         assertEquals(IdpMode.EXTERNAL, defaults.idpMode());
         assertTrue(defaults.fastCompilerEnabled());
         assertEquals(Duration.ofHours(4), defaults.idleTimeout());
-        assertEquals(Duration.ZERO, defaults.failedStartupTimeout());
         assertEquals("npm start -- --port {port}", defaults.frontend().command());
         assertEquals("frontend", defaults.frontend().directory());
         assertEquals("npm install --prefer-offline --no-audit --no-fund",
@@ -200,12 +199,10 @@ class DevServerConfigTest {
     void parsesLifecycleDurationsAndRejectsInvalidValues(@TempDir Path projectDirectory) {
         DevServerConfig config = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(),
-                "--idle-timeout", "30m",
-                "--failed-startup-timeout", "PT45S"
+                "--idle-timeout", "30m"
         });
 
         assertEquals(Duration.ofMinutes(30), config.idleTimeout());
-        assertEquals(Duration.ofSeconds(45), config.failedStartupTimeout());
         assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(), "--idle-timeout", "eventually"
         }));

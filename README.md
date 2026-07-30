@@ -139,10 +139,9 @@ fz dev config
 
 The output is valid YAML and documents application selection, named application flavors, managed or external
 frontends, backend pass-through paths, 1Password secret references, ordered startup commands, and lifecycle
-timeouts. Ready environments stop after eight hours without source, browser, build, test, command, or attach
-activity by default. Environments that never become ready stop after ten inactive minutes. Configure either
-timeout under `lifecycle` with values such as `30m`, `8h`, or `disabled`; these limits apply in attached and
-detached mode.
+timeouts. Environments stop after 24 hours without source, browser, build, test, command, or attach activity by
+default, including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`,
+or `disabled`; the limit applies in attached and detached mode.
 
 ## Development Principles
 

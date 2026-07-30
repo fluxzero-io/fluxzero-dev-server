@@ -56,8 +56,7 @@ public final class DevProjectConfigMain {
 
             # Stop forgotten environments after inactivity. Use disabled to keep one running indefinitely.
             lifecycle:
-              idleTimeout: 8h
-              failedStartupTimeout: 10m
+              idleTimeout: 24h
 
             # Startup commands run once per in-memory runtime, in declaration order, and retry after failure.
             # commands:

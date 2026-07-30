@@ -20,14 +20,11 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BooleanSupplier;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
 
 final class DevServerLifetime implements AutoCloseable {
     private final Duration idleTimeout;
-    private final Duration failedStartupTimeout;
-    private final BooleanSupplier ready;
     private final Consumer<String> shutdownRequest;
     private final LongSupplier clock;
     private final DevActivityStore activityStore;
@@ -35,16 +32,14 @@ final class DevServerLifetime implements AutoCloseable {
     private final AtomicBoolean expired = new AtomicBoolean();
     private volatile ScheduledFuture<?> task;
 
-    DevServerLifetime(DevServerConfig config, BooleanSupplier ready, Consumer<String> shutdownRequest) {
-        this(config.idleTimeout(), config.failedStartupTimeout(), ready, shutdownRequest,
+    DevServerLifetime(DevServerConfig config, Consumer<String> shutdownRequest) {
+        this(config.idleTimeout(), shutdownRequest,
              System::currentTimeMillis, new DevActivityStore(config.projectDirectory()));
     }
 
-    DevServerLifetime(Duration idleTimeout, Duration failedStartupTimeout, BooleanSupplier ready,
-                      Consumer<String> shutdownRequest, LongSupplier clock, DevActivityStore activityStore) {
+    DevServerLifetime(Duration idleTimeout, Consumer<String> shutdownRequest, LongSupplier clock,
+                      DevActivityStore activityStore) {
         this.idleTimeout = idleTimeout;
-        this.failedStartupTimeout = failedStartupTimeout;
-        this.ready = ready;
         this.shutdownRequest = shutdownRequest;
         this.clock = clock;
         this.activityStore = activityStore;
@@ -53,6 +48,9 @@ final class DevServerLifetime implements AutoCloseable {
 
     void start(ScheduledExecutorService scheduler) {
         activityStore.touch();
+        if (idleTimeout.isZero()) {
+            return;
+        }
         long interval = checkIntervalMillis();
         task = scheduler.scheduleAtFixedRate(this::check, interval, interval, TimeUnit.MILLISECONDS);
     }
@@ -65,22 +63,18 @@ final class DevServerLifetime implements AutoCloseable {
         if (expired.get()) {
             return;
         }
-        Duration timeout = ready.getAsBoolean() ? idleTimeout : failedStartupTimeout;
-        if (timeout.isZero()) {
+        if (idleTimeout.isZero()) {
             return;
         }
         long lastActivity = Math.max(lastActivityAt.get(), activityStore.lastActivityAt(0));
         long idleMillis = Math.max(0, clock.getAsLong() - lastActivity);
-        if (idleMillis >= timeout.toMillis() && expired.compareAndSet(false, true)) {
-            String state = ready.getAsBoolean() ? "idle" : "not ready";
-            shutdownRequest.accept("dev environment was " + state + " for " + display(timeout));
+        if (idleMillis >= idleTimeout.toMillis() && expired.compareAndSet(false, true)) {
+            shutdownRequest.accept("dev environment was idle for " + display(idleTimeout));
         }
     }
 
     private long checkIntervalMillis() {
-        long shortest = java.util.stream.Stream.of(idleTimeout, failedStartupTimeout)
-                .filter(timeout -> !timeout.isZero()).mapToLong(Duration::toMillis).min().orElse(1_000);
-        return Math.max(250, Math.min(30_000, shortest / 4));
+        return Math.max(250, Math.min(30_000, idleTimeout.toMillis() / 4));
     }
 
     private static String display(Duration duration) {
