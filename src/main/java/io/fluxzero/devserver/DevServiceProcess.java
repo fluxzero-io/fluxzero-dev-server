@@ -73,9 +73,12 @@ final class DevServiceProcess implements AutoCloseable {
             });
             Map<String, String> localValues = new LinkedHashMap<>();
             localValues.put("session.id", sessionId);
-            ports.forEach((name, port) -> localValues.put("port." + name, Integer.toString(port)));
+            ports.forEach((name, port) -> {
+                localValues.put("servicePort." + name, Integer.toString(port));
+                localValues.put("port." + name, Integer.toString(port));
+            });
             DevPlaceholderResolver resolver = new DevPlaceholderResolver(
-                    localValues, Set.of("port.", "services.", "session.", "url"));
+                    localValues, Set.of("servicePort.", "port.", "services.", "session.", "url"));
             String url = resolver.resolve(config.url());
             resolver = resolver.with(url == null ? Map.of() : Map.of("url", url), Set.of("url"));
             String directory = resolver.resolve(config.directory());

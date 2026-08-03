@@ -298,7 +298,9 @@ final class FrontendProcess implements AutoCloseable {
         if (closed.get()) {
             return;
         }
-        String commandValue = config.command().replace("{port}", Integer.toString(port(internalUrl)));
+        String frontendPort = Integer.toString(port(internalUrl));
+        String commandValue = config.command().replace("{frontendPort}", frontendPort)
+                .replace("{port}", frontendPort);
         Process started = ProcessUtils.start(
                 ProcessUtils.shellCommand(commandValue, ownershipMarker), workingDirectory(), environment(),
                 line -> output.accept("[frontend] " + line));

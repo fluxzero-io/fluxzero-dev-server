@@ -32,16 +32,20 @@ public final class DevProjectConfigMain {
             #     environment: local
             #     apps: [worker-local]
             #     frontend:
-            #       command: "npm run worker -- --port {port}"
+            #       command: "npm run worker -- --port {frontendPort}"
 
             # Shared application defaults. All fields except version are optional.
             environment: local
             # mainClass: com.example.Application
             # applicationName: example
             # namespace: local
-            # port: 4200
+            # gatewayPort: 4200 # public browser URL; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
+
+            # Additional public gateway paths routed unchanged to Fluxzero. /api is always included.
+            # backendPaths:
+            #   - /webhooks
 
             # Application/module selectors to start. Omit apps to start all discovered applications.
             apps:
@@ -81,7 +85,7 @@ public final class DevProjectConfigMain {
             #     stopCommand: docker compose down --remove-orphans
             #     ports:
             #       http: dynamic
-            #     url: "http://127.0.0.1:{port.http}"
+            #     url: "http://127.0.0.1:{servicePort.http}"
             #     env:
             #       COMPOSE_PROJECT_NAME: "my-app-{session.id}"
             #     readiness:
@@ -98,27 +102,25 @@ public final class DevProjectConfigMain {
             #       LOGS_URL: "{services.victoriaLogs.url}"
 
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
-            # command and url are mutually exclusive. {port} is the private frontend port allocated by Fluxzero.
+            # directory is the command working directory. {frontendPort} is its private allocated port.
+            # The frontend remains publicly available through gatewayPort, not frontendPort.
             frontend:
               directory: frontend
               setupCommand: "npm install --prefer-offline --no-audit --no-fund"
-              command: "npm run dev -- --host 127.0.0.1 --port {port}"
+              command: "npm run dev -- --host 127.0.0.1 --port {frontendPort}"
               # url: "http://127.0.0.1:5173"
-              backendPaths:
-                - /api
 
             # To serve several frontends through one public gateway, replace frontend with frontends.
-            # Exactly one entry must own /. More specific paths use longest-prefix routing for HTTP and WebSockets.
+            # path is the public URL mount; omit it on the root frontend. More specific paths use longest-prefix
+            # routing for HTTP and WebSockets. directory remains the local command working directory.
             # frontends:
             #   application:
-            #     path: /
             #     directory: frontend
-            #     command: "npm run dev -- --host 127.0.0.1 --port {port}"
-            #     backendPaths: [/api]
+            #     command: "npm run dev -- --host 127.0.0.1 --port {frontendPort}"
             #   auditlog:
             #     path: /marketplace/logs/1
             #     directory: ../fluxzero-auditlog/frontend
-            #     command: "npm run start-dashboard -- --host 127.0.0.1 --port {port}"
+            #     command: "npm run start-dashboard -- --host 127.0.0.1 --port {frontendPort}"
 
             # Stop forgotten environments after inactivity. Use disabled to keep one running indefinitely.
             lifecycle:

@@ -18,6 +18,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -332,15 +333,7 @@ public record DevServerConfig(
         FrontendConfig frontend = noFrontend ? FrontendConfig.none() : frontendCommand != null
                 ? FrontendConfig.command(frontendCommand).withLaunchSetup(frontendDirectory, frontendSetupCommand)
                 : frontendUrl == null ? FrontendConfig.none() : FrontendConfig.externalUrl(frontendUrl);
-        List<String> backendPaths = parsed.values("backend-path");
-        if (backendPaths.isEmpty()) {
-            backendPaths = project.frontends().isEmpty() ? project.frontend().backendPaths()
-                    : project.frontends().values().stream().flatMap(value -> value.backendPaths().stream())
-                            .distinct().toList();
-        }
-        if (backendPaths.isEmpty()) {
-            backendPaths = FrontendConfig.DEFAULT_BACKEND_PATHS;
-        }
+        List<String> backendPaths = backendPaths(project, parsed.values("backend-path"));
         if (!backendPaths.isEmpty()) {
             frontend = frontend.withBackendPaths(backendPaths);
         }
@@ -379,7 +372,7 @@ public record DevServerConfig(
         List<DevBuildProject> projects = configuredProjects(
                 projectDirectory, project, mainClass, applicationName, namespace, fastCompiler, applications);
         int gatewayPort = noFrontend ? 0 : parsed.integer("port", parsed.integer("gateway-port", environmentInteger(
-                "FLUXZERO_DEV_PORT", project.port() == null ? 0 : project.port())));
+                "FLUXZERO_DEV_PORT", project.gatewayPort() == null ? 0 : project.gatewayPort())));
         return new DevServerConfig(
                 projectDirectory,
                 mainClass,
@@ -510,6 +503,15 @@ public record DevServerConfig(
                     : FrontendConfig.externalUrl(value.url());
             return new RoutedFrontend(entry.getKey(), value.path(), frontend.withBackendPaths(backendPaths));
         }).toList();
+    }
+
+    private static List<String> backendPaths(DevProjectConfig project, List<String> commandLinePaths) {
+        LinkedHashSet<String> result = new LinkedHashSet<>(FrontendConfig.DEFAULT_BACKEND_PATHS);
+        result.addAll(project.backendPaths());
+        result.addAll(project.frontend().backendPaths());
+        project.frontends().values().forEach(frontend -> result.addAll(frontend.backendPaths()));
+        result.addAll(commandLinePaths);
+        return List.copyOf(result);
     }
 
     private static List<RoutedFrontend> normalizeFrontends(

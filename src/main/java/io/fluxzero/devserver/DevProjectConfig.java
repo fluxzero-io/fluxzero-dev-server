@@ -14,6 +14,7 @@
 
 package io.fluxzero.devserver;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
@@ -35,9 +36,10 @@ record DevProjectConfig(
         List<String> apps,
         Map<String, DevApplicationConfig> applicationConfig,
         Map<String, Project> projects,
-        Integer port,
+        @JsonAlias("port") Integer gatewayPort,
         String idp,
         Boolean fastCompiler,
+        List<String> backendPaths,
         Frontend frontend,
         Map<String, Frontend> frontends,
         Map<String, Service> services,
@@ -55,6 +57,7 @@ record DevProjectConfig(
         projects = projects == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(projects));
         validateProjects(projects);
         validateProjectShape(mainClass, applicationName, namespace, apps, applicationConfig, fastCompiler, projects);
+        backendPaths = backendPaths == null ? List.of() : List.copyOf(backendPaths);
         frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
         frontends = frontends == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
@@ -82,8 +85,8 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, projects, port, idp, fastCompiler, frontend, frontends,
-                                           services, lifecycle,
+                                           applicationConfig, projects, gatewayPort, idp, fastCompiler, backendPaths,
+                                           frontend, frontends, services, lifecycle,
                                            commands)) {
                 throw new IllegalArgumentException(
                         "profiles cannot be combined with legacy top-level development settings");
@@ -115,7 +118,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    Map.of(), Map.of(), null, Map.of(), null, Map.of());
+                                    null, Map.of(), Map.of(), null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -296,9 +299,10 @@ record DevProjectConfig(
             List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig,
             Map<String, Project> projects,
-            Integer port,
+            @JsonAlias("port") Integer gatewayPort,
             String idp,
             Boolean fastCompiler,
+            List<String> backendPaths,
             Frontend frontend,
             Map<String, Frontend> frontends,
             Map<String, Service> services,
@@ -312,6 +316,7 @@ record DevProjectConfig(
             validateProjects(projects);
             validateProjectShape(mainClass, applicationName, namespace, apps, applicationConfig, fastCompiler,
                                  projects);
+            backendPaths = backendPaths == null ? List.of() : List.copyOf(backendPaths);
             frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
             frontends = frontends == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
@@ -327,8 +332,8 @@ record DevProjectConfig(
 
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
-                                        applicationConfig, projects, port, idp, fastCompiler, frontend, frontends,
-                                        services, lifecycle, commands, null, Map.of());
+                                        applicationConfig, projects, gatewayPort, idp, fastCompiler, backendPaths,
+                                        frontend, frontends, services, lifecycle, commands, null, Map.of());
         }
     }
 
@@ -349,14 +354,14 @@ record DevProjectConfig(
     private static boolean legacyConfigurationPresent(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
-            Integer port, String idp, Boolean fastCompiler,
+            Integer gatewayPort, String idp, Boolean fastCompiler, List<String> backendPaths,
             Frontend frontend, Map<String, Frontend> frontends, Map<String, Service> services, Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
-               || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
+               || !apps.isEmpty() || !applicationConfig.isEmpty() || gatewayPort != null || idp != null
                || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
-               || !services.isEmpty()
+               || !backendPaths.isEmpty() || !services.isEmpty()
                || lifecycle.idleTimeout() != null
                || !commands.isEmpty();
     }

@@ -15,8 +15,13 @@ defaultProfile: dashboard
 profiles:
   dashboard:
     environment: local
-    port: 4200
+    gatewayPort: 4200
     idp: external
+    backendPaths:
+      - /observer
+      - /logs
+      - /visualizations
+      - /search-collections
     services:
       victoriaLogs:
         directory: ../fluxzero-auditlog/backend/local/fluxzero-auditlog-docker
@@ -24,7 +29,7 @@ profiles:
         stopCommand: docker compose down --remove-orphans
         ports:
           http: dynamic
-        url: "http://127.0.0.1:{port.http}"
+        url: "http://127.0.0.1:{servicePort.http}"
         readiness:
           http: "{url}/health"
           timeout: 3m
@@ -55,25 +60,25 @@ profiles:
               VL_QUERY_URL: "{services.victoriaLogs.url}"
     frontends:
       dashboard:
-        path: /
         directory: frontend
         setupCommand: "npm install --prefer-offline --no-audit --no-fund"
-        command: "npx ng serve --host 127.0.0.1 --port {port}"
+        command: "npx ng serve --host 127.0.0.1 --port {frontendPort}"
       auditlog:
         path: /marketplace/logs/1
         directory: ../fluxzero-auditlog/frontend
         setupCommand: "npm install --prefer-offline --no-audit --no-fund"
-        command: "npm run start-dashboard -- --host 127.0.0.1 --port {port}"
+        command: "npm run start-dashboard -- --host 127.0.0.1 --port {frontendPort}"
 ```
 
 ## Resolution Rules
 
-- Profile-level `environment`, `port`, `idp`, lifecycle, and startup commands belong to the shared environment.
+- Profile-level `environment`, `gatewayPort`, `idp`, `backendPaths`, lifecycle, and startup commands belong to the
+  shared environment. `/api` is always a backend path; configured paths are additions.
 - Project directories and frontend directories resolve relative to the directory containing `.fluxzero/dev.yaml`.
 - Managed service directories resolve relative to the same root. Their named ports are allocated before their command
   starts and exposed as `FLUXZERO_SERVICE_PORT_<NAME>`; a single port is also exposed as `PORT`.
-- Service-local fields may use `{port.<name>}`, `{url}`, and `{session.id}`. Applications and frontend launch fields
-  may use `{services.<id>.url}` and `{services.<id>.ports.<name>}`.
+- Service-local fields may use `{servicePort.<name>}`, `{url}`, and `{session.id}`. Applications and frontend launch
+  fields may use `{services.<id>.url}` and `{services.<id>.ports.<name>}`.
 - A command service is stopped with its bounded `stopCommand` when configured, followed by forced process-tree
   cleanup. An external URL service participates in readiness but is never stopped.
 - Every project compiles, reloads, watches, and tests independently. A failure in one project keeps the last ready apps
@@ -94,9 +99,10 @@ Existing top-level configuration and existing profile bodies remain valid:
 
 - `apps`, `applicationConfig`, build settings, and commands describe the primary project at `.`.
 - `frontend` describes one frontend mounted at `/`.
+- Legacy `port`, frontend `{port}`, service `{port.<name>}`, and frontend-local `backendPaths` remain accepted as
+  aliases for `gatewayPort`, `{frontendPort}`, `{servicePort.<name>}`, and profile-level `backendPaths`.
 - Omitting `services` preserves the previous environment lifecycle. Adding external URL services does not transfer
   lifecycle ownership to Fluxzero.
-- `frontend.backendPaths` remains supported and normalizes to environment-level backend routes.
 - A profile cannot mix `projects` with primary-project fields or `frontends` with `frontend`; ambiguous configuration
   fails at startup.
 - The additive shape remains `version: 1`. Unknown fields continue to fail instead of being ignored.

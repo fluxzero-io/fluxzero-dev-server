@@ -169,7 +169,7 @@ class DevServerConfigTest {
         assertEquals(4300, overridden.gatewayPort());
         assertEquals(IdpMode.MANAGED, overridden.idpMode());
         assertEquals(FrontendConfig.Mode.EXTERNAL_URL, overridden.frontend().mode());
-        assertEquals(List.of("/rest"), overridden.frontend().backendPaths());
+        assertEquals(List.of("/api", "/graphql", "/rest"), overridden.frontend().backendPaths());
 
         DevServerConfig backendOnly = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(),
@@ -227,17 +227,16 @@ class DevServerConfigTest {
         Files.createDirectories(configFile.getParent());
         Files.writeString(configFile, """
                 version: 1
+                gatewayPort: 4200
+                backendPaths: [/webhooks, /logs, /observer]
                 frontends:
                   dashboard:
-                    path: /
                     directory: frontend
-                    command: "npm run dashboard -- --port {port}"
-                    backendPaths: [/api, /webhooks]
+                    command: "npm run dashboard -- --port {frontendPort}"
                   auditlog:
                     path: /marketplace/logs/1/
                     directory: ../fluxzero-auditlog/frontend
-                    command: "npm run start-dashboard -- --port {port}"
-                    backendPaths: [/logs, /observer]
+                    command: "npm run start-dashboard -- --port {frontendPort}"
                 """);
 
         DevServerConfig config = DevServerConfig.fromArgs(
@@ -246,7 +245,8 @@ class DevServerConfigTest {
         assertEquals(List.of("dashboard", "auditlog"), config.frontends().stream().map(RoutedFrontend::id).toList());
         assertEquals(List.of("/", "/marketplace/logs/1"),
                      config.frontends().stream().map(RoutedFrontend::path).toList());
-        assertEquals("npm run dashboard -- --port {port}", config.frontend().command());
+        assertEquals(4200, config.gatewayPort());
+        assertEquals("npm run dashboard -- --port {frontendPort}", config.frontend().command());
         assertEquals(List.of("/api", "/webhooks", "/logs", "/observer"),
                      config.frontend().backendPaths());
 
@@ -333,17 +333,19 @@ class DevServerConfigTest {
                           SPRING_PROFILES_ACTIVE: main
                         secrets:
                           ENCRYPTION_KEY: "op://Shared Vault/rebound/local key"
-                    port: 4200
+                    gatewayPort: 4200
                     idp: external
+                    backendPaths: [/graphql]
                     frontend:
                       directory: frontend
-                      command: "npm start -- --port {port}"
+                      command: "npm start -- --port {frontendPort}"
                   reporting:
                     environment: reporting
                     apps: [rebound, reporting]
+                    port: 4300
                     frontend:
                       directory: reporting-ui
-                      command: "npm run reporting -- --port {port}"
+                      command: "npm run reporting -- --port {frontendPort}"
                 """);
 
         DevServerConfig defaults = DevServerConfig.fromArgs(
@@ -353,6 +355,7 @@ class DevServerConfigTest {
         assertEquals("frontend", defaults.frontend().directory());
         assertEquals(4200, defaults.gatewayPort());
         assertEquals(IdpMode.EXTERNAL, defaults.idpMode());
+        assertEquals(List.of("/api", "/graphql"), defaults.frontend().backendPaths());
 
         DevServerConfig reporting = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(), "--profile", "reporting"
@@ -361,6 +364,7 @@ class DevServerConfigTest {
         assertEquals("reporting", reporting.environment());
         assertEquals(List.of("rebound", "reporting"), reporting.applications());
         assertEquals("reporting-ui", reporting.frontend().directory());
+        assertEquals(4300, reporting.gatewayPort());
     }
 
     @Test

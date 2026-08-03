@@ -42,7 +42,7 @@ class FrontendProcessTest {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String command = "printf 'Failed to compile\\nCompiled successfully\\n'; exec "
                          + quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
-                         + FrontendFixtureServer.class.getName() + " {port}";
+                         + FrontendFixtureServer.class.getName() + " {frontendPort}";
         List<DevSession.ServiceStatus> statuses = new CopyOnWriteArrayList<>();
 
         try (FrontendProcess frontend = FrontendProcess.start(

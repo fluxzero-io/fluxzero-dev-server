@@ -360,7 +360,8 @@ DoD status:
 - Een dev environment met frontend publiceert een enkele browser-facing gateway URL.
 - `/_fluxzero/**` wordt met prefix-stripping naar de interne Fluxzero proxy gestuurd; overige requests gaan naar de UI dev-server.
 - `/api/**` wordt standaard zonder path-rewrite naar de Fluxzero proxy gestuurd, inclusief WebSocket upgrades; backend pass-through paths zijn configureerbaar.
-- De frontend ontvangt een door de dev-server gekozen interne poort via environment en `{port}` command substitution.
+- De frontend ontvangt een door de dev-server gekozen interne poort via environment en `{frontendPort}` command
+  substitution; `{port}` blijft als backward-compatible alias werken.
 - De gateway ondersteunt streaming HTTP, headers/cookies/redirects en transparante UI websocket upgrades voor HMR.
 - UI startup/restart failure stopt runtime, proxy en app niet; de gateway geeft tijdelijk een uitlegbare unavailable response.
 - App en managed IDP gebruiken de publieke gateway als external base URL, zodat interne poorten niet lekken.
@@ -385,8 +386,10 @@ Backlog:
 
 Operating contract:
 
-- Start een frontend met bijvoorbeeld `--frontend-command "npm run dev -- --host 127.0.0.1 --port {port} --strictPort"` voor Vite of `--frontend-command "npx ng serve --host 127.0.0.1 --port {port}"` voor Angular.
-- De dev server vervangt `{port}`, zet ook `PORT` en `FLUXZERO_FRONTEND_PORT`, en geeft de frontend alleen het relatieve backendpad `FLUXZERO_PROXY_URL=/_fluxzero`.
+- Start een frontend met bijvoorbeeld `--frontend-command "npm run dev -- --host 127.0.0.1 --port {frontendPort} --strictPort"` voor Vite of `--frontend-command "npx ng serve --host 127.0.0.1 --port {frontendPort}"` voor Angular.
+- De dev server vervangt `{frontendPort}` (en de legacy alias `{port}`), zet ook `PORT` en
+  `FLUXZERO_FRONTEND_PORT`, en geeft de frontend alleen het relatieve backendpad
+  `FLUXZERO_PROXY_URL=/_fluxzero`.
 - UI-calls naar `/api/**` behouden hun volledige pad richting Fluxzero. Gebruik herhaalbare `--backend-path` opties om de default `/api` door projectspecifieke roots te vervangen.
 - Open in de browser de `gateway.url` uit `.fluxzero/dev/session.json`; `frontend.url` en `proxy.url` zijn interne supervisor-adressen.
 - Gebruik `--port 4200` wanneer een vaste publieke origin nodig is. Bij een bezette poort vraagt een interactieve terminal of een vrije dynamische poort acceptabel is; non-interactive runs wachten nooit op input en falen direct.

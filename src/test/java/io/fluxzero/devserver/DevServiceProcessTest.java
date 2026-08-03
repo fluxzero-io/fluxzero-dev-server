@@ -41,9 +41,9 @@ class DevServiceProcessTest {
         Path stopped = projectDirectory.resolve("stopped.txt");
         String java = javaCommand();
         DevServiceConfig config = new DevServiceConfig(
-                java + " " + DevServiceFixtureServer.class.getName() + " {port.http}",
+                java + " " + DevServiceFixtureServer.class.getName() + " {servicePort.http}",
                 java + " " + DevServiceFixtureServer.class.getName() + " stop " + quote(stopped.toString()),
-                "http://127.0.0.1:{port.http}", null,
+                "http://127.0.0.1:{servicePort.http}", null,
                 new LinkedHashMap<>(Map.of("http", 0)),
                 Map.of("FIXTURE_VALUE", "{url}/configured"),
                 new DevServiceConfig.Readiness("{url}", null, Duration.ofSeconds(5)));
