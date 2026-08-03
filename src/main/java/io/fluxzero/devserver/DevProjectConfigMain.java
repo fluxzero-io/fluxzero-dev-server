@@ -67,6 +67,19 @@ public final class DevProjectConfigMain {
               backendPaths:
                 - /api
 
+            # To serve several frontends through one public gateway, replace frontend with frontends.
+            # Exactly one entry must own /. More specific paths use longest-prefix routing for HTTP and WebSockets.
+            # frontends:
+            #   application:
+            #     path: /
+            #     directory: frontend
+            #     command: "npm run dev -- --host 127.0.0.1 --port {port}"
+            #     backendPaths: [/api]
+            #   auditlog:
+            #     path: /marketplace/logs/1
+            #     directory: ../fluxzero-auditlog/frontend
+            #     command: "npm run start-dashboard -- --host 127.0.0.1 --port {port}"
+
             # Stop forgotten environments after inactivity. Use disabled to keep one running indefinitely.
             lifecycle:
               idleTimeout: 24h

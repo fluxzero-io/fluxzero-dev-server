@@ -92,7 +92,11 @@ final class FrontendProcess implements AutoCloseable {
 
     static FrontendProcess prepare(DevServerConfig devConfig, String ownershipMarker,
                                    Consumer<DevSession.ServiceStatus> statusConsumer, Consumer<String> output) {
-        FrontendConfig config = devConfig.frontend();
+        return prepare(devConfig, devConfig.frontend(), ownershipMarker, statusConsumer, output);
+    }
+
+    static FrontendProcess prepare(DevServerConfig devConfig, FrontendConfig config, String ownershipMarker,
+                                   Consumer<DevSession.ServiceStatus> statusConsumer, Consumer<String> output) {
         if (config.mode() == FrontendConfig.Mode.NONE) {
             return new FrontendProcess(devConfig, config, ownershipMarker, null, null, statusConsumer);
         }

@@ -185,11 +185,14 @@ final class SourceWatcher implements AutoCloseable {
     }
 
     boolean frontendPath(Path path) {
-        if (config.frontend().mode() != FrontendConfig.Mode.COMMAND
-            || config.frontend().directory() == null) {
+        return config.frontends().stream().anyMatch(frontend -> frontendPath(path, frontend.config()));
+    }
+
+    private boolean frontendPath(Path path, FrontendConfig frontend) {
+        if (frontend.mode() != FrontendConfig.Mode.COMMAND || frontend.directory() == null) {
             return false;
         }
-        Path configured = Path.of(config.frontend().directory());
+        Path configured = Path.of(frontend.directory());
         Path frontendDirectory = configured.isAbsolute() ? configured.toAbsolutePath().normalize()
                 : config.projectDirectory().resolve(configured).toAbsolutePath().normalize();
         Path candidate = path.isAbsolute() ? path.toAbsolutePath().normalize()

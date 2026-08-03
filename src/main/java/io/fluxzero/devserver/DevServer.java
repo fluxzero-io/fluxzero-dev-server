@@ -80,7 +80,8 @@ public class DevServer implements AutoCloseable {
     private volatile int effectiveGatewayPort;
     private volatile ManagedIdpService idpService;
     private volatile SourceWatcher sourceWatcher;
-    private volatile FrontendProcess frontendProcess;
+    private final Map<String, FrontendProcess> frontendProcesses = new ConcurrentHashMap<>();
+    private final Map<String, DevSession.ServiceStatus> frontendStatuses = new ConcurrentHashMap<>();
     private volatile TestPipeline testPipeline;
     private volatile DevCommandPipeline commandPipeline;
     private volatile CompilePipeline compilePipeline;
@@ -97,7 +98,6 @@ public class DevServer implements AutoCloseable {
     private volatile String proxyUrl;
     private volatile String publicUrl;
     private volatile String publicFluxzeroUrl;
-    private final AtomicBoolean frontendLaunched = new AtomicBoolean();
     private final AtomicBoolean browserReadyAnnounced = new AtomicBoolean();
     private final AtomicBoolean startupFailureAnnounced = new AtomicBoolean();
     private final CompletableFuture<String> shutdownRequested = new CompletableFuture<>();
@@ -326,9 +326,9 @@ public class DevServer implements AutoCloseable {
                         terminalProgress.update("Starting " + applicationCount + " application"
                                                 + (applicationCount == 1 ? "" : "s"));
                         ReloadTiming reloadTiming = startCandidateApps(result.snapshot());
-                        if (config.frontend().mode() != FrontendConfig.Mode.NONE && frontendProcess != null
+                        if (!config.frontends().isEmpty()
                             && !browserReadyAnnounced.get() && !startupFailureAnnounced.get()
-                            && !frontendProcess.ready() && "starting".equals(session.frontend().state())) {
+                            && !frontendsReady() && "starting".equals(session.frontend().state())) {
                             terminalProgress.update("Waiting for frontend");
                         } else {
                             terminalProgress.stop();
@@ -419,40 +419,54 @@ public class DevServer implements AutoCloseable {
     }
 
     private void startFrontend() {
-        try {
-            frontendProcess = FrontendProcess.prepare(
-                    config, session.sessionId(), this::updateFrontendStatus, this::print);
-            updateFrontendStatus(frontendProcess.status());
-        } catch (RuntimeException e) {
-            updateFrontendStatus(DevSession.ServiceStatus.failed("frontend", e.getMessage()));
+        if (config.frontends().isEmpty()) {
+            updateFrontendStatus("frontend", DevSession.ServiceStatus.stopped("frontend"));
+            return;
+        }
+        for (RoutedFrontend routed : config.frontends()) {
+            try {
+                FrontendProcess process = FrontendProcess.prepare(
+                        config, routed.config(), session.sessionId() + "-frontend-" + routed.id(),
+                        status -> updateFrontendStatus(routed.id(), status),
+                        message -> printFrontendOutput(routed.id(), message));
+                frontendProcesses.put(routed.id(), process);
+                updateFrontendStatus(routed.id(), process.status());
+            } catch (RuntimeException e) {
+                updateFrontendStatus(routed.id(), DevSession.ServiceStatus.failed(routed.id(), e.getMessage()));
+            }
         }
     }
 
     private void launchFrontend() {
-        if (frontendProcess == null || !frontendLaunched.compareAndSet(false, true)) {
-            return;
-        }
-        try {
-            if (config.frontend().mode() != FrontendConfig.Mode.NONE) {
-                terminalProgress.updateTask("frontend", "Frontend", "starting dev server");
-            }
-            frontendProcess.launch(this::printFrontendOutput);
-        } catch (RuntimeException e) {
-            updateFrontendStatus(DevSession.ServiceStatus.failed("frontend", e.getMessage()));
+        for (Map.Entry<String, FrontendProcess> entry : frontendProcesses.entrySet()) {
+            String id = entry.getKey();
+            FrontendProcess process = entry.getValue();
+            terminalProgress.updateTask("frontend-" + id, "Frontend " + id, "starting dev server");
+            Thread.ofVirtual().name("fluxzero-dev-frontend-launch-" + id).start(() -> {
+                try {
+                    process.launch(message -> printFrontendOutput(id, message));
+                } catch (RuntimeException e) {
+                    updateFrontendStatus(id, DevSession.ServiceStatus.failed(id, e.getMessage()));
+                }
+            });
         }
     }
 
     private void startGateway() {
-        if (config.frontend().mode() == FrontendConfig.Mode.NONE || frontendProcess == null) {
+        if (config.frontends().isEmpty() || frontendProcesses.isEmpty()) {
             publicUrl = proxyUrl;
             publicFluxzeroUrl = proxyUrl;
             updateGatewayStatus(DevSession.ServiceStatus.stopped("gateway")
                                         .withState("skipped", "no frontend configured"));
             return;
         }
-        devGateway = DevGateway.start(proxyUrl, frontendProcess.internalUrl(), frontendProcess::ready,
-                                      () -> !currentApps.isEmpty(), config.frontend().backendPaths(),
-                                      effectiveGatewayPort, this::activity);
+        List<DevGateway.FrontendRoute> routes = config.frontends().stream().map(routed -> {
+            FrontendProcess process = frontendProcesses.get(routed.id());
+            return new DevGateway.FrontendRoute(
+                    routed.id(), routed.path(), process.internalUrl(), process::ready);
+        }).toList();
+        devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
+                                      config.frontend().backendPaths(), effectiveGatewayPort, this::activity);
         publicUrl = devGateway.url();
         publicFluxzeroUrl = devGateway.backendUrl();
         updateGatewayStatus(DevSession.ServiceStatus.running(
@@ -504,7 +518,7 @@ public class DevServer implements AutoCloseable {
                 print("[session] stale dev session detected: " + previous.sessionId());
             }
             boolean appCleaned = cleanupApplicationOrphans(previous.app(), previous.sessionId());
-            boolean frontendCleaned = cleanupOrphan("frontend", previous.frontend(), previous.sessionId());
+            boolean frontendCleaned = cleanupFrontendOrphans(previous.frontend(), previous.sessionId());
             if (active || appCleaned || frontendCleaned) {
                 sessionStore.writeSession(previous.withStoppedServices("stale dev session cleaned up"));
             }
@@ -527,6 +541,30 @@ public class DevServer implements AutoCloseable {
                         entry.getKey(), "running", null, null, pid, "previous dev application",
                         processIdentityMetadata(status.metadata().get(prefix + ProcessUtils.PROCESS_STARTED_AT)));
                 cleaned |= cleanupOrphan(entry.getKey(), process, ownershipMarker);
+            } catch (NumberFormatException ignored) {
+                // Ignore malformed stale metadata and leave unrelated processes untouched.
+            }
+        }
+        return cleaned;
+    }
+
+    private boolean cleanupFrontendOrphans(DevSession.ServiceStatus status, String ownershipMarker) {
+        boolean cleaned = cleanupOrphan("frontend", status, ownershipMarker);
+        if (status == null) {
+            return cleaned;
+        }
+        for (Map.Entry<String, String> entry : status.metadata().entrySet()) {
+            if (!entry.getKey().startsWith("frontend.") || !entry.getKey().endsWith(".pid")) {
+                continue;
+            }
+            try {
+                long pid = Long.parseLong(entry.getValue());
+                String prefix = entry.getKey().substring(0, entry.getKey().length() - "pid".length());
+                DevSession.ServiceStatus process = new DevSession.ServiceStatus(
+                        entry.getKey(), "running", null, null, pid, "previous frontend",
+                        processIdentityMetadata(status.metadata().get(prefix + ProcessUtils.PROCESS_STARTED_AT)));
+                cleaned |= cleanupOrphan(entry.getKey(), process, ownershipMarker + "-" + prefix.substring(0,
+                        prefix.length() - 1).replace('.', '-'));
             } catch (NumberFormatException ignored) {
                 // Ignore malformed stale metadata and leave unrelated processes untouched.
             }
@@ -899,22 +937,78 @@ public class DevServer implements AutoCloseable {
                                   status.summary());
     }
 
-    private void updateFrontendStatus(DevSession.ServiceStatus status) {
-        updateSession(current -> current.withFrontend(status));
-        observeStatus("frontend", "infrastructure", "frontend", null, status);
+    private void updateFrontendStatus(String id, DevSession.ServiceStatus status) {
+        frontendStatuses.put(id, status);
+        DevSession.ServiceStatus aggregate = aggregateFrontendStatus();
+        updateSession(current -> current.withFrontend(aggregate));
+        observeStatus("frontend", "infrastructure", id, null, status);
         if ("running".equals(status.state())) {
-            terminalProgress.removeTask("frontend");
+            terminalProgress.removeTask("frontend-" + id);
         } else if ("starting".equals(status.state())) {
-            terminalProgress.updateTask("frontend", "Frontend", status.detail());
+            terminalProgress.updateTask("frontend-" + id, "Frontend " + id, status.detail());
         }
         if ("failed".equals(status.state()) || "exited".equals(status.state())) {
             terminalProgress.stop();
             if (!browserReadyAnnounced.get()) {
-                announceStartupFailure("Frontend", status.detail());
+                announceStartupFailure("Frontend " + id, status.detail());
             }
         } else {
             reportStartupOutcome();
         }
+    }
+
+    private DevSession.ServiceStatus aggregateFrontendStatus() {
+        if (config.frontends().isEmpty()) {
+            return DevSession.ServiceStatus.stopped("frontend");
+        }
+        Map<String, String> metadata = new LinkedHashMap<>();
+        config.frontends().forEach(frontend -> {
+            DevSession.ServiceStatus status = frontendStatuses.get(frontend.id());
+            if (status != null) {
+                String prefix = "frontend." + frontend.id() + ".";
+                metadata.put(prefix + "state", status.state());
+                if (status.pid() != null) {
+                    metadata.put(prefix + "pid", Long.toString(status.pid()));
+                }
+                String startedAt = status.metadata().get(ProcessUtils.PROCESS_STARTED_AT);
+                if (startedAt != null) {
+                    metadata.put(prefix + ProcessUtils.PROCESS_STARTED_AT, startedAt);
+                }
+            }
+        });
+        Map.Entry<String, DevSession.ServiceStatus> failed = frontendStatuses.entrySet().stream()
+                .filter(entry -> "failed".equals(entry.getValue().state())
+                                 || "exited".equals(entry.getValue().state()))
+                .findFirst().orElse(null);
+        if (failed != null) {
+            return DevSession.ServiceStatus.failed(
+                    "frontend", failed.getKey() + ": " + failed.getValue().detail()).withMetadata(metadata);
+        }
+        if (frontendsReady()) {
+            return DevSession.ServiceStatus.running(
+                    "frontend", publicUrl, null, rootFrontendPid(), config.frontends().size() + " frontends ready")
+                    .withMetadata(metadata);
+        }
+        long ready = frontendStatuses.values().stream().filter(status -> "running".equals(status.state())).count();
+        return DevSession.ServiceStatus.running(
+                "frontend", null, null, rootFrontendPid(),
+                "waiting for frontends (" + ready + "/" + config.frontends().size() + " ready)")
+                .withState("starting", "waiting for frontends (" + ready + "/" + config.frontends().size()
+                                      + " ready)").withMetadata(metadata);
+    }
+
+    private Long rootFrontendPid() {
+        return config.frontends().stream().filter(frontend -> "/".equals(frontend.path()))
+                .map(RoutedFrontend::id).map(frontendStatuses::get).filter(java.util.Objects::nonNull)
+                .map(DevSession.ServiceStatus::pid).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+    }
+
+    private boolean frontendsReady() {
+        return !config.frontends().isEmpty() && config.frontends().stream()
+                .allMatch(frontend -> {
+                    FrontendProcess process = frontendProcesses.get(frontend.id());
+                    return process != null && process.ready();
+                });
     }
 
     private void updateMcpStatus(DevSession.ServiceStatus status) {
@@ -993,7 +1087,7 @@ public class DevServer implements AutoCloseable {
         if (!"succeeded".equals(current.reload().state()) || !"running".equals(current.app().state())) {
             return;
         }
-        if (config.frontend().mode() != FrontendConfig.Mode.NONE) {
+        if (!config.frontends().isEmpty()) {
             if ("failed".equals(current.frontend().state()) || "exited".equals(current.frontend().state())) {
                 announceStartupFailure("Frontend", current.frontend().detail());
                 return;
@@ -1013,7 +1107,7 @@ public class DevServer implements AutoCloseable {
             return;
         }
         String ready = "Fluxzero dev server ready in " + CompileTiming.format(elapsedMillis(startupStartedNanos));
-        String target = config.frontend().mode() == FrontendConfig.Mode.NONE
+        String target = config.frontends().isEmpty()
                 ? "Backend: " + publicUrl : "Open in browser: " + publicUrl;
         record(ready);
         record(target);
@@ -1067,8 +1161,8 @@ public class DevServer implements AutoCloseable {
         }
     }
 
-    private void printFrontendOutput(String message) {
-        print(message);
+    private void printFrontendOutput(String id, String message) {
+        print(message.replaceFirst("^\\[frontend]", "[frontend " + java.util.regex.Matcher.quoteReplacement(id) + "]"));
     }
 
     private void printAppOutput(String applicationName, String instanceId, String stream, String line) {
@@ -1129,7 +1223,8 @@ public class DevServer implements AutoCloseable {
         // Stop accepting browser traffic before shutting down the processes and embedded services behind it.
         closeQuietly(devGateway);
         closeQuietly(mcpServer);
-        closeQuietly(frontendProcess);
+        frontendProcesses.values().forEach(DevServer::closeQuietly);
+        frontendProcesses.clear();
         if (devLogStore != null) {
             currentApps.values().forEach(app -> devLogStore.resolveInstance(
                     app.applicationName(), app.clientId(), "dev server stopped"));

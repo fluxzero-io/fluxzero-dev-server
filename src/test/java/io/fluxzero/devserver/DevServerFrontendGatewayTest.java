@@ -30,7 +30,9 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -106,6 +108,48 @@ class DevServerFrontendGatewayTest {
             assertEquals(backendUrl, discovery.path("issuer").asText());
             assertTrue(discovery.path("token_endpoint").asText().startsWith(backendUrl));
         }
+    }
+
+    @Test
+    void startsRoutesAndStopsMultipleManagedFrontends(@TempDir Path projectDirectory) throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String command = quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
+                         + FrontendFixtureServer.class.getName() + " {port}";
+        FrontendConfig root = FrontendConfig.command(command);
+        List<RoutedFrontend> frontends = List.of(
+                new RoutedFrontend("dashboard", "/", root),
+                new RoutedFrontend("auditlog", "/marketplace/logs/1", FrontendConfig.command(command)));
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "multi-frontend-test", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                root, List.of(), false, "local", List.of(), 0, IdpMode.MANAGED, Map.of(),
+                DevServerConfig.DEFAULT_IDLE_TIMEOUT, null, frontends);
+
+        DevServer devServer = new DevServer(config).start();
+        List<Long> frontendPids = new ArrayList<>();
+        try {
+            DevSession session = awaitSession(devServer, current -> "running".equals(current.frontend().state())
+                                                               && current.frontend().metadata().containsKey(
+                                                                       "frontend.dashboard.pid")
+                                                               && current.frontend().metadata().containsKey(
+                                                                       "frontend.auditlog.pid"));
+            frontendPids.add(Long.parseLong(session.frontend().metadata().get("frontend.dashboard.pid")));
+            frontendPids.add(Long.parseLong(session.frontend().metadata().get("frontend.auditlog.pid")));
+            assertTrue(frontendPids.stream().allMatch(ProcessUtils::isAlive));
+
+            String rootBody = get(session.gateway().url() + "/").body();
+            String auditlogBody = get(session.gateway().url() + "/marketplace/logs/1/").body();
+            assertTrue(rootBody.startsWith("port="));
+            assertTrue(auditlogBody.startsWith("port="));
+            assertNotEquals(rootBody, auditlogBody);
+        } finally {
+            devServer.close();
+        }
+        assertTrue(frontendPids.stream().noneMatch(ProcessUtils::isAlive));
+        assertEquals("stopped", devServer.session().frontend().state());
     }
 
     @Test

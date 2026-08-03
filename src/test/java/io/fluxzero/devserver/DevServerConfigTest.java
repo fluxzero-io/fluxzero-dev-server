@@ -221,6 +221,99 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsMultipleRoutedFrontendsAndAllowsSingleFrontendCliOverride(@TempDir Path projectDirectory)
+            throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                frontends:
+                  dashboard:
+                    path: /
+                    directory: frontend
+                    command: "npm run dashboard -- --port {port}"
+                    backendPaths: [/api, /webhooks]
+                  auditlog:
+                    path: /marketplace/logs/1/
+                    directory: ../fluxzero-auditlog/frontend
+                    command: "npm run start-dashboard -- --port {port}"
+                """);
+
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+
+        assertEquals(List.of("dashboard", "auditlog"), config.frontends().stream().map(RoutedFrontend::id).toList());
+        assertEquals(List.of("/", "/marketplace/logs/1"),
+                     config.frontends().stream().map(RoutedFrontend::path).toList());
+        assertEquals("npm run dashboard -- --port {port}", config.frontend().command());
+        assertEquals(List.of("/api", "/webhooks"), config.frontend().backendPaths());
+
+        DevServerConfig overridden = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--frontend-url", "http://localhost:5173"
+        });
+        assertEquals(1, overridden.frontends().size());
+        assertEquals("frontend", overridden.frontends().getFirst().id());
+        assertEquals("http://localhost:5173", overridden.frontend().url());
+
+        DevServerConfig disabled = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--no-frontend"
+        });
+        assertTrue(disabled.frontends().isEmpty());
+    }
+
+    @Test
+    void rejectsAmbiguousOrInvalidFrontendRoutes(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                frontend:
+                  command: npm start
+                frontends:
+                  dashboard:
+                    path: /
+                    command: npm start
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains("cannot both"));
+
+        Files.writeString(configFile, """
+                version: 1
+                frontends:
+                  dashboard:
+                    path: /dashboard
+                    command: npm start
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains("mounted at /"));
+
+        Files.writeString(configFile, """
+                version: 1
+                frontends:
+                  dashboard:
+                    path: /
+                    command: npm start
+                  duplicate:
+                    path: /
+                    url: http://localhost:5173
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains("duplicates"));
+
+        Files.writeString(configFile, """
+                version: 1
+                frontends:
+                  dashboard:
+                    path: /
+                    url: http://localhost:5173
+                    directory: frontend
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains(
+                "directory and frontend.setupCommand require frontend.command"));
+    }
+
+    @Test
     void selectsDefaultAndExplicitDevelopmentProfiles(@TempDir Path projectDirectory) throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());

@@ -36,6 +36,7 @@ record DevProjectConfig(
         String idp,
         Boolean fastCompiler,
         Frontend frontend,
+        Map<String, Frontend> frontends,
         Lifecycle lifecycle,
         Map<String, DevCommandConfig> commands,
         String defaultProfile,
@@ -48,6 +49,9 @@ record DevProjectConfig(
         apps = apps == null ? List.of() : List.copyOf(apps);
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
+        frontends = frontends == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
+        validateFrontends(frontend, frontends);
         lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
@@ -68,7 +72,7 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, port, idp, fastCompiler, frontend, lifecycle,
+                                           applicationConfig, port, idp, fastCompiler, frontend, frontends, lifecycle,
                                            commands)) {
                 throw new IllegalArgumentException(
                         "profiles cannot be combined with legacy top-level development settings");
@@ -99,8 +103,8 @@ record DevProjectConfig(
     }
 
     private static DevProjectConfig empty() {
-        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), null, null, null, null, null,
-                                    Map.of(), null, Map.of());
+        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), null, null, null, null, Map.of(),
+                                    null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -141,23 +145,31 @@ record DevProjectConfig(
         return current.getMessage() == null ? current.getClass().getSimpleName() : current.getMessage();
     }
 
-    record Frontend(String command, String url, String directory, String setupCommand, List<String> backendPaths) {
+    record Frontend(String command, String url, String directory, String setupCommand, List<String> backendPaths,
+                    String path) {
+        Frontend(String command, String url, String directory, String setupCommand, List<String> backendPaths) {
+            this(command, url, directory, setupCommand, backendPaths, null);
+        }
+
         Frontend {
             backendPaths = backendPaths == null ? List.of() : List.copyOf(backendPaths);
+            path = normalizePath(path);
             if (command != null && !command.isBlank() && url != null && !url.isBlank()) {
                 throw new IllegalArgumentException("frontend.command and frontend.url cannot both be configured");
             }
-            if ((directory != null && !directory.isBlank()) || (setupCommand != null && !setupCommand.isBlank())) {
-                if (command == null || command.isBlank()) {
-                    throw new IllegalArgumentException(
-                            "frontend.directory and frontend.setupCommand require frontend.command");
-                }
+            if (((directory != null && !directory.isBlank()) || (setupCommand != null && !setupCommand.isBlank()))
+                && (command == null || command.isBlank())) {
+                throw new IllegalArgumentException(
+                        "frontend.directory and frontend.setupCommand require frontend.command");
+            }
+            if (path != null && (command == null || command.isBlank()) && (url == null || url.isBlank())) {
+                throw new IllegalArgumentException("frontend.path requires frontend.command or frontend.url");
             }
         }
 
         boolean configured() {
             return command != null || url != null || directory != null || setupCommand != null
-                   || !backendPaths.isEmpty();
+                   || !backendPaths.isEmpty() || path != null;
         }
     }
 
@@ -175,6 +187,7 @@ record DevProjectConfig(
             String idp,
             Boolean fastCompiler,
             Frontend frontend,
+            Map<String, Frontend> frontends,
             Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
@@ -182,6 +195,9 @@ record DevProjectConfig(
             apps = apps == null ? List.of() : List.copyOf(apps);
             applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
             frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
+            frontends = frontends == null ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
+            validateFrontends(frontend, frontends);
             lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
             commands = commands == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
@@ -190,7 +206,7 @@ record DevProjectConfig(
 
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
-                                        applicationConfig, port, idp, fastCompiler, frontend, lifecycle, commands,
+                                        applicationConfig, port, idp, fastCompiler, frontend, frontends, lifecycle, commands,
                                         null, Map.of());
         }
     }
@@ -212,11 +228,57 @@ record DevProjectConfig(
     private static boolean legacyConfigurationPresent(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig, Integer port, String idp, Boolean fastCompiler,
-            Frontend frontend, Lifecycle lifecycle, Map<String, DevCommandConfig> commands
+            Frontend frontend, Map<String, Frontend> frontends, Lifecycle lifecycle,
+            Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
                || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
-               || fastCompiler != null || frontend.configured() || lifecycle.idleTimeout() != null
+               || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
+               || lifecycle.idleTimeout() != null
                || !commands.isEmpty();
+    }
+
+    private static void validateFrontends(Frontend legacy, Map<String, Frontend> frontends) {
+        if (legacy.configured() && !frontends.isEmpty()) {
+            throw new IllegalArgumentException("frontend and frontends cannot both be configured");
+        }
+        Map<String, String> paths = new LinkedHashMap<>();
+        frontends.forEach((id, frontend) -> {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("frontends keys must not be blank");
+            }
+            if (frontend == null || !frontend.configured()) {
+                throw new IllegalArgumentException("frontends." + id + " must configure command or url");
+            }
+            String path = frontend.path() == null ? "/" : frontend.path();
+            String previous = paths.putIfAbsent(path, id);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                        "frontends." + id + ".path duplicates frontends." + previous + ".path: " + path);
+            }
+        });
+        if (!frontends.isEmpty() && !paths.containsKey("/")) {
+            throw new IllegalArgumentException("frontends must contain exactly one frontend mounted at /");
+        }
+    }
+
+    private static String normalizePath(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String path = value.strip();
+        if (!path.startsWith("/")) {
+            path = "/" + path;
+        }
+        while (path.length() > 1 && path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+        if (path.indexOf('?') >= 0 || path.indexOf('#') >= 0) {
+            throw new IllegalArgumentException("frontend path must not contain a query or fragment: " + value);
+        }
+        if (path.equals(DevGateway.BACKEND_PREFIX) || path.startsWith(DevGateway.BACKEND_PREFIX + "/")) {
+            throw new IllegalArgumentException(DevGateway.BACKEND_PREFIX + " is reserved by the dev gateway");
+        }
+        return path;
     }
 }

@@ -44,6 +44,7 @@ import java.util.Objects;
  * @param applicationConfig       named per-application launch configurations loaded from project config
  * @param idleTimeout             inactivity timeout for the environment; zero disables it
  * @param profile                 selected named development profile, or {@code null} for legacy configuration
+ * @param frontends               routed frontend configurations, including the root frontend
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -65,7 +66,8 @@ public record DevServerConfig(
         IdpMode idpMode,
         Map<String, DevApplicationConfig> applicationConfig,
         Duration idleTimeout,
-        String profile
+        String profile,
+        List<RoutedFrontend> frontends
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -94,6 +96,11 @@ public record DevServerConfig(
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         idleTimeout = validateLifecycleTimeout(idleTimeout, DEFAULT_IDLE_TIMEOUT, "idleTimeout");
         profile = profile == null || profile.isBlank() ? null : profile.strip();
+        frontends = normalizeFrontends(frontend, frontends);
+        if (!frontends.isEmpty()) {
+            frontend = frontends.stream().filter(candidate -> "/".equals(candidate.path()))
+                    .findFirst().orElseThrow().config();
+        }
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -128,7 +135,7 @@ public record DevServerConfig(
     ) {
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
-             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, null);
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, null, null);
     }
 
     public DevServerConfig(
@@ -240,7 +247,8 @@ public record DevServerConfig(
         String frontendUrl = parsed.value("frontend-url");
         String frontendDirectory = parsed.value("frontend-directory");
         String frontendSetupCommand = parsed.value("frontend-setup-command");
-        if (!noFrontend && frontendCommand == null && frontendUrl == null) {
+        boolean explicitFrontend = frontendCommand != null || frontendUrl != null;
+        if (!noFrontend && !explicitFrontend && project.frontends().isEmpty()) {
             frontendCommand = project.frontend().command();
             frontendUrl = project.frontend().url();
         }
@@ -258,11 +266,21 @@ public record DevServerConfig(
                 : frontendUrl == null ? FrontendConfig.none() : FrontendConfig.externalUrl(frontendUrl);
         List<String> backendPaths = parsed.values("backend-path");
         if (backendPaths.isEmpty()) {
-            backendPaths = project.frontend().backendPaths();
+            backendPaths = project.frontends().isEmpty() ? project.frontend().backendPaths()
+                    : project.frontends().values().stream().flatMap(value -> value.backendPaths().stream())
+                            .distinct().toList();
+        }
+        if (backendPaths.isEmpty()) {
+            backendPaths = FrontendConfig.DEFAULT_BACKEND_PATHS;
         }
         if (!backendPaths.isEmpty()) {
             frontend = frontend.withBackendPaths(backendPaths);
         }
+        List<RoutedFrontend> frontends = noFrontend ? List.of()
+                : explicitFrontend || project.frontends().isEmpty()
+                        ? frontend.mode() == FrontendConfig.Mode.NONE ? List.of()
+                        : List.of(new RoutedFrontend("frontend", "/", frontend))
+                        : routedFrontends(project.frontends(), backendPaths);
         List<String> applications = parsed.values("app");
         if (applications.isEmpty()) {
             applications = environmentList("FLUXZERO_DEV_APPS");
@@ -298,7 +316,8 @@ public record DevServerConfig(
                 project.applicationConfig(),
                 lifecycleDuration(parsed.value("idle-timeout", project.lifecycle().idleTimeout()),
                                   DEFAULT_IDLE_TIMEOUT, "idleTimeout"),
-                projectSelection.profile());
+                projectSelection.profile(),
+                frontends);
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -313,6 +332,41 @@ public record DevServerConfig(
 
     record ApplicationSelection(String id, String selector, String applicationName,
                                 Map<String, String> env, Map<String, String> secrets) {
+    }
+
+    private static List<RoutedFrontend> routedFrontends(
+            Map<String, DevProjectConfig.Frontend> configured, List<String> backendPaths
+    ) {
+        return configured.entrySet().stream().map(entry -> {
+            DevProjectConfig.Frontend value = entry.getValue();
+            FrontendConfig frontend = value.command() != null
+                    ? FrontendConfig.command(value.command()).withLaunchSetup(value.directory(), value.setupCommand())
+                    : FrontendConfig.externalUrl(value.url());
+            return new RoutedFrontend(entry.getKey(), value.path(), frontend.withBackendPaths(backendPaths));
+        }).toList();
+    }
+
+    private static List<RoutedFrontend> normalizeFrontends(
+            FrontendConfig frontend, List<RoutedFrontend> configured
+    ) {
+        List<RoutedFrontend> result = configured == null
+                ? frontend.mode() == FrontendConfig.Mode.NONE ? List.of()
+                : List.of(new RoutedFrontend("frontend", "/", frontend))
+                : List.copyOf(configured);
+        Map<String, RoutedFrontend> ids = new java.util.LinkedHashMap<>();
+        Map<String, RoutedFrontend> paths = new java.util.LinkedHashMap<>();
+        result.forEach(candidate -> {
+            if (ids.putIfAbsent(candidate.id(), candidate) != null) {
+                throw new IllegalArgumentException("duplicate frontend id: " + candidate.id());
+            }
+            if (paths.putIfAbsent(candidate.path(), candidate) != null) {
+                throw new IllegalArgumentException("duplicate frontend path: " + candidate.path());
+            }
+        });
+        if (!result.isEmpty() && !paths.containsKey("/")) {
+            throw new IllegalArgumentException("frontends must include a root frontend mounted at /");
+        }
+        return result;
     }
 
     private static String environment(String name) {

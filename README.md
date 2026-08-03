@@ -144,9 +144,13 @@ applications, secrets, commands, or frontend settings from the default profile.
 
 The output is valid YAML and documents application selection, named application flavors, managed or external
 frontends, backend pass-through paths, 1Password secret references, ordered startup commands, and lifecycle
-timeouts. Environments stop after 24 hours without source, browser, build, test, command, or attach activity by
-default, including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`,
-or `disabled`; the limit applies in attached and detached mode.
+timeouts. Existing `frontend` configuration continues to serve one UI at `/`. Use the additive `frontends` map when
+one environment needs several UIs: each entry has a stable id and `path`, exactly one owns `/`, and the gateway uses
+the longest matching path for both HTTP and WebSocket traffic. Backend paths keep priority over frontend routes.
+
+Environments stop after 24 hours without source, browser, build, test, command, or attach activity by default,
+including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`, or
+`disabled`; the limit applies in attached and detached mode.
 
 ## Development Principles
 

@@ -956,10 +956,10 @@ DoD:
 - Legacy `frontend` blijft de frontend op `/`.
 
 Backlog:
-- [ ] Slice 36.1: configuratiemodel, normalisatie en routevalidatie.
-- [ ] Slice 36.2: multi-route HTTP/WebSocket gateway.
-- [ ] Slice 36.3: frontendprocess- en statusaggregatie.
-- [ ] Slice 36.4: gateway-, lifecycle- en frameworkregressies.
+- [x] Slice 36.1: configuratiemodel, normalisatie en routevalidatie.
+- [x] Slice 36.2: multi-route HTTP/WebSocket gateway.
+- [x] Slice 36.3: frontendprocess- en statusaggregatie.
+- [x] Slice 36.4: gateway-, lifecycle- en frameworkregressies.
 
 ### Phase 37: Composed Build Projects
 
@@ -996,6 +996,8 @@ Backlog:
 
 ## Verification So Far
 
+- [x] Phase 36 multiple frontends: 42 focused config, gateway, WebSocket, watcher and managed-process tests green;
+  `./mvnw -B clean install` green with 215 tests and standalone packaging.
 - [x] Phase 33 default suite: 183 dev-servertests groen.
 - [x] Phase 33 whole-app profiel: 14 complete source-, compile-, rolling-reload-, command- en testimpactscenario's groen.
 - [x] Phase 33 frontend profiel: echte Vite- en Angular-installatie, gateway, websocket en hot-reloadproeven groen.

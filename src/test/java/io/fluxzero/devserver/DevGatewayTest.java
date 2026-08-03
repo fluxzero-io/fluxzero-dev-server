@@ -37,6 +37,7 @@ import java.net.http.WebSocketHandshakeException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -173,6 +174,42 @@ public class DevGatewayTest {
             HttpResponse<String> recovered = reload.get(2, TimeUnit.SECONDS);
             assertEquals(200, recovered.statusCode());
             assertEquals("frontend GET /dashboard ", recovered.body());
+        }
+    }
+
+    @Test
+    void routesHttpAndWebsocketsToTheLongestMatchingFrontendPath() throws Exception {
+        AtomicBoolean auditlogReady = new AtomicBoolean();
+        try (TestUpstream backend = TestUpstream.start("backend");
+             TestUpstream dashboard = TestUpstream.start("dashboard");
+             TestUpstream auditlog = TestUpstream.start("auditlog");
+             DevGateway gateway = DevGateway.start(
+                     backend.url(),
+                     List.of(new DevGateway.FrontendRoute("dashboard", "/", dashboard.url(), () -> true),
+                             new DevGateway.FrontendRoute(
+                                     "auditlog", "/marketplace/logs/1", auditlog.url(), auditlogReady::get)),
+                     () -> true, List.of("/api"), 0, () -> {
+                     })) {
+            assertEquals("dashboard GET / ", get(gateway.url() + "/").body());
+            assertEquals("dashboard GET /marketplace/logs/10 ",
+                         get(gateway.url() + "/marketplace/logs/10").body());
+            assertEquals(503, get(gateway.url() + "/marketplace/logs/1/assets/main.js").statusCode());
+
+            auditlogReady.set(true);
+            assertEquals("auditlog GET /marketplace/logs/1/assets/main.js ",
+                         get(gateway.url() + "/marketplace/logs/1/assets/main.js").body());
+            assertEquals("backend POST /api/query payload",
+                         post(gateway.url() + "/api/query", "payload").body());
+
+            CompletableFuture<String> response = new CompletableFuture<>();
+            WebSocket socket = HTTP_CLIENT.newWebSocketBuilder()
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://")
+                                           + "/marketplace/logs/1/hmr"), new TextListener(response))
+                    .get(5, TimeUnit.SECONDS);
+            socket.sendText("refresh", true).get(5, TimeUnit.SECONDS);
+            assertEquals("auditlog:/marketplace/logs/1/hmr:refresh", response.get(5, TimeUnit.SECONDS));
+            assertEquals(auditlog.url(), auditlog.lastWebsocketOrigin());
+            socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
         }
     }
 
