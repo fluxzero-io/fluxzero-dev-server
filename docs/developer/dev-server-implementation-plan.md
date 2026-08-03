@@ -928,6 +928,72 @@ Backlog:
 - [x] Slice 34.5: `lifecycle.idleTimeout` met activity-based reset, ook vóór readiness.
 - [x] Slice 34.6: volledige dev-server- en CLI-build plus echte macOS launchd lifecycle-smoke.
 
+### Phase 35: Named Development Profiles
+
+Goal: meerdere complete lokale setups kunnen naast elkaar in een tracked `dev.yaml` bestaan zonder impliciete
+overerving of verlies van bestaand gedrag.
+
+DoD:
+- Legacy top-level configuratie blijft ongewijzigd werken.
+- `defaultProfile`, een expliciete `--profile`, `FLUXZERO_DEV_PROFILE`, en auto-selectie van een enig profiel werken.
+- Commands worden bij live reload opnieuw uit het geselecteerde profiel gelezen.
+- CLI, Maven en Gradle gebruiken hetzelfde selectiecontract.
+
+Backlog:
+- [x] Slice 35.1: profielmodel, selectieprecedence en strikte ambiguiteitsvalidatie.
+- [x] Slice 35.2: command-reload en configuratiereferentie profielbewust maken.
+- [x] Slice 35.3: CLI-, Maven- en Gradle-launchers plus documentatie.
+- [x] Slice 35.4: gerichte tests en volledige dev-serverbuild.
+
+### Phase 36: Multiple Frontends
+
+Goal: een profiel kan meerdere framework-onafhankelijke frontend dev servers via een publieke origin aanbieden.
+
+DoD:
+- `frontends` bevat benoemde command- of URL-frontends met een mountpad.
+- HTTP en WebSocket routing kiezen de langste passende frontendroute en behouden het publieke pad upstream.
+- Frontends starten, herstellen, rapporteren en stoppen onafhankelijk; startup wacht op alle frontends.
+- Legacy `frontend` blijft de frontend op `/`.
+
+Backlog:
+- [ ] Slice 36.1: configuratiemodel, normalisatie en routevalidatie.
+- [ ] Slice 36.2: multi-route HTTP/WebSocket gateway.
+- [ ] Slice 36.3: frontendprocess- en statusaggregatie.
+- [ ] Slice 36.4: gateway-, lifecycle- en frameworkregressies.
+
+### Phase 37: Composed Build Projects
+
+Goal: zelfstandige Maven- en Gradle-roots delen een lokale Fluxzero omgeving en blijven onafhankelijk compileerbaar.
+
+DoD:
+- `projects` beschrijft benoemde buildroots met eigen appselectie en applicatieconfiguratie.
+- Compile, rolling replacement, watch en tests zijn per project onafhankelijk.
+- Apps uit alle projecten delen runtime/proxy; per-app namespaceoverride is mogelijk.
+- Falen in een project haalt gezonde apps uit andere projecten niet neer.
+
+Backlog:
+- [ ] Slice 37.1: projectmodel, padvalidatie, launch-idscoping en namespaceoverride.
+- [ ] Slice 37.2: projectgebonden compile-, app- en watchercoordinatie.
+- [ ] Slice 37.3: projectgebonden teststatus en gecombineerde diagnostics.
+- [ ] Slice 37.4: multi-root whole-app E2E en shutdowncleanup.
+
+### Phase 38: Dashboard And Auditlog Reference
+
+Goal: de echte Dashboard/Auditlog-combinatie vervangt de losse lokale runtime-, proxy- en frontendprocessen door een
+tracked samengesteld dev-profiel.
+
+DoD:
+- Een commando start Rebound, Auditlog en beide Angular-frontends op een gedeelde runtime/proxy/gateway.
+- Dashboard blijft op `/`; Auditlog werkt onder `/marketplace/logs/1` met eigen namespace.
+- Backend- en frontendwijzigingen worden alleen door het bijbehorende project verwerkt.
+- De bestaande legacy Dashboard-config blijft als eenvoudiger profiel beschikbaar.
+
+Backlog:
+- [ ] Slice 38.1: tracked Dashboard-profielen en actuele lokale documentatie.
+- [ ] Slice 38.2: echte startup-, route-, query- en WebSocket-smoke.
+- [ ] Slice 38.3: onafhankelijke backend/frontend reloads en failure isolation bewijzen.
+- [ ] Slice 38.4: volledige regressie, cleanup en releasevoorbereiding.
+
 ## Verification So Far
 
 - [x] Phase 33 default suite: 183 dev-servertests groen.
