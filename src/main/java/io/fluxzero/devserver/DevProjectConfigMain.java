@@ -72,6 +72,31 @@ public final class DevProjectConfigMain {
             #         application: auditlog
             #         namespace: fluxzero_mp_prod-logs
 
+            # Support services start before applications and frontends. Omit command for an external service.
+            # Named ports may be fixed numbers or dynamic. Service values can be used in app env and frontend fields.
+            # services:
+            #   victoriaLogs:
+            #     directory: local/victoria-logs
+            #     command: docker compose up --remove-orphans
+            #     stopCommand: docker compose down --remove-orphans
+            #     ports:
+            #       http: dynamic
+            #     url: "http://127.0.0.1:{port.http}"
+            #     env:
+            #       COMPOSE_PROJECT_NAME: "my-app-{session.id}"
+            #     readiness:
+            #       http: "{url}/health"
+            #       timeout: 3m
+            #   sharedMail:
+            #     url: http://127.0.0.1:8025
+            #
+            # Use resolved service values in an application flavor:
+            # applicationConfig:
+            #   app-with-logs:
+            #     application: app
+            #     env:
+            #       LOGS_URL: "{services.victoriaLogs.url}"
+
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
             # command and url are mutually exclusive. {port} is the private frontend port allocated by Fluxzero.
             frontend:

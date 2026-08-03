@@ -994,7 +994,31 @@ Backlog:
 - [x] Slice 38.3: onafhankelijke backend/frontend reloads en failure isolation bewijzen.
 - [x] Slice 38.4: volledige regressie, cleanup en releasevoorbereiding.
 
+### Phase 39: Managed Local Services
+
+Goal: databases, emulators, log stores en andere lokale dependencies horen bij dezelfde reproduceerbare dev-omgeving
+zonder vaste poorten of tool-specifieke supervisorlogica.
+
+DoD:
+- `services` ondersteunt managed commands en external URLs met benoemde vaste of dynamische poorten.
+- HTTP/TCP-readiness blokkeert startup; status, logs, diagnostics, MCP en stale cleanup tonen dezelfde service-state.
+- Apps en frontends kunnen resolved service URLs en poorten gebruiken zonder hardcoded lokale configuratie.
+- Stopcommando's zijn begrensd en worden altijd gevolgd door harde process-tree cleanup.
+- Dashboard/Auditlog start VictoriaLogs automatisch op een dynamische poort en ruimt de Compose-stack volledig op.
+
+Backlog:
+- [x] Slice 39.1: backward-compatible configmodel, placeholders en validatie.
+- [x] Slice 39.2: protocolneutrale process-, readiness-, health- en cleanup-lifecycle.
+- [x] Slice 39.3: sessie-, control-, diagnostics-, app- en frontendintegratie.
+- [x] Slice 39.4: echte Dashboard/Auditlog/VictoriaLogs dynamic-port smoke en cleanupbewijs.
+- [x] Slice 39.5: volledige regressie, documentatie en releaseverificatie.
+
 ## Verification So Far
+
+- [x] Phase 39 managed services: 21 process/placeholder regressies en 23 supervisor/session/control/app-regressies
+  groen. De echte Dashboard/Auditlog-omgeving startte VictoriaLogs op hostpoort `62782`, injecteerde die URL in beide
+  Auditlog-configwaarden en stopte Compose, serviceproces en listener volledig met één `Ctrl+C`. De volledige
+  `./mvnw -B clean install` eindigde groen met 228 tests en standalone packaging.
 
 - [x] Phase 38 Dashboard/Auditlog reference: de echte samengestelde omgeving was ready in 12.8s; Dashboard `/`,
   Auditlog `/marketplace/logs/1`, Rebound login, Auditlog health en de publieke `/api/updates` WebSocket waren groen.
