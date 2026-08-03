@@ -934,6 +934,9 @@ public class DevServer implements AutoCloseable {
             if (status != null) {
                 String prefix = "frontend." + frontend.id() + ".";
                 metadata.put(prefix + "state", status.state());
+                if (status.detail() != null && !status.detail().isBlank()) {
+                    metadata.put(prefix + "detail", status.detail());
+                }
                 if (status.pid() != null) {
                     metadata.put(prefix + "pid", Long.toString(status.pid()));
                 }
@@ -956,12 +959,25 @@ public class DevServer implements AutoCloseable {
                     "frontend", publicUrl, null, rootFrontendPid(), config.frontends().size() + " frontends ready")
                     .withMetadata(metadata);
         }
-        long ready = frontendStatuses.values().stream().filter(status -> "running".equals(status.state())).count();
+        String detail = frontendStartupDetail(config.frontends(), frontendStatuses);
         return DevSession.ServiceStatus.running(
-                "frontend", null, null, rootFrontendPid(),
-                "waiting for frontends (" + ready + "/" + config.frontends().size() + " ready)")
-                .withState("starting", "waiting for frontends (" + ready + "/" + config.frontends().size()
-                                      + " ready)").withMetadata(metadata);
+                "frontend", null, null, rootFrontendPid(), detail)
+                .withState("starting", detail).withMetadata(metadata);
+    }
+
+    static String frontendStartupDetail(List<RoutedFrontend> frontends,
+                                        Map<String, DevSession.ServiceStatus> statuses) {
+        List<String> pending = frontends.stream().map(RoutedFrontend::id)
+                .filter(id -> statuses.get(id) == null || !"running".equals(statuses.get(id).state()))
+                .toList();
+        long ready = frontends.size() - pending.size();
+        if (pending.isEmpty()) {
+            return "confirming frontend readiness (" + ready + "/" + frontends.size() + " ready)";
+        }
+        String target = pending.size() == 1
+                ? "frontend " + pending.getFirst()
+                : "frontends: " + String.join(", ", pending);
+        return "waiting for " + target + " (" + ready + "/" + frontends.size() + " ready)";
     }
 
     private Long rootFrontendPid() {

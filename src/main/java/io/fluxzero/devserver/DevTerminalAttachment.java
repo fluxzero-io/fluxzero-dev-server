@@ -403,8 +403,8 @@ final class DevTerminalAttachment {
         } else if ("running".equals(session.compile().state())) {
             progress.update("Building: Backend: " + value(session.compile().detail(), "compiling"));
         } else if ("starting".equals(session.frontend().state())) {
-            progress.update("Starting Fluxzero dev environment: Frontend: "
-                            + value(session.frontend().detail(), "starting"));
+            progress.update("Starting Fluxzero dev environment: "
+                            + value(session.frontend().detail(), "waiting for frontend"));
         } else if ("starting".equals(session.app().state()) || "running".equals(session.reload().state())) {
             progress.update("Starting applications");
         } else {
