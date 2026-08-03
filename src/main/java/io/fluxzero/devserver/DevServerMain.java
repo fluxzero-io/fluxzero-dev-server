@@ -37,28 +37,19 @@ public final class DevServerMain {
         }
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
         DevServer server;
-        DevEnvironmentRegistry registry = DevEnvironmentRegistry.global();
-        AtomicBoolean registered = new AtomicBoolean();
         try {
             server = new DevServer(DevServerConfig.fromArgs(args));
-            server.start();
-            server.shutdownRequested().thenRun(() -> System.exit(0));
-            try {
-                registry.register(server.session());
-                registered.set(true);
-            } catch (RuntimeException e) {
-                System.err.println("Warning: could not register this Fluxzero dev environment: " + e.getMessage());
-            }
-        } catch (DevServerStartupException | IllegalArgumentException | LinkageError e) {
-            System.err.println("Fluxzero dev could not start: " + startupFailureMessage(e));
-            System.exit(2);
+        } catch (IllegalArgumentException | LinkageError e) {
+            reportStartupFailure(e);
             return;
         }
+        DevEnvironmentRegistry registry = DevEnvironmentRegistry.global();
+        AtomicBoolean registered = new AtomicBoolean();
         CountDownLatch shutdown = new CountDownLatch(1);
         AtomicBoolean shutdownStarted = new AtomicBoolean();
         AtomicBoolean shutdownReported = new AtomicBoolean();
         boolean launcherOwnsShutdown = Boolean.getBoolean(LAUNCHER_OWNS_SHUTDOWN_PROPERTY);
-        Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("fluxzero-dev-server-shutdown").unstarted(() -> {
+        Thread shutdownHook = Thread.ofPlatform().name("fluxzero-dev-server-shutdown").unstarted(() -> {
             reportStopping(shutdownStarted, launcherOwnsShutdown);
             Thread watchdog = Thread.ofPlatform().daemon(true).name("fluxzero-dev-server-shutdown-watchdog")
                     .start(() -> haltAfterShutdownDeadline(shutdownReported, launcherOwnsShutdown));
@@ -76,8 +67,37 @@ public final class DevServerMain {
                 reportStopped(shutdownReported, launcherOwnsShutdown);
                 shutdown.countDown();
             }
-        }));
+        });
+        Runtime.getRuntime().addShutdownHook(shutdownHook);
+        try {
+            server.start();
+            server.shutdownRequested().thenRun(() -> System.exit(0));
+            try {
+                registry.register(server.session());
+                registered.set(true);
+            } catch (RuntimeException e) {
+                System.err.println("Warning: could not register this Fluxzero dev environment: " + e.getMessage());
+            }
+        } catch (DevServerStartupException | IllegalArgumentException | LinkageError e) {
+            removeShutdownHook(shutdownHook);
+            server.close();
+            reportStartupFailure(e);
+            return;
+        }
         shutdown.await();
+    }
+
+    private static void removeShutdownHook(Thread shutdownHook) {
+        try {
+            Runtime.getRuntime().removeShutdownHook(shutdownHook);
+        } catch (IllegalStateException ignored) {
+            // Shutdown is already in progress and the hook owns cleanup from here.
+        }
+    }
+
+    private static void reportStartupFailure(Throwable failure) {
+        System.err.println("Fluxzero dev could not start: " + startupFailureMessage(failure));
+        System.exit(2);
     }
 
     private static void reportStopping(AtomicBoolean shutdownStarted, boolean launcherOwnsShutdown) {
