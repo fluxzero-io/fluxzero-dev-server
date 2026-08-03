@@ -227,7 +227,7 @@ class DevServerConfigTest {
         Files.createDirectories(configFile.getParent());
         Files.writeString(configFile, """
                 version: 1
-                gatewayPort: 4200
+                port: 4200
                 backendPaths: [/webhooks, /logs, /observer]
                 frontends:
                   dashboard:

@@ -36,7 +36,7 @@ record DevProjectConfig(
         List<String> apps,
         Map<String, DevApplicationConfig> applicationConfig,
         Map<String, Project> projects,
-        @JsonAlias("port") Integer gatewayPort,
+        @JsonAlias("gatewayPort") Integer port,
         String idp,
         Boolean fastCompiler,
         List<String> backendPaths,
@@ -85,7 +85,7 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, projects, gatewayPort, idp, fastCompiler, backendPaths,
+                                           applicationConfig, projects, port, idp, fastCompiler, backendPaths,
                                            frontend, frontends, services, lifecycle,
                                            commands)) {
                 throw new IllegalArgumentException(
@@ -299,7 +299,7 @@ record DevProjectConfig(
             List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig,
             Map<String, Project> projects,
-            @JsonAlias("port") Integer gatewayPort,
+            @JsonAlias("gatewayPort") Integer port,
             String idp,
             Boolean fastCompiler,
             List<String> backendPaths,
@@ -332,7 +332,7 @@ record DevProjectConfig(
 
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
-                                        applicationConfig, projects, gatewayPort, idp, fastCompiler, backendPaths,
+                                        applicationConfig, projects, port, idp, fastCompiler, backendPaths,
                                         frontend, frontends, services, lifecycle, commands, null, Map.of());
         }
     }
@@ -354,12 +354,12 @@ record DevProjectConfig(
     private static boolean legacyConfigurationPresent(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
-            Integer gatewayPort, String idp, Boolean fastCompiler, List<String> backendPaths,
+            Integer port, String idp, Boolean fastCompiler, List<String> backendPaths,
             Frontend frontend, Map<String, Frontend> frontends, Map<String, Service> services, Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
-               || !apps.isEmpty() || !applicationConfig.isEmpty() || gatewayPort != null || idp != null
+               || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
                || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
                || !backendPaths.isEmpty() || !services.isEmpty()
                || lifecycle.idleTimeout() != null

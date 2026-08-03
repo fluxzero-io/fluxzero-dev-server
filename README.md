@@ -144,12 +144,12 @@ applications, secrets, commands, or frontend settings from the default profile.
 
 The output is valid YAML and documents application selection, named application flavors, managed or external
 support services and frontends, backend pass-through paths, 1Password secret references, ordered startup commands,
-and lifecycle timeouts. `gatewayPort` is the one public browser port. A managed frontend receives a separate private
-`{frontendPort}` in its command. Existing `frontend` configuration continues to serve one UI at `/`. Use the additive
-`frontends` map when one environment needs several UIs: each entry has a stable id and optional public mount `path`,
+and lifecycle timeouts. `port` is the one public port for the complete dev environment. A managed frontend receives
+a separate private `{frontendPort}` in its command. Existing `frontend` configuration continues to serve one UI at
+`/`. Use the additive `frontends` map when one environment needs several UIs: each entry has a stable id and optional public mount `path`,
 the root frontend omits `path`, and the gateway uses the longest matching path for HTTP and WebSocket traffic.
 Profile-level `backendPaths` add pass-through routes to the built-in `/api` route and keep priority over frontends.
-Legacy `port`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
+Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
 
 Use `projects` inside a profile when one local environment spans independent Maven or Gradle roots. Every named
 project has its own directory, application selection, optional application configuration, compile pipeline, source

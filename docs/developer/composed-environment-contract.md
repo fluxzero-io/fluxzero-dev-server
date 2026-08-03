@@ -15,7 +15,7 @@ defaultProfile: dashboard
 profiles:
   dashboard:
     environment: local
-    gatewayPort: 4200
+    port: 4200
     idp: external
     backendPaths:
       - /observer
@@ -72,7 +72,7 @@ profiles:
 
 ## Resolution Rules
 
-- Profile-level `environment`, `gatewayPort`, `idp`, `backendPaths`, lifecycle, and startup commands belong to the
+- Profile-level `environment`, `port`, `idp`, `backendPaths`, lifecycle, and startup commands belong to the
   shared environment. `/api` is always a backend path; configured paths are additions.
 - Project directories and frontend directories resolve relative to the directory containing `.fluxzero/dev.yaml`.
 - Managed service directories resolve relative to the same root. Their named ports are allocated before their command
@@ -99,8 +99,8 @@ Existing top-level configuration and existing profile bodies remain valid:
 
 - `apps`, `applicationConfig`, build settings, and commands describe the primary project at `.`.
 - `frontend` describes one frontend mounted at `/`.
-- Legacy `port`, frontend `{port}`, service `{port.<name>}`, and frontend-local `backendPaths` remain accepted as
-  aliases for `gatewayPort`, `{frontendPort}`, `{servicePort.<name>}`, and profile-level `backendPaths`.
+- Legacy `gatewayPort`, frontend `{port}`, service `{port.<name>}`, and frontend-local `backendPaths` remain accepted as
+  aliases for `port`, `{frontendPort}`, `{servicePort.<name>}`, and profile-level `backendPaths`.
 - Omitting `services` preserves the previous environment lifecycle. Adding external URL services does not transfer
   lifecycle ownership to Fluxzero.
 - A profile cannot mix `projects` with primary-project fields or `frontends` with `frontend`; ambiguous configuration

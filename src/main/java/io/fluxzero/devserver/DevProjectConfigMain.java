@@ -39,7 +39,7 @@ public final class DevProjectConfigMain {
             # mainClass: com.example.Application
             # applicationName: example
             # namespace: local
-            # gatewayPort: 4200 # public browser URL; dynamic when omitted
+            # port: 4200 # public URL for the complete dev environment; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
 
@@ -103,7 +103,7 @@ public final class DevProjectConfigMain {
 
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
             # directory is the command working directory. {frontendPort} is its private allocated port.
-            # The frontend remains publicly available through gatewayPort, not frontendPort.
+            # The frontend remains publicly available through port, not frontendPort.
             frontend:
               directory: frontend
               setupCommand: "npm install --prefer-offline --no-audit --no-fund"
