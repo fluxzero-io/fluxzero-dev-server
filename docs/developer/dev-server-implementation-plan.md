@@ -989,13 +989,17 @@ DoD:
 - De bestaande legacy Dashboard-config blijft als eenvoudiger profiel beschikbaar.
 
 Backlog:
-- [ ] Slice 38.1: tracked Dashboard-profielen en actuele lokale documentatie.
-- [ ] Slice 38.2: echte startup-, route-, query- en WebSocket-smoke.
-- [ ] Slice 38.3: onafhankelijke backend/frontend reloads en failure isolation bewijzen.
-- [ ] Slice 38.4: volledige regressie, cleanup en releasevoorbereiding.
+- [x] Slice 38.1: tracked Dashboard-profielen en actuele lokale documentatie.
+- [x] Slice 38.2: echte startup-, route-, query- en WebSocket-smoke.
+- [x] Slice 38.3: onafhankelijke backend/frontend reloads en failure isolation bewijzen.
+- [x] Slice 38.4: volledige regressie, cleanup en releasevoorbereiding.
 
 ## Verification So Far
 
+- [x] Phase 38 Dashboard/Auditlog reference: de echte samengestelde omgeving was ready in 12.8s; Dashboard `/`,
+  Auditlog `/marketplace/logs/1`, Rebound login, Auditlog health en de publieke `/api/updates` WebSocket waren groen.
+  Dashboard en Auditlog reloaden onafhankelijk, een kapotte Auditlog-compile hield beide laatste werkende apps live,
+  herstel verving alleen Auditlog en `Ctrl+C` stopte supervisor, beide apps en beide frontends en gaf de gatewaypoort vrij.
 - [x] Phase 37 composed projects: 44 focused config, app-process, watcher, lifecycle and gateway tests green;
   multi-root whole-app E2E proves parallel initial tests, independent rolling reloads, compile-failure isolation and
   complete process cleanup; `./mvnw -B clean install` green with 219 tests and standalone packaging.
