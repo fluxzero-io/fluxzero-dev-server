@@ -144,6 +144,32 @@ class MavenReactorTest {
     }
 
     @Test
+    void excludesInstalledReactorArtifactsFromTestApplicationClasspath(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>core</module><module>app</module></modules>
+                """));
+        writeModule(project, "core", "");
+        writeModule(project, "app", dependency("core"));
+        compileMain(project.resolve("core"), "com.acme.CurrentHandler");
+        compileMain(project.resolve("app"), "com.acme.AppSupport");
+        compileTestMain(project.resolve("app"), "com.acme.Rebound");
+        Path staleReactorArtifact = project.resolve("repository/com/acme/core/1/core-1.jar");
+        Path externalTestDependency = project.resolve("repository/com/external/testing/2/testing-2.jar");
+        Files.createDirectories(staleReactorArtifact.getParent());
+        Files.createDirectories(externalTestDependency.getParent());
+        Files.writeString(staleReactorArtifact, "stale reactor output");
+        Files.writeString(externalTestDependency, "external test dependency");
+        writeTestClasspath(project.resolve("app"), staleReactorArtifact, externalTestDependency);
+
+        ApplicationBuild rebound = MavenReactor.load(project)
+                .applications(config(project, List.of("rebound"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/test-classes"), project.resolve("app/target/classes"),
+                             project.resolve("core/target/classes")), rebound.classesDirectories());
+        assertEquals(List.of(externalTestDependency), rebound.runtimeClasspath());
+    }
+
+    @Test
     void launchesMultipleNamedFlavorsOfTheSameTestApplication(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
                 <modules><module>app</module></modules>
@@ -238,9 +264,11 @@ class MavenReactorTest {
         Files.writeString(module.resolve(MavenReactor.CLASSPATH_FILE), dependency.toString());
     }
 
-    private static void writeTestClasspath(Path module, Path dependency) throws Exception {
+    private static void writeTestClasspath(Path module, Path... dependencies) throws Exception {
         Files.createDirectories(module.resolve(MavenReactor.TEST_CLASSPATH_FILE).getParent());
-        Files.writeString(module.resolve(MavenReactor.TEST_CLASSPATH_FILE), dependency.toString());
+        Files.writeString(module.resolve(MavenReactor.TEST_CLASSPATH_FILE),
+                          String.join(System.getProperty("path.separator"),
+                                      java.util.Arrays.stream(dependencies).map(Path::toString).toList()));
     }
 
     private static DevServerConfig config(Path project) {
