@@ -32,6 +32,7 @@ record DevProjectConfig(
         String environment,
         List<String> apps,
         Map<String, DevApplicationConfig> applicationConfig,
+        Map<String, Project> projects,
         Integer port,
         String idp,
         Boolean fastCompiler,
@@ -48,6 +49,9 @@ record DevProjectConfig(
     DevProjectConfig {
         apps = apps == null ? List.of() : List.copyOf(apps);
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
+        projects = projects == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(projects));
+        validateProjects(projects);
+        validateProjectShape(mainClass, applicationName, namespace, apps, applicationConfig, fastCompiler, projects);
         frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
         frontends = frontends == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
@@ -72,7 +76,7 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, port, idp, fastCompiler, frontend, frontends, lifecycle,
+                                           applicationConfig, projects, port, idp, fastCompiler, frontend, frontends, lifecycle,
                                            commands)) {
                 throw new IllegalArgumentException(
                         "profiles cannot be combined with legacy top-level development settings");
@@ -103,8 +107,8 @@ record DevProjectConfig(
     }
 
     private static DevProjectConfig empty() {
-        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), null, null, null, null, Map.of(),
-                                    null, Map.of(), null, Map.of());
+        return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
+                                    Map.of(), null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -176,6 +180,22 @@ record DevProjectConfig(
     record Lifecycle(String idleTimeout) {
     }
 
+    record Project(
+            String directory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            List<String> apps,
+            Map<String, DevApplicationConfig> applicationConfig,
+            Boolean fastCompiler
+    ) {
+        Project {
+            directory = directory == null || directory.isBlank() ? "." : directory.strip();
+            apps = apps == null ? List.of() : List.copyOf(apps);
+            applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
+        }
+    }
+
     record Profile(
             String mainClass,
             String applicationName,
@@ -183,6 +203,7 @@ record DevProjectConfig(
             String environment,
             List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig,
+            Map<String, Project> projects,
             Integer port,
             String idp,
             Boolean fastCompiler,
@@ -194,6 +215,10 @@ record DevProjectConfig(
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
             applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
+            projects = projects == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(projects));
+            validateProjects(projects);
+            validateProjectShape(mainClass, applicationName, namespace, apps, applicationConfig, fastCompiler,
+                                 projects);
             frontend = frontend == null ? new Frontend(null, null, null, null, List.of()) : frontend;
             frontends = frontends == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
@@ -206,8 +231,8 @@ record DevProjectConfig(
 
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
-                                        applicationConfig, port, idp, fastCompiler, frontend, frontends, lifecycle, commands,
-                                        null, Map.of());
+                                        applicationConfig, projects, port, idp, fastCompiler, frontend, frontends,
+                                        lifecycle, commands, null, Map.of());
         }
     }
 
@@ -227,15 +252,47 @@ record DevProjectConfig(
 
     private static boolean legacyConfigurationPresent(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
-            Map<String, DevApplicationConfig> applicationConfig, Integer port, String idp, Boolean fastCompiler,
+            Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
+            Integer port, String idp, Boolean fastCompiler,
             Frontend frontend, Map<String, Frontend> frontends, Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
                || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
-               || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
+               || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
                || lifecycle.idleTimeout() != null
                || !commands.isEmpty();
+    }
+
+    private static void validateProjects(Map<String, Project> projects) {
+        Map<Path, String> directories = new LinkedHashMap<>();
+        projects.forEach((id, project) -> {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("projects keys must not be blank");
+            }
+            if (project == null) {
+                throw new IllegalArgumentException("projects." + id + " must be configured");
+            }
+            Path directory = Path.of(project.directory()).normalize();
+            String previous = directories.putIfAbsent(directory, id);
+            if (previous != null) {
+                throw new IllegalArgumentException(
+                        "projects." + id + ".directory duplicates projects." + previous + ".directory: "
+                        + project.directory());
+            }
+        });
+    }
+
+    private static void validateProjectShape(
+            String mainClass, String applicationName, String namespace, List<String> apps,
+            Map<String, DevApplicationConfig> applicationConfig, Boolean fastCompiler, Map<String, Project> projects
+    ) {
+        if (!projects.isEmpty() && (mainClass != null || applicationName != null || namespace != null
+                                    || !apps.isEmpty() || !applicationConfig.isEmpty() || fastCompiler != null)) {
+            throw new IllegalArgumentException(
+                    "projects cannot be combined with mainClass, applicationName, namespace, apps, "
+                    + "applicationConfig or fastCompiler");
+        }
     }
 
     private static void validateFrontends(Frontend legacy, Map<String, Frontend> frontends) {

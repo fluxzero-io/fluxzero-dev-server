@@ -362,6 +362,74 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsIndependentBuildProjectsAndPerApplicationNamespaces(@TempDir Path projectDirectory) throws Exception {
+        Path auditlog = projectDirectory.resolveSibling("auditlog-backend");
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                environment: local
+                projects:
+                  dashboard:
+                    directory: .
+                    apps: [rebound]
+                  auditlog:
+                    directory: ../auditlog-backend
+                    apps: [auditlog-local]
+                    applicationConfig:
+                      auditlog-local:
+                        application: auditlog
+                        namespace: fluxzero_mp_prod-logs
+                        env:
+                          TARGET_NAMESPACE: fluxzero_mp_prod-logs
+                """);
+
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+
+        assertEquals(List.of("dashboard", "auditlog"), config.projects().stream().map(DevBuildProject::id).toList());
+        assertEquals(projectDirectory.toAbsolutePath(), config.projects().getFirst().directory());
+        assertEquals(auditlog.toAbsolutePath(), config.projects().get(1).directory());
+        DevServerConfig auditlogConfig = config.forProject(config.projects().get(1));
+        assertEquals(List.of("auditlog-local"), auditlogConfig.applications());
+        assertEquals("fluxzero_mp_prod-logs", auditlogConfig.applicationSelections().getFirst().namespace());
+        assertEquals("fluxzero_mp_prod-logs",
+                     auditlogConfig.applicationSelections().getFirst().env().get("TARGET_NAMESPACE"));
+
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--app", "rebound"
+        })).getMessage().contains("configured per project"));
+    }
+
+    @Test
+    void rejectsMixedOrDuplicateBuildProjectConfiguration(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                apps: [rebound]
+                projects:
+                  dashboard:
+                    directory: .
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains(
+                "projects cannot be combined"));
+
+        Files.writeString(configFile, """
+                version: 1
+                projects:
+                  dashboard:
+                    directory: .
+                  duplicate:
+                    directory: ./
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains(
+                "duplicates"));
+    }
+
+    @Test
     void preservesLegacyConfigurationAndAutoSelectsASingleProfile(@TempDir Path projectDirectory) throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());

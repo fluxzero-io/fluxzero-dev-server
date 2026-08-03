@@ -110,8 +110,9 @@ final class AppProcessRunner {
         environment.put("FLUXZERO_DEV_SESSION_ID", sessionId);
         environment.put("FLUXZERO_TASK_ID", clientId);
         environment.put("FLUX_TASK_ID", clientId);
-        if (config.namespace() != null) {
-            environment.put("FLUXZERO_NAMESPACE", config.namespace());
+        String namespace = application.namespace() == null ? config.namespace() : application.namespace();
+        if (namespace != null) {
+            environment.put("FLUXZERO_NAMESPACE", namespace);
         }
         OnePasswordEnvironment.PreparedCommand prepared = null;
         try {

@@ -59,6 +59,18 @@ final class SourceWatcher implements AutoCloseable {
 
     private void registerProjectRoots() throws IOException {
         registerIfDirectory(config.projectDirectory());
+        for (RoutedFrontend frontend : config.frontends()) {
+            if (frontend.config().mode() != FrontendConfig.Mode.COMMAND
+                || frontend.config().directory() == null) {
+                continue;
+            }
+            Path configured = Path.of(frontend.config().directory());
+            Path directory = configured.isAbsolute() ? configured : config.projectDirectory().resolve(configured);
+            if (!directory.toAbsolutePath().normalize().startsWith(
+                    config.projectDirectory().toAbsolutePath().normalize())) {
+                registerIfDirectory(directory.toAbsolutePath().normalize());
+            }
+        }
     }
 
     private void registerIfDirectory(Path directory) throws IOException {
@@ -71,7 +83,7 @@ final class SourceWatcher implements AutoCloseable {
                 @Override
                 public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                     boolean projectRoot = dir.toAbsolutePath().normalize()
-                            .equals(config.projectDirectory().toAbsolutePath().normalize());
+                            .equals(directory.toAbsolutePath().normalize());
                     if (projectRoot || !ignored(dir)) {
                         registerDirectory(dir);
                     }
@@ -144,7 +156,9 @@ final class SourceWatcher implements AutoCloseable {
     private boolean ignored(Path path) {
         Path relative;
         try {
-            relative = config.projectDirectory().toAbsolutePath().normalize().relativize(path.toAbsolutePath().normalize());
+            Path absolute = path.toAbsolutePath().normalize();
+            Path root = watchRoot(absolute);
+            relative = root.relativize(absolute);
         } catch (IllegalArgumentException e) {
             return true;
         }
@@ -161,6 +175,9 @@ final class SourceWatcher implements AutoCloseable {
     }
 
     private boolean relevant(Path path) {
+        if (frontendPath(path)) {
+            return true;
+        }
         Path relative;
         try {
             relative = config.projectDirectory().toAbsolutePath().normalize()
@@ -169,8 +186,7 @@ final class SourceWatcher implements AutoCloseable {
             return false;
         }
         String text = relative.toString().replace('\\', '/');
-        return frontendPath(path)
-               || text.equals(DevProjectConfig.FILE.toString().replace('\\', '/'))
+        return text.equals(DevProjectConfig.FILE.toString().replace('\\', '/'))
                || path.getFileName().toString().equals("pom.xml")
                || path.getFileName().toString().equals("build.gradle")
                || path.getFileName().toString().equals("build.gradle.kts")
@@ -182,6 +198,23 @@ final class SourceWatcher implements AutoCloseable {
                || text.startsWith("src/test/")
                || text.contains("/src/main/")
                || text.contains("/src/test/");
+    }
+
+    private Path watchRoot(Path path) {
+        Path projectRoot = config.projectDirectory().toAbsolutePath().normalize();
+        if (path.startsWith(projectRoot)) {
+            return projectRoot;
+        }
+        return config.frontends().stream().map(RoutedFrontend::config)
+                .filter(frontend -> frontend.mode() == FrontendConfig.Mode.COMMAND && frontend.directory() != null)
+                .map(frontend -> {
+                    Path configured = Path.of(frontend.directory());
+                    return (configured.isAbsolute() ? configured : projectRoot.resolve(configured))
+                            .toAbsolutePath().normalize();
+                })
+                .filter(path::startsWith)
+                .max(java.util.Comparator.comparingInt(Path::getNameCount))
+                .orElseThrow(() -> new IllegalArgumentException("path is outside watched roots"));
     }
 
     boolean frontendPath(Path path) {

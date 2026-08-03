@@ -24,12 +24,14 @@ import java.util.regex.Pattern;
  *
  * @param application     application selector, such as a module, simple main class, or fully qualified main class
  * @param applicationName optional Fluxzero runtime application name override
+ * @param namespace       optional Fluxzero namespace override for this application
  * @param env             non-secret environment values passed to the application
  * @param secrets         environment variable names mapped to 1Password {@code op://} references
  */
 public record DevApplicationConfig(
         String application,
         String applicationName,
+        String namespace,
         Map<String, String> env,
         Map<String, String> secrets
 ) {
@@ -42,6 +44,7 @@ public record DevApplicationConfig(
     public DevApplicationConfig {
         application = application == null ? null : application.strip();
         applicationName = applicationName == null || applicationName.isBlank() ? null : applicationName.strip();
+        namespace = namespace == null || namespace.isBlank() ? null : namespace.strip();
         env = copyAndValidate(env, false);
         secrets = copyAndValidate(secrets, true);
         for (String name : env.keySet()) {
@@ -52,9 +55,15 @@ public record DevApplicationConfig(
         }
     }
 
+    public DevApplicationConfig(String application, String applicationName, Map<String, String> env,
+                                Map<String, String> secrets) {
+        this(application, applicationName, null, env, secrets);
+    }
+
     @Override
     public String toString() {
         return "DevApplicationConfig[application=" + application + ", applicationName=" + applicationName
+               + ", namespace=" + namespace
                + ", env=" + env.keySet() + ", secrets=" + secrets.keySet() + "]";
     }
 

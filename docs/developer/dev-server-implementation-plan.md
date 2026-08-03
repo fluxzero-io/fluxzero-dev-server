@@ -972,10 +972,10 @@ DoD:
 - Falen in een project haalt gezonde apps uit andere projecten niet neer.
 
 Backlog:
-- [ ] Slice 37.1: projectmodel, padvalidatie, launch-idscoping en namespaceoverride.
-- [ ] Slice 37.2: projectgebonden compile-, app- en watchercoordinatie.
-- [ ] Slice 37.3: projectgebonden teststatus en gecombineerde diagnostics.
-- [ ] Slice 37.4: multi-root whole-app E2E en shutdowncleanup.
+- [x] Slice 37.1: projectmodel, padvalidatie, launch-idscoping en namespaceoverride.
+- [x] Slice 37.2: projectgebonden compile-, app- en watchercoordinatie.
+- [x] Slice 37.3: projectgebonden teststatus en gecombineerde diagnostics.
+- [x] Slice 37.4: multi-root whole-app E2E en shutdowncleanup.
 
 ### Phase 38: Dashboard And Auditlog Reference
 
@@ -996,6 +996,9 @@ Backlog:
 
 ## Verification So Far
 
+- [x] Phase 37 composed projects: 44 focused config, app-process, watcher, lifecycle and gateway tests green;
+  multi-root whole-app E2E proves parallel initial tests, independent rolling reloads, compile-failure isolation and
+  complete process cleanup; `./mvnw -B clean install` green with 219 tests and standalone packaging.
 - [x] Phase 36 multiple frontends: 42 focused config, gateway, WebSocket, watcher and managed-process tests green;
   `./mvnw -B clean install` green with 215 tests and standalone packaging.
 - [x] Phase 33 default suite: 183 dev-servertests groen.

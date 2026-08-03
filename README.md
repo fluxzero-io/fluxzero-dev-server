@@ -148,6 +148,17 @@ timeouts. Existing `frontend` configuration continues to serve one UI at `/`. Us
 one environment needs several UIs: each entry has a stable id and `path`, exactly one owns `/`, and the gateway uses
 the longest matching path for both HTTP and WebSocket traffic. Backend paths keep priority over frontend routes.
 
+Use `projects` inside a profile when one local environment spans independent Maven or Gradle roots. Every named
+project has its own directory, application selection, optional application configuration, compile pipeline, source
+watcher, rolling replacement, and background tests. The projects share one Fluxzero runtime and gateway, while an
+application configuration can override its namespace. A failed compile or startup in one project leaves the last
+ready applications from all projects running. `projects` is additive configuration: existing single-project files
+continue to use `apps` and `applicationConfig` unchanged.
+
+See [`docs/developer/composed-environment-contract.md`](docs/developer/composed-environment-contract.md) for a full
+Dashboard/Auditlog example that combines named profiles, independent build projects, multiple frontends, and
+namespace overrides.
+
 Environments stop after 24 hours without source, browser, build, test, command, or attach activity by default,
 including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`, or
 `disabled`; the limit applies in attached and detached mode.

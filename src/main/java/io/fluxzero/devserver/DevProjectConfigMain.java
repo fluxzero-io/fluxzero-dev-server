@@ -52,10 +52,25 @@ public final class DevProjectConfigMain {
               worker-local:
                 application: worker
                 applicationName: worker
+                # namespace: local-workers
                 env:
                   FEATURE_MODE: local
                 secrets:
                   API_TOKEN: "op://Shared vault/Worker/local token"
+
+            # To compose independent Maven or Gradle roots, replace apps/applicationConfig with projects.
+            # Each project owns its compile, source watch, rolling app replacement, and test pipeline.
+            # projects:
+            #   application:
+            #     directory: .
+            #     apps: [app]
+            #   auditlog:
+            #     directory: ../fluxzero-auditlog/backend
+            #     apps: [auditlog-local]
+            #     applicationConfig:
+            #       auditlog-local:
+            #         application: auditlog
+            #         namespace: fluxzero_mp_prod-logs
 
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
             # command and url are mutually exclusive. {port} is the private frontend port allocated by Fluxzero.

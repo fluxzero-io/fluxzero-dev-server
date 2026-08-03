@@ -177,7 +177,7 @@ record GradleBuildMetadata(List<Module> modules) {
                 ? discovered.applicationName() : selection.applicationName();
         return new ApplicationBuild(applicationName, discovered.module(), discovered.mainClass(),
                                     discovered.classesDirectories(), discovered.runtimeClasspath(),
-                                    discovered.testApplication(), selection.id(), selection.env(),
+                                    discovered.testApplication(), selection.id(), selection.namespace(), selection.env(),
                                     selection.secrets());
     }
 

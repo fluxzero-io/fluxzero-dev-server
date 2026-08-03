@@ -45,6 +45,7 @@ import java.util.Objects;
  * @param idleTimeout             inactivity timeout for the environment; zero disables it
  * @param profile                 selected named development profile, or {@code null} for legacy configuration
  * @param frontends               routed frontend configurations, including the root frontend
+ * @param projects                independently built projects sharing this environment
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -67,7 +68,8 @@ public record DevServerConfig(
         Map<String, DevApplicationConfig> applicationConfig,
         Duration idleTimeout,
         String profile,
-        List<RoutedFrontend> frontends
+        List<RoutedFrontend> frontends,
+        List<DevBuildProject> projects
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -101,6 +103,8 @@ public record DevServerConfig(
             frontend = frontends.stream().filter(candidate -> "/".equals(candidate.path()))
                     .findFirst().orElseThrow().config();
         }
+        projects = normalizeProjects(projectDirectory, mainClass, applicationName, namespace,
+                                    fastCompilerEnabled, applications, applicationConfig, projects);
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -135,7 +139,36 @@ public record DevServerConfig(
     ) {
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
-             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, null, null);
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, null, null, null);
+    }
+
+    public DevServerConfig(
+            Path projectDirectory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            boolean watch,
+            boolean compileOnStart,
+            boolean testsEnabled,
+            Duration startupTimeout,
+            Duration gracefulShutdownTimeout,
+            Duration debounce,
+            FrontendConfig frontend,
+            List<String> appArgs,
+            boolean fastCompilerEnabled,
+            String environment,
+            List<String> applications,
+            int gatewayPort,
+            IdpMode idpMode,
+            Map<String, DevApplicationConfig> applicationConfig,
+            Duration idleTimeout,
+            String profile,
+            List<RoutedFrontend> frontends
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends,
+             null);
     }
 
     public DevServerConfig(
@@ -288,14 +321,35 @@ public record DevServerConfig(
         if (applications.isEmpty()) {
             applications = project.apps();
         }
+        if (!project.projects().isEmpty() && (parsed.value("main-class") != null
+                                              || parsed.value("application-name") != null
+                                              || parsed.value("namespace") != null
+                                              || !parsed.values("app").isEmpty()
+                                              || environment("FLUXZERO_MAIN_CLASS") != null
+                                              || environment("FLUXZERO_APPLICATION_NAME") != null
+                                              || environment("FLUXZERO_NAMESPACE") != null
+                                              || !environmentList("FLUXZERO_DEV_APPS").isEmpty())) {
+            throw new DevServerStartupException(
+                    "Composed projects require app selection, main class, application name and namespace "
+                    + "to be configured per project in " + DevProjectConfig.FILE);
+        }
+        boolean fastCompiler = parsed.flag("fast-compiler") || "fast".equals(parsed.value("compile-mode"))
+                               || Boolean.TRUE.equals(project.fastCompiler());
+        String mainClass = parsed.value("main-class", firstNonBlank(
+                environment("FLUXZERO_MAIN_CLASS"), project.mainClass()));
+        String applicationName = parsed.value("application-name", firstNonBlank(
+                environment("FLUXZERO_APPLICATION_NAME"), project.applicationName()));
+        String namespace = parsed.value("namespace", firstNonBlank(
+                environment("FLUXZERO_NAMESPACE"), project.namespace()));
+        List<DevBuildProject> projects = configuredProjects(
+                projectDirectory, project, mainClass, applicationName, namespace, fastCompiler, applications);
         int gatewayPort = noFrontend ? 0 : parsed.integer("port", parsed.integer("gateway-port", environmentInteger(
                 "FLUXZERO_DEV_PORT", project.port() == null ? 0 : project.port())));
         return new DevServerConfig(
                 projectDirectory,
-                parsed.value("main-class", firstNonBlank(environment("FLUXZERO_MAIN_CLASS"), project.mainClass())),
-                parsed.value("application-name", firstNonBlank(
-                        environment("FLUXZERO_APPLICATION_NAME"), project.applicationName())),
-                parsed.value("namespace", firstNonBlank(environment("FLUXZERO_NAMESPACE"), project.namespace())),
+                mainClass,
+                applicationName,
+                namespace,
                 !parsed.flag("no-watch"),
                 !parsed.flag("no-compile-on-start"),
                 !parsed.flag("no-tests"),
@@ -304,8 +358,7 @@ public record DevServerConfig(
                 parsed.durationMillis("debounce-ms", DEFAULT_DEBOUNCE),
                 frontend,
                 parsed.values("app-arg"),
-                parsed.flag("fast-compiler") || "fast".equals(parsed.value("compile-mode"))
-                || Boolean.TRUE.equals(project.fastCompiler()),
+                fastCompiler,
                 parsed.value("environment", firstNonBlank(
                         environment("FLUXZERO_ENVIRONMENT"), project.environment(), "local")),
                 applications,
@@ -317,21 +370,74 @@ public record DevServerConfig(
                 lifecycleDuration(parsed.value("idle-timeout", project.lifecycle().idleTimeout()),
                                   DEFAULT_IDLE_TIMEOUT, "idleTimeout"),
                 projectSelection.profile(),
-                frontends);
+                frontends,
+                projects);
     }
 
     List<ApplicationSelection> applicationSelections() {
         return applications.stream().map(id -> {
             DevApplicationConfig named = applicationConfig.get(id);
             return named == null
-                    ? new ApplicationSelection(id, id, null, Map.of(), Map.of())
+                    ? new ApplicationSelection(id, id, null, null, Map.of(), Map.of())
                     : new ApplicationSelection(id, named.application(), named.applicationName(),
-                                               named.env(), named.secrets());
+                                               named.namespace(), named.env(), named.secrets());
         }).toList();
     }
 
-    record ApplicationSelection(String id, String selector, String applicationName,
+    record ApplicationSelection(String id, String selector, String applicationName, String namespace,
                                 Map<String, String> env, Map<String, String> secrets) {
+    }
+
+    DevServerConfig forProject(DevBuildProject project) {
+        boolean environmentRoot = project.directory().equals(projectDirectory);
+        return new DevServerConfig(
+                project.directory(), project.mainClass(), project.applicationName(), project.namespace(),
+                watch, compileOnStart, testsEnabled, startupTimeout, gracefulShutdownTimeout, debounce,
+                environmentRoot ? frontend : FrontendConfig.none(), appArgs, project.fastCompilerEnabled(),
+                environment, project.applications(), 0, idpMode, project.applicationConfig(), idleTimeout, profile,
+                environmentRoot ? frontends : List.of(), List.of(project));
+    }
+
+    private static List<DevBuildProject> configuredProjects(
+            Path environmentRoot, DevProjectConfig config, String mainClass, String applicationName,
+            String namespace, boolean fastCompiler, List<String> applications
+    ) {
+        if (config.projects().isEmpty()) {
+            return List.of(new DevBuildProject(
+                    "project", environmentRoot, mainClass, applicationName, namespace, fastCompiler,
+                    applications, config.applicationConfig()));
+        }
+        return config.projects().entrySet().stream().map(entry -> {
+            DevProjectConfig.Project project = entry.getValue();
+            Path configured = Path.of(project.directory());
+            Path directory = configured.isAbsolute() ? configured : environmentRoot.resolve(configured);
+            return new DevBuildProject(
+                    entry.getKey(), directory, project.mainClass(), project.applicationName(), project.namespace(),
+                    fastCompiler || Boolean.TRUE.equals(project.fastCompiler()), project.apps(),
+                    project.applicationConfig());
+        }).toList();
+    }
+
+    private static List<DevBuildProject> normalizeProjects(
+            Path projectDirectory, String mainClass, String applicationName, String namespace,
+            boolean fastCompiler, List<String> applications, Map<String, DevApplicationConfig> applicationConfig,
+            List<DevBuildProject> configured
+    ) {
+        List<DevBuildProject> result = configured == null || configured.isEmpty()
+                ? List.of(new DevBuildProject("project", projectDirectory, mainClass, applicationName, namespace,
+                                              fastCompiler, applications, applicationConfig))
+                : List.copyOf(configured);
+        Map<String, DevBuildProject> ids = new java.util.LinkedHashMap<>();
+        Map<Path, DevBuildProject> directories = new java.util.LinkedHashMap<>();
+        result.forEach(project -> {
+            if (ids.putIfAbsent(project.id(), project) != null) {
+                throw new IllegalArgumentException("duplicate project id: " + project.id());
+            }
+            if (directories.putIfAbsent(project.directory(), project) != null) {
+                throw new IllegalArgumentException("duplicate project directory: " + project.directory());
+            }
+        });
+        return result;
     }
 
     private static List<RoutedFrontend> routedFrontends(

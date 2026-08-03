@@ -101,6 +101,36 @@ class SourceWatcherTest {
     }
 
     @Test
+    void detectsManagedFrontendInputsOutsideTheBuildProject(@TempDir Path environment) throws Exception {
+        Path project = environment.resolve("backend");
+        Path frontend = environment.resolve("auditlog-frontend");
+        Path source = frontend.resolve("src/app/app.component.ts");
+        Files.createDirectories(project);
+        Files.createDirectories(source.getParent());
+        Files.writeString(source, "before");
+        List<Set<Path>> batches = new CopyOnWriteArrayList<>();
+        var scheduler = Executors.newSingleThreadScheduledExecutor();
+        FrontendConfig frontendConfig = FrontendConfig.command("npm run dev")
+                .withLaunchSetup(frontend.toString(), null);
+        DevServerConfig config = new DevServerConfig(
+                project, null, "test", null, true, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                Duration.ofMillis(50), frontendConfig, List.of(), false, "local", List.of(), 0,
+                IdpMode.MANAGED, java.util.Map.of(), DevServerConfig.DEFAULT_IDLE_TIMEOUT, null,
+                List.of(new RoutedFrontend("auditlog", "/", frontendConfig)));
+
+        try (SourceWatcher watcher = new SourceWatcher(config, scheduler, batches::add)) {
+            watcher.start();
+            Files.writeString(source, "after");
+            assertTrue(await(() -> batches.stream().flatMap(Set::stream)
+                    .anyMatch(source.toAbsolutePath().normalize()::equals)));
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
     void watchesOnlyMavenProjectInputs(@TempDir Path project) throws Exception {
         Path source = project.resolve("app/src/main/java/com/acme/App.java");
         Path testResource = project.resolve("app/src/test/resources/dev/seed.json");
