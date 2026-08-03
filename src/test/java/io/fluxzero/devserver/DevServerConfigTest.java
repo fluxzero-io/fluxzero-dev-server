@@ -237,6 +237,7 @@ class DevServerConfigTest {
                     path: /marketplace/logs/1/
                     directory: ../fluxzero-auditlog/frontend
                     command: "npm run start-dashboard -- --port {port}"
+                    backendPaths: [/logs, /observer]
                 """);
 
         DevServerConfig config = DevServerConfig.fromArgs(
@@ -246,7 +247,8 @@ class DevServerConfigTest {
         assertEquals(List.of("/", "/marketplace/logs/1"),
                      config.frontends().stream().map(RoutedFrontend::path).toList());
         assertEquals("npm run dashboard -- --port {port}", config.frontend().command());
-        assertEquals(List.of("/api", "/webhooks"), config.frontend().backendPaths());
+        assertEquals(List.of("/api", "/webhooks", "/logs", "/observer"),
+                     config.frontend().backendPaths());
 
         DevServerConfig overridden = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(), "--frontend-url", "http://localhost:5173"

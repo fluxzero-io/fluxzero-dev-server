@@ -164,6 +164,19 @@ public final class DevGateway implements AutoCloseable {
             ProxyHandler.Reverse reverseProxy = new ProxyHandler.Reverse(
                     request -> target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths)) {
                 @Override
+                protected org.eclipse.jetty.client.Request newProxyToServerRequest(Request request, HttpURI uri) {
+                    org.eclipse.jetty.client.Request proxyRequest = super.newProxyToServerRequest(request, uri);
+                    if (backendRequest(request, configuredBackendPaths)) {
+                        String namespace = DevNamespaceHeader.routingValue(
+                                request.getHeaders().get(DevNamespaceHeader.NAME));
+                        if (namespace != null) {
+                            proxyRequest.headers(headers -> headers.put(DevNamespaceHeader.NAME, namespace));
+                        }
+                    }
+                    return proxyRequest;
+                }
+
+                @Override
                 protected HttpField filterServerToProxyResponseField(HttpField field) {
                     HttpField filtered = super.filterServerToProxyResponseField(field);
                     if (filtered == null || filtered.getHeader() != HttpHeader.LOCATION) {
@@ -231,10 +244,12 @@ public final class DevGateway implements AutoCloseable {
                     String upstreamOrigin = backend
                             ? request.getHeaders().get(HttpHeader.ORIGIN)
                             : origin(frontend.target());
+                    String namespace = backend ? DevNamespaceHeader.routingValue(
+                            request.getHeaders().get(DevNamespaceHeader.NAME)) : null;
                     return new GatewayWebSocketBridge(target, protocols,
                                                       request.getHeaders().get(HttpHeader.COOKIE),
                                                       request.getHeaders().get(HttpHeader.AUTHORIZATION),
-                                                      upstreamOrigin);
+                                                      namespace, upstreamOrigin);
                 });
             });
             websocketHandler.setHandler(httpHandler);
@@ -434,17 +449,19 @@ public final class DevGateway implements AutoCloseable {
         private final List<String> protocols;
         private final String cookie;
         private final String authorization;
+        private final String namespace;
         private final String origin;
         private final CompletableFuture<WebSocket> upstream = new CompletableFuture<>();
         private final AtomicBoolean closed = new AtomicBoolean();
         private volatile Session downstream;
 
         private GatewayWebSocketBridge(URI target, List<String> protocols, String cookie, String authorization,
-                                       String origin) {
+                                       String namespace, String origin) {
             this.target = websocketUri(target);
             this.protocols = protocols;
             this.cookie = cookie;
             this.authorization = authorization;
+            this.namespace = namespace;
             this.origin = origin;
         }
 
@@ -461,6 +478,9 @@ public final class DevGateway implements AutoCloseable {
             }
             if (authorization != null) {
                 builder.header("Authorization", authorization);
+            }
+            if (namespace != null) {
+                builder.header(DevNamespaceHeader.NAME, namespace);
             }
             if (origin != null) {
                 builder.header("Origin", origin);
