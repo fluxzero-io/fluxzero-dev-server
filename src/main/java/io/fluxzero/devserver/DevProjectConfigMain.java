@@ -21,14 +21,31 @@ public final class DevProjectConfigMain {
             # .fluxzero/dev.yaml
             version: 1
 
+            # For multiple complete development configurations, replace the legacy fields below with profiles.
+            # Select one with `fz dev --profile worker` or configure defaultProfile.
+            # defaultProfile: app
+            # profiles:
+            #   app:
+            #     environment: local
+            #     apps: [app]
+            #   worker:
+            #     environment: local
+            #     apps: [worker-local]
+            #     frontend:
+            #       command: "npm run worker -- --port {frontendPort}"
+
             # Shared application defaults. All fields except version are optional.
             environment: local
             # mainClass: com.example.Application
             # applicationName: example
             # namespace: local
-            # port: 4200
+            # port: 4200 # public URL for the complete dev environment; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
+
+            # Additional public gateway paths routed unchanged to Fluxzero. /api is always included.
+            # backendPaths:
+            #   - /webhooks
 
             # Application/module selectors to start. Omit apps to start all discovered applications.
             apps:
@@ -39,20 +56,71 @@ public final class DevProjectConfigMain {
               worker-local:
                 application: worker
                 applicationName: worker
+                # namespace: local-workers
                 env:
                   FEATURE_MODE: local
                 secrets:
                   API_TOKEN: "op://Shared vault/Worker/local token"
 
+            # To compose independent Maven or Gradle roots, replace apps/applicationConfig with projects.
+            # Each project owns its compile, source watch, rolling app replacement, and test pipeline.
+            # projects:
+            #   application:
+            #     directory: .
+            #     apps: [app]
+            #   auditlog:
+            #     directory: ../fluxzero-auditlog/backend
+            #     apps: [auditlog-local]
+            #     applicationConfig:
+            #       auditlog-local:
+            #         application: auditlog
+            #         namespace: fluxzero_mp_prod-logs
+
+            # Support services start before applications and frontends. Omit command for an external service.
+            # Named ports may be fixed numbers or dynamic. Service values can be used in app env and frontend fields.
+            # services:
+            #   victoriaLogs:
+            #     directory: local/victoria-logs
+            #     command: docker compose up --remove-orphans
+            #     stopCommand: docker compose down --remove-orphans
+            #     ports:
+            #       http: dynamic
+            #     url: "http://127.0.0.1:{servicePort.http}"
+            #     env:
+            #       COMPOSE_PROJECT_NAME: "my-app-{session.id}"
+            #     readiness:
+            #       http: "{url}/health"
+            #       timeout: 3m
+            #   sharedMail:
+            #     url: http://127.0.0.1:8025
+            #
+            # Use resolved service values in an application flavor:
+            # applicationConfig:
+            #   app-with-logs:
+            #     application: app
+            #     env:
+            #       LOGS_URL: "{services.victoriaLogs.url}"
+
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
-            # command and url are mutually exclusive. {port} is the private frontend port allocated by Fluxzero.
+            # directory is the command working directory. {frontendPort} is its private allocated port.
+            # The frontend remains publicly available through port, not frontendPort.
             frontend:
               directory: frontend
               setupCommand: "npm install --prefer-offline --no-audit --no-fund"
-              command: "npm run dev -- --host 127.0.0.1 --port {port}"
+              command: "npm run dev -- --host 127.0.0.1 --port {frontendPort}"
               # url: "http://127.0.0.1:5173"
-              backendPaths:
-                - /api
+
+            # To serve several frontends through one public gateway, replace frontend with frontends.
+            # path is the public URL mount; omit it on the root frontend. More specific paths use longest-prefix
+            # routing for HTTP and WebSockets. directory remains the local command working directory.
+            # frontends:
+            #   application:
+            #     directory: frontend
+            #     command: "npm run dev -- --host 127.0.0.1 --port {frontendPort}"
+            #   auditlog:
+            #     path: /marketplace/logs/1
+            #     directory: ../fluxzero-auditlog/frontend
+            #     command: "npm run start-dashboard -- --host 127.0.0.1 --port {frontendPort}"
 
             # Stop forgotten environments after inactivity. Use disabled to keep one running indefinitely.
             lifecycle:

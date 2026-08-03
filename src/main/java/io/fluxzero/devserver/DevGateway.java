@@ -38,9 +38,12 @@ import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
@@ -124,15 +127,26 @@ public final class DevGateway implements AutoCloseable {
 
     static DevGateway start(String fluxzeroProxyUrl, String frontendUrl, BooleanSupplier frontendReady,
                             BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity) {
+        return start(fluxzeroProxyUrl,
+                     List.of(new FrontendRoute("frontend", "/", frontendUrl, frontendReady)),
+                     backendReady, backendPaths, port, activity);
+    }
+
+    static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
+                            BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity) {
         Objects.requireNonNull(fluxzeroProxyUrl, "fluxzeroProxyUrl must not be null");
-        Objects.requireNonNull(frontendUrl, "frontendUrl must not be null");
-        Objects.requireNonNull(frontendReady, "frontendReady must not be null");
+        frontends = List.copyOf(Objects.requireNonNull(frontends, "frontends must not be null"));
+        if (frontends.isEmpty()) {
+            throw new IllegalArgumentException("frontends must not be empty");
+        }
         Objects.requireNonNull(backendReady, "backendReady must not be null");
         Objects.requireNonNull(activity, "activity must not be null");
         backendPaths = List.copyOf(Objects.requireNonNull(backendPaths, "backendPaths must not be null"));
         try {
             URI fluxzeroTarget = URI.create(withoutTrailingSlash(fluxzeroProxyUrl));
-            URI frontendTarget = URI.create(withoutTrailingSlash(frontendUrl));
+            List<FrontendRoute> configuredFrontends = frontends.stream()
+                    .sorted(Comparator.comparingInt((FrontendRoute route) -> route.path().length()).reversed())
+                    .toList();
             List<String> configuredBackendPaths = backendPaths;
             Server server = new Server();
             server.setStopAtShutdown(false);
@@ -148,7 +162,20 @@ public final class DevGateway implements AutoCloseable {
             server.addConnector(connector);
 
             ProxyHandler.Reverse reverseProxy = new ProxyHandler.Reverse(
-                    request -> target(request, fluxzeroTarget, frontendTarget, configuredBackendPaths)) {
+                    request -> target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths)) {
+                @Override
+                protected org.eclipse.jetty.client.Request newProxyToServerRequest(Request request, HttpURI uri) {
+                    org.eclipse.jetty.client.Request proxyRequest = super.newProxyToServerRequest(request, uri);
+                    if (backendRequest(request, configuredBackendPaths)) {
+                        String namespace = DevNamespaceHeader.routingValue(
+                                request.getHeaders().get(DevNamespaceHeader.NAME));
+                        if (namespace != null) {
+                            proxyRequest.headers(headers -> headers.put(DevNamespaceHeader.NAME, namespace));
+                        }
+                    }
+                    return proxyRequest;
+                }
+
                 @Override
                 protected HttpField filterServerToProxyResponseField(HttpField field) {
                     HttpField filtered = super.filterServerToProxyResponseField(field);
@@ -157,10 +184,11 @@ public final class DevGateway implements AutoCloseable {
                     }
                     return new HttpField(HttpHeader.LOCATION,
                                          publicLocation(filtered.getValue(), connector.getLocalPort(),
-                                                        fluxzeroTarget, frontendTarget, configuredBackendPaths));
+                                                        fluxzeroTarget, configuredFrontends,
+                                                        configuredBackendPaths));
                 }
             };
-            AtomicBoolean frontendWasReady = new AtomicBoolean();
+            Map<String, AtomicBoolean> frontendsWereReady = new ConcurrentHashMap<>();
             Handler httpHandler = new Handler.Wrapper(reverseProxy) {
                 @Override
                 public boolean handle(Request request, Response response, Callback callback) throws Exception {
@@ -173,7 +201,10 @@ public final class DevGateway implements AutoCloseable {
                     if (route != Route.FRONTEND) {
                         return super.handle(request, response, callback);
                     }
-                    if (frontendReady.getAsBoolean()) {
+                    FrontendRoute frontend = frontendRoute(request, configuredFrontends);
+                    AtomicBoolean frontendWasReady = frontendsWereReady.computeIfAbsent(
+                            frontend.id(), ignored -> new AtomicBoolean());
+                    if (frontend.ready().getAsBoolean()) {
                         frontendWasReady.set(true);
                         return super.handle(request, response, callback);
                     }
@@ -181,7 +212,7 @@ public final class DevGateway implements AutoCloseable {
                         unavailable(response, callback, FRONTEND_UNAVAILABLE);
                         return true;
                     }
-                    waitForFrontend(server, frontendReady, frontendWasReady, reverseProxy,
+                    waitForFrontend(server, frontend.ready(), frontendWasReady, reverseProxy,
                                     request, response, callback);
                     return true;
                 }
@@ -200,7 +231,8 @@ public final class DevGateway implements AutoCloseable {
                         return null;
                     }
                     boolean backend = route != Route.FRONTEND;
-                    if (!backend && !frontendReady.getAsBoolean()) {
+                    FrontendRoute frontend = backend ? null : frontendRoute(request, configuredFrontends);
+                    if (!backend && !frontend.ready().getAsBoolean()) {
                         unavailable(response, callback, FRONTEND_UNAVAILABLE);
                         return null;
                     }
@@ -208,14 +240,16 @@ public final class DevGateway implements AutoCloseable {
                     if (!protocols.isEmpty()) {
                         response.setAcceptedSubProtocol(protocols.getFirst());
                     }
-                    URI target = target(request, fluxzeroTarget, frontendTarget, configuredBackendPaths).toURI();
+                    URI target = target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths).toURI();
                     String upstreamOrigin = backend
                             ? request.getHeaders().get(HttpHeader.ORIGIN)
-                            : origin(frontendTarget);
+                            : origin(frontend.target());
+                    String namespace = backend ? DevNamespaceHeader.routingValue(
+                            request.getHeaders().get(DevNamespaceHeader.NAME)) : null;
                     return new GatewayWebSocketBridge(target, protocols,
                                                       request.getHeaders().get(HttpHeader.COOKIE),
                                                       request.getHeaders().get(HttpHeader.AUTHORIZATION),
-                                                      upstreamOrigin);
+                                                      namespace, upstreamOrigin);
                 });
             });
             websocketHandler.setHandler(httpHandler);
@@ -262,15 +296,22 @@ public final class DevGateway implements AutoCloseable {
         }
     }
 
-    private static HttpURI target(Request request, URI fluxzeroTarget, URI frontendTarget,
+    private static HttpURI target(Request request, URI fluxzeroTarget, List<FrontendRoute> frontends,
                                   List<String> backendPaths) {
         Route route = route(request, backendPaths);
         boolean backend = route != Route.FRONTEND;
+        URI frontendTarget = backend ? null : frontendRoute(request, frontends).target();
         String path = request.getHttpURI().getPath();
         String routedPath = route == Route.PREFIXED_BACKEND ? stripBackendPrefix(path) : path;
         String query = request.getHttpURI().getQuery();
         String pathQuery = query == null ? routedPath : routedPath + "?" + query;
         return HttpURI.build((backend ? fluxzeroTarget : frontendTarget).toString() + pathQuery);
+    }
+
+    private static FrontendRoute frontendRoute(Request request, List<FrontendRoute> frontends) {
+        String path = request.getHttpURI().getPath();
+        return frontends.stream().filter(candidate -> matchesPath(path, candidate.path()))
+                .findFirst().orElseThrow(() -> new IllegalStateException("No root frontend route configured"));
     }
 
     private static boolean backendRequest(Request request, List<String> backendPaths) {
@@ -337,7 +378,8 @@ public final class DevGateway implements AutoCloseable {
         return target.getScheme() + "://" + target.getAuthority();
     }
 
-    private static String publicLocation(String location, int publicPort, URI fluxzeroTarget, URI frontendTarget,
+    private static String publicLocation(String location, int publicPort, URI fluxzeroTarget,
+                                         List<FrontendRoute> frontends,
                                          List<String> backendPaths) {
         String publicUrl = "http://localhost:" + publicPort;
         if (matchesTarget(location, fluxzeroTarget)) {
@@ -345,10 +387,38 @@ public final class DevGateway implements AutoCloseable {
             boolean passthrough = backendPaths.stream().anyMatch(path -> matchesPath(targetPath, path));
             return publicUrl + (passthrough ? "" : BACKEND_PREFIX) + targetPath;
         }
-        if (matchesTarget(location, frontendTarget)) {
-            return publicUrl + location.substring(frontendTarget.toString().length());
+        for (FrontendRoute frontend : frontends) {
+            if (matchesTarget(location, frontend.target())) {
+                return publicUrl + location.substring(frontend.target().toString().length());
+            }
         }
         return location;
+    }
+
+    record FrontendRoute(String id, String path, URI target, BooleanSupplier ready) {
+        FrontendRoute(String id, String path, String url, BooleanSupplier ready) {
+            this(id, normalizeRoutePath(path), URI.create(withoutTrailingSlash(url)), ready);
+        }
+
+        FrontendRoute {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("frontend route id must not be blank");
+            }
+            path = normalizeRoutePath(path);
+            target = Objects.requireNonNull(target, "frontend target must not be null");
+            ready = Objects.requireNonNull(ready, "frontend readiness must not be null");
+        }
+
+        private static String normalizeRoutePath(String value) {
+            String result = value == null || value.isBlank() ? "/" : value.strip();
+            if (!result.startsWith("/")) {
+                result = "/" + result;
+            }
+            while (result.length() > 1 && result.endsWith("/")) {
+                result = result.substring(0, result.length() - 1);
+            }
+            return result;
+        }
     }
 
     private static boolean matchesTarget(String location, URI target) {
@@ -364,7 +434,7 @@ public final class DevGateway implements AutoCloseable {
             end = Math.min(end, fragment);
         }
         String path = requestedPath.substring(0, end);
-        return configuredPath.equals(path) || path.startsWith(configuredPath + "/");
+        return "/".equals(configuredPath) || configuredPath.equals(path) || path.startsWith(configuredPath + "/");
     }
 
     private enum Route {
@@ -379,17 +449,19 @@ public final class DevGateway implements AutoCloseable {
         private final List<String> protocols;
         private final String cookie;
         private final String authorization;
+        private final String namespace;
         private final String origin;
         private final CompletableFuture<WebSocket> upstream = new CompletableFuture<>();
         private final AtomicBoolean closed = new AtomicBoolean();
         private volatile Session downstream;
 
         private GatewayWebSocketBridge(URI target, List<String> protocols, String cookie, String authorization,
-                                       String origin) {
+                                       String namespace, String origin) {
             this.target = websocketUri(target);
             this.protocols = protocols;
             this.cookie = cookie;
             this.authorization = authorization;
+            this.namespace = namespace;
             this.origin = origin;
         }
 
@@ -406,6 +478,9 @@ public final class DevGateway implements AutoCloseable {
             }
             if (authorization != null) {
                 builder.header("Authorization", authorization);
+            }
+            if (namespace != null) {
+                builder.header(DevNamespaceHeader.NAME, namespace);
             }
             if (origin != null) {
                 builder.header("Origin", origin);

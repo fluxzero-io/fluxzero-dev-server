@@ -43,6 +43,15 @@ final class DevSessionStore {
         this.directory = projectDirectory.resolve(DEV_DIRECTORY);
     }
 
+    private DevSessionStore(Path directory, boolean scoped) {
+        this.directory = directory;
+    }
+
+    DevSessionStore scoped(String projectId) {
+        String safeId = projectId.replaceAll("[^A-Za-z0-9_.-]", "-");
+        return new DevSessionStore(directory.resolve("projects").resolve(safeId), true);
+    }
+
     Path directory() {
         return directory;
     }

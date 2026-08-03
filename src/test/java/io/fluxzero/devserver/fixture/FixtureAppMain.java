@@ -34,6 +34,7 @@ public final class FixtureAppMain {
         System.out.println("auth.issuer=" + System.getProperty("fluxzero.auth.oidc.issuer"));
         System.out.println("auth.method=" + System.getProperty("fluxzero.auth.oidc.token-endpoint-auth-method"));
         System.out.println("feature.mode=" + System.getenv("FEATURE_MODE"));
+        System.out.println("service.url=" + System.getenv("SERVICE_URL"));
         System.out.println("encryption.present=" + (System.getenv("ENCRYPTION_KEY") != null));
         System.out.println("args=" + String.join(" ", args));
         System.err.println("fixture-stderr=available");

@@ -31,6 +31,7 @@ final class AppProcessRunner {
     private final String sessionId;
     private final AppProcessOutput output;
     private final OnePasswordEnvironment onePassword;
+    private final DevPlaceholderResolver placeholderResolver;
 
     AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String sessionId,
                      Consumer<String> output) {
@@ -38,23 +39,33 @@ final class AppProcessRunner {
              (applicationName, instanceId, stream, line) -> output.accept("[app] "
                                                                          + ("stderr".equals(stream)
                                                                                  ? "[stderr] " : "") + line),
-             new OnePasswordEnvironment(config.projectDirectory()));
+             new OnePasswordEnvironment(config.projectDirectory()),
+             DevPlaceholderResolver.services(sessionId, Map.of()));
     }
 
     AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String sessionId,
                      AppProcessOutput output) {
         this(config, runtimeBaseUrl, proxyUrl, proxyUrl, sessionId, output,
-             new OnePasswordEnvironment(config.projectDirectory()));
+             new OnePasswordEnvironment(config.projectDirectory()),
+             DevPlaceholderResolver.services(sessionId, Map.of()));
     }
 
     AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String internalProxyUrl,
                      String sessionId, AppProcessOutput output) {
         this(config, runtimeBaseUrl, proxyUrl, internalProxyUrl, sessionId, output,
-             new OnePasswordEnvironment(config.projectDirectory()));
+             new OnePasswordEnvironment(config.projectDirectory()),
+             DevPlaceholderResolver.services(sessionId, Map.of()));
     }
 
     AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String internalProxyUrl,
                      String sessionId, AppProcessOutput output, OnePasswordEnvironment onePassword) {
+        this(config, runtimeBaseUrl, proxyUrl, internalProxyUrl, sessionId, output, onePassword,
+             DevPlaceholderResolver.services(sessionId, Map.of()));
+    }
+
+    AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String internalProxyUrl,
+                     String sessionId, AppProcessOutput output, OnePasswordEnvironment onePassword,
+                     DevPlaceholderResolver placeholderResolver) {
         this.config = config;
         this.runtimeBaseUrl = runtimeBaseUrl;
         this.proxyUrl = proxyUrl;
@@ -62,6 +73,7 @@ final class AppProcessRunner {
         this.sessionId = sessionId;
         this.output = output;
         this.onePassword = onePassword;
+        this.placeholderResolver = placeholderResolver;
     }
 
     AppInstance start(BuildSnapshot snapshot) throws IOException {
@@ -91,6 +103,7 @@ final class AppProcessRunner {
         command.addAll(config.appArgs());
 
         String clientId = clientId(snapshot, application);
+        Map<String, String> resolvedApplicationEnvironment = placeholderResolver.resolve(application.environment());
         output.accept(application.applicationName(), clientId, "lifecycle",
                       "configuration " + application.launchId() + ", module " + application.module()
                       + ", main class " + mainClass
@@ -98,7 +111,7 @@ final class AppProcessRunner {
                               : ", environment " + application.environment().keySet())
                       + (application.secretReferences().isEmpty() ? ""
                               : ", secrets " + application.secretReferences().keySet() + " via 1Password"));
-        Map<String, String> environment = new HashMap<>(application.environment());
+        Map<String, String> environment = new HashMap<>(resolvedApplicationEnvironment);
         environment.put("ENVIRONMENT", config.environment());
         environment.put("FLUXZERO_BASE_URL", runtimeBaseUrl);
         environment.put("FLUX_BASE_URL", runtimeBaseUrl);
@@ -110,8 +123,9 @@ final class AppProcessRunner {
         environment.put("FLUXZERO_DEV_SESSION_ID", sessionId);
         environment.put("FLUXZERO_TASK_ID", clientId);
         environment.put("FLUX_TASK_ID", clientId);
-        if (config.namespace() != null) {
-            environment.put("FLUXZERO_NAMESPACE", config.namespace());
+        String namespace = application.namespace() == null ? config.namespace() : application.namespace();
+        if (namespace != null) {
+            environment.put("FLUXZERO_NAMESPACE", namespace);
         }
         OnePasswordEnvironment.PreparedCommand prepared = null;
         try {

@@ -17,6 +17,9 @@ package io.fluxzero.devserver;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -39,6 +42,7 @@ public record DevSession(
         ServiceStatus tests,
         ServiceStatus commands,
         ServiceStatus frontend,
+        Map<String, ServiceStatus> services,
         ServiceStatus mcp,
         long startedAt,
         long heartbeatAt,
@@ -59,7 +63,21 @@ public record DevSession(
         tests = defaultStatus(tests, "tests");
         commands = defaultStatus(commands, "commands");
         frontend = defaultStatus(frontend, "frontend");
+        services = services == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(services));
         mcp = defaultStatus(mcp, "mcp");
+    }
+
+    /** Backwards-compatible constructor for sessions without support-service status. */
+    public DevSession(
+            String sessionId, long pid, String devServerVersion, String projectDirectory,
+            Observability observability, String status, ServiceStatus runtime, ServiceStatus proxy,
+            ServiceStatus gateway, ServiceStatus idp, ServiceStatus app, ServiceStatus reload,
+            ServiceStatus compile, ServiceStatus tests, ServiceStatus commands, ServiceStatus frontend,
+            ServiceStatus mcp, long startedAt, long heartbeatAt, long updatedAt
+    ) {
+        this(sessionId, pid, devServerVersion, projectDirectory, observability, status, runtime, proxy, gateway, idp,
+             app, reload, compile, tests, commands, frontend, Map.of(), mcp, startedAt, heartbeatAt, updatedAt);
     }
 
     static DevSession empty(DevServerConfig config) {
@@ -78,6 +96,7 @@ public record DevSession(
                               ServiceStatus.stopped("tests"),
                               ServiceStatus.stopped("commands"),
                               ServiceStatus.stopped("frontend"),
+                              Map.of(),
                               ServiceStatus.stopped("mcp"),
                               currentProcessStartedAt(now), now, now);
     }
@@ -88,7 +107,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withStoppedServices(String detail) {
@@ -104,6 +123,7 @@ public record DevSession(
                               tests.asStopped(detail),
                               commands.asStopped(detail),
                               frontend.asStopped(detail),
+                              stoppedServices(services, detail),
                               mcp.asStopped(detail),
                               startedAt, heartbeatAt, now);
     }
@@ -114,7 +134,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, now, now);
+                              commands, frontend, services, mcp, startedAt, now, now);
     }
 
     DevSession withRuntime(ServiceStatus runtime) {
@@ -123,7 +143,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withProxy(ServiceStatus proxy) {
@@ -132,7 +152,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withGateway(ServiceStatus gateway) {
@@ -140,7 +160,7 @@ public record DevSession(
         return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
                               runtime, proxy, gateway, idp,
                               app, reload,
-                              compile, tests, commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              compile, tests, commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withIdp(ServiceStatus idp) {
@@ -149,7 +169,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withApp(ServiceStatus app) {
@@ -158,7 +178,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withReload(ServiceStatus reload) {
@@ -167,7 +187,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withCompile(ServiceStatus compile) {
@@ -176,7 +196,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withTests(ServiceStatus tests) {
@@ -185,7 +205,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withCommands(ServiceStatus commands) {
@@ -194,7 +214,7 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withFrontend(ServiceStatus frontend) {
@@ -203,18 +223,34 @@ public record DevSession(
                               runtime, proxy, gateway, idp,
                               app, reload,
                               compile, tests,
-                              commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              commands, frontend, services, mcp, startedAt, heartbeatAt, now);
+    }
+
+    DevSession withServices(Map<String, ServiceStatus> services) {
+        long now = Instant.now().toEpochMilli();
+        return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
+                              runtime, proxy, gateway, idp, app, reload, compile, tests, commands, frontend,
+                              services, mcp, startedAt, heartbeatAt, now);
     }
 
     DevSession withMcp(ServiceStatus mcp) {
         long now = Instant.now().toEpochMilli();
         return new DevSession(sessionId, pid, devServerVersion, projectDirectory, observability, status,
                               runtime, proxy, gateway, idp,
-                              app, reload, compile, tests, commands, frontend, mcp, startedAt, heartbeatAt, now);
+                              app, reload, compile, tests, commands, frontend, services, mcp,
+                              startedAt, heartbeatAt, now);
     }
 
     private static ServiceStatus defaultStatus(ServiceStatus status, String name) {
         return status == null ? ServiceStatus.stopped(name) : status;
+    }
+
+    private static Map<String, ServiceStatus> stoppedServices(
+            Map<String, ServiceStatus> services, String detail
+    ) {
+        Map<String, ServiceStatus> result = new LinkedHashMap<>();
+        services.forEach((id, status) -> result.put(id, status.asStopped(detail)));
+        return result;
     }
 
     private static long currentPid() {

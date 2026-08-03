@@ -26,6 +26,7 @@ record ApplicationBuild(
         List<Path> runtimeClasspath,
         boolean testApplication,
         String launchId,
+        String namespace,
         Map<String, String> environment,
         Map<String, String> secretReferences
 ) {
@@ -40,7 +41,14 @@ record ApplicationBuild(
     ApplicationBuild(String applicationName, String module, String mainClass, List<Path> classesDirectories,
                      List<Path> runtimeClasspath, boolean testApplication) {
         this(applicationName, module, mainClass, classesDirectories, runtimeClasspath, testApplication,
-             applicationName, Map.of(), Map.of());
+             applicationName, null, Map.of(), Map.of());
+    }
+
+    ApplicationBuild(String applicationName, String module, String mainClass, List<Path> classesDirectories,
+                     List<Path> runtimeClasspath, boolean testApplication, String launchId,
+                     Map<String, String> environment, Map<String, String> secretReferences) {
+        this(applicationName, module, mainClass, classesDirectories, runtimeClasspath, testApplication,
+             launchId, null, environment, secretReferences);
     }
 
     ApplicationBuild(String applicationName, String module, String mainClass, List<Path> classesDirectories,
@@ -50,13 +58,20 @@ record ApplicationBuild(
 
     ApplicationBuild withLocations(List<Path> classes, List<Path> classpath) {
         return new ApplicationBuild(applicationName, module, mainClass, classes, classpath, testApplication,
-                                    launchId, environment, secretReferences);
+                                    launchId, namespace, environment, secretReferences);
+    }
+
+    ApplicationBuild scopedTo(String projectId) {
+        return new ApplicationBuild(applicationName, module, mainClass, classesDirectories, runtimeClasspath,
+                                    testApplication, projectId + "/" + launchId, namespace,
+                                    environment, secretReferences);
     }
 
     @Override
     public String toString() {
         return "ApplicationBuild[launchId=" + launchId + ", applicationName=" + applicationName
                + ", module=" + module + ", mainClass=" + mainClass + ", testApplication=" + testApplication
+               + ", namespace=" + namespace
                + ", env=" + environment.keySet() + ", secrets=" + secretReferences.keySet() + "]";
     }
 

@@ -137,11 +137,41 @@ Print the configuration reference for the current dev-server version with:
 fz dev config
 ```
 
+Projects with several complete local setups can define `profiles`, select a `defaultProfile`, and override it with
+`fz dev --profile <name>` or `FLUXZERO_DEV_PROFILE`. Existing top-level configuration remains supported. Profile
+configuration is deliberately complete rather than inherited, so selecting another profile cannot accidentally retain
+applications, secrets, commands, or frontend settings from the default profile.
+
 The output is valid YAML and documents application selection, named application flavors, managed or external
-frontends, backend pass-through paths, 1Password secret references, ordered startup commands, and lifecycle
-timeouts. Environments stop after 24 hours without source, browser, build, test, command, or attach activity by
-default, including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`,
-or `disabled`; the limit applies in attached and detached mode.
+support services and frontends, backend pass-through paths, 1Password secret references, ordered startup commands,
+and lifecycle timeouts. `port` is the one public port for the complete dev environment. A managed frontend receives
+a separate private `{frontendPort}` in its command. Existing `frontend` configuration continues to serve one UI at
+`/`. Use the additive `frontends` map when one environment needs several UIs: each entry has a stable id and optional public mount `path`,
+the root frontend omits `path`, and the gateway uses the longest matching path for HTTP and WebSocket traffic.
+Profile-level `backendPaths` add pass-through routes to the built-in `/api` route and keep priority over frontends.
+Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
+
+Use `projects` inside a profile when one local environment spans independent Maven or Gradle roots. Every named
+project has its own directory, application selection, optional application configuration, compile pipeline, source
+watcher, rolling replacement, and background tests. The projects share one Fluxzero runtime and gateway, while an
+application configuration can override its namespace. A failed compile or startup in one project leaves the last
+ready applications from all projects running. `projects` is additive configuration: existing single-project files
+continue to use `apps` and `applicationConfig` unchanged.
+
+Use `services` for databases, emulators, log stores, or other local dependencies. A service with `command` is owned
+by the dev server; a service with only `url` is external and is never stopped. Named ports accept a fixed number or
+`dynamic`. Service-local fields reference a named allocated port as `{servicePort.<name>}`. The resolved URL and ports
+are available to application and frontend configuration as
+`{services.<id>.url}` and `{services.<id>.ports.<name>}`. HTTP or TCP readiness participates in startup, while service
+health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the same session.
+
+See [`docs/developer/composed-environment-contract.md`](docs/developer/composed-environment-contract.md) for a full
+Dashboard/Auditlog example that combines named profiles, independent build projects, multiple frontends, and
+namespace overrides.
+
+Environments stop after 24 hours without source, browser, build, test, command, or attach activity by default,
+including before initial readiness. Configure `lifecycle.idleTimeout` with values such as `30m`, `24h`, or
+`disabled`; the limit applies in attached and detached mode.
 
 ## Development Principles
 

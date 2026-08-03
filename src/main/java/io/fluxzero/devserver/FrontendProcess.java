@@ -15,17 +15,13 @@
 package io.fluxzero.devserver;
 
 import java.io.IOException;
-import java.net.InetAddress;
 import java.net.HttpURLConnection;
-import java.net.InetSocketAddress;
 import java.net.Proxy;
-import java.net.ServerSocket;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -92,7 +88,11 @@ final class FrontendProcess implements AutoCloseable {
 
     static FrontendProcess prepare(DevServerConfig devConfig, String ownershipMarker,
                                    Consumer<DevSession.ServiceStatus> statusConsumer, Consumer<String> output) {
-        FrontendConfig config = devConfig.frontend();
+        return prepare(devConfig, devConfig.frontend(), ownershipMarker, statusConsumer, output);
+    }
+
+    static FrontendProcess prepare(DevServerConfig devConfig, FrontendConfig config, String ownershipMarker,
+                                   Consumer<DevSession.ServiceStatus> statusConsumer, Consumer<String> output) {
         if (config.mode() == FrontendConfig.Mode.NONE) {
             return new FrontendProcess(devConfig, config, ownershipMarker, null, null, statusConsumer);
         }
@@ -103,7 +103,7 @@ final class FrontendProcess implements AutoCloseable {
                 frontend.startReadinessMonitor(output);
                 return frontend;
             }
-            int port = availablePort();
+            int port = ProcessUtils.availablePort();
             String internalUrl = "http://127.0.0.1:" + port;
             FrontendProcess frontend = new FrontendProcess(
                     devConfig, config, ownershipMarker, null, internalUrl, statusConsumer);
@@ -267,7 +267,7 @@ final class FrontendProcess implements AutoCloseable {
         long startedNanos = System.nanoTime();
         try {
             Process started = ProcessUtils.start(
-                    shellCommand(config.setupCommand(), ownershipMarker),
+                    ProcessUtils.shellCommand(config.setupCommand(), ownershipMarker),
                     workingDirectory(), environment(), line -> output.accept("[frontend] [setup] " + line));
             setupProcess = started;
             if (closed.get()) {
@@ -298,9 +298,11 @@ final class FrontendProcess implements AutoCloseable {
         if (closed.get()) {
             return;
         }
-        String commandValue = config.command().replace("{port}", Integer.toString(port(internalUrl)));
+        String frontendPort = Integer.toString(port(internalUrl));
+        String commandValue = config.command().replace("{frontendPort}", frontendPort)
+                .replace("{port}", frontendPort);
         Process started = ProcessUtils.start(
-                shellCommand(commandValue, ownershipMarker), workingDirectory(), environment(),
+                ProcessUtils.shellCommand(commandValue, ownershipMarker), workingDirectory(), environment(),
                 line -> output.accept("[frontend] " + line));
         process = started;
         if (closed.get()) {
@@ -441,23 +443,9 @@ final class FrontendProcess implements AutoCloseable {
         }
     }
 
-    private static int availablePort() throws IOException {
-        try (ServerSocket socket = new ServerSocket()) {
-            socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
-            return socket.getLocalPort();
-        }
-    }
-
     private static Integer port(String url) {
         int port = URI.create(url).getPort();
         return port < 0 ? null : port;
     }
 
-    private static List<String> shellCommand(String command, String ownershipMarker) {
-        boolean windows = System.getProperty("os.name").toLowerCase().contains("win");
-        String marker = "fluxzero-dev-owner=" + ownershipMarker;
-        return windows
-                ? List.of("cmd", "/d", "/s", "/c", command + " & rem " + marker)
-                : List.of("sh", "-c", command, marker);
-    }
 }

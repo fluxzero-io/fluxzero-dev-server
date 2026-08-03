@@ -38,7 +38,6 @@ class DevProjectConfigMainTest {
         assertEquals("app", config.apps().getFirst());
         assertEquals("worker", config.applicationConfig().get("worker-local").application());
         assertEquals("frontend", config.frontend().directory());
-        assertTrue(config.frontend().command().contains("{port}"));
-        assertEquals("/api", config.frontend().backendPaths().getFirst());
+        assertTrue(config.frontend().command().contains("{frontendPort}"));
     }
 }

@@ -360,7 +360,8 @@ DoD status:
 - Een dev environment met frontend publiceert een enkele browser-facing gateway URL.
 - `/_fluxzero/**` wordt met prefix-stripping naar de interne Fluxzero proxy gestuurd; overige requests gaan naar de UI dev-server.
 - `/api/**` wordt standaard zonder path-rewrite naar de Fluxzero proxy gestuurd, inclusief WebSocket upgrades; backend pass-through paths zijn configureerbaar.
-- De frontend ontvangt een door de dev-server gekozen interne poort via environment en `{port}` command substitution.
+- De frontend ontvangt een door de dev-server gekozen interne poort via environment en `{frontendPort}` command
+  substitution; `{port}` blijft als backward-compatible alias werken.
 - De gateway ondersteunt streaming HTTP, headers/cookies/redirects en transparante UI websocket upgrades voor HMR.
 - UI startup/restart failure stopt runtime, proxy en app niet; de gateway geeft tijdelijk een uitlegbare unavailable response.
 - App en managed IDP gebruiken de publieke gateway als external base URL, zodat interne poorten niet lekken.
@@ -385,8 +386,10 @@ Backlog:
 
 Operating contract:
 
-- Start een frontend met bijvoorbeeld `--frontend-command "npm run dev -- --host 127.0.0.1 --port {port} --strictPort"` voor Vite of `--frontend-command "npx ng serve --host 127.0.0.1 --port {port}"` voor Angular.
-- De dev server vervangt `{port}`, zet ook `PORT` en `FLUXZERO_FRONTEND_PORT`, en geeft de frontend alleen het relatieve backendpad `FLUXZERO_PROXY_URL=/_fluxzero`.
+- Start een frontend met bijvoorbeeld `--frontend-command "npm run dev -- --host 127.0.0.1 --port {frontendPort} --strictPort"` voor Vite of `--frontend-command "npx ng serve --host 127.0.0.1 --port {frontendPort}"` voor Angular.
+- De dev server vervangt `{frontendPort}` (en de legacy alias `{port}`), zet ook `PORT` en
+  `FLUXZERO_FRONTEND_PORT`, en geeft de frontend alleen het relatieve backendpad
+  `FLUXZERO_PROXY_URL=/_fluxzero`.
 - UI-calls naar `/api/**` behouden hun volledige pad richting Fluxzero. Gebruik herhaalbare `--backend-path` opties om de default `/api` door projectspecifieke roots te vervangen.
 - Open in de browser de `gateway.url` uit `.fluxzero/dev/session.json`; `frontend.url` en `proxy.url` zijn interne supervisor-adressen.
 - Gebruik `--port 4200` wanneer een vaste publieke origin nodig is. Bij een bezette poort vraagt een interactieve terminal of een vrije dynamische poort acceptabel is; non-interactive runs wachten nooit op input en falen direct.
@@ -928,8 +931,107 @@ Backlog:
 - [x] Slice 34.5: `lifecycle.idleTimeout` met activity-based reset, ook vóór readiness.
 - [x] Slice 34.6: volledige dev-server- en CLI-build plus echte macOS launchd lifecycle-smoke.
 
+### Phase 35: Named Development Profiles
+
+Goal: meerdere complete lokale setups kunnen naast elkaar in een tracked `dev.yaml` bestaan zonder impliciete
+overerving of verlies van bestaand gedrag.
+
+DoD:
+- Legacy top-level configuratie blijft ongewijzigd werken.
+- `defaultProfile`, een expliciete `--profile`, `FLUXZERO_DEV_PROFILE`, en auto-selectie van een enig profiel werken.
+- Commands worden bij live reload opnieuw uit het geselecteerde profiel gelezen.
+- CLI, Maven en Gradle gebruiken hetzelfde selectiecontract.
+
+Backlog:
+- [x] Slice 35.1: profielmodel, selectieprecedence en strikte ambiguiteitsvalidatie.
+- [x] Slice 35.2: command-reload en configuratiereferentie profielbewust maken.
+- [x] Slice 35.3: CLI-, Maven- en Gradle-launchers plus documentatie.
+- [x] Slice 35.4: gerichte tests en volledige dev-serverbuild.
+
+### Phase 36: Multiple Frontends
+
+Goal: een profiel kan meerdere framework-onafhankelijke frontend dev servers via een publieke origin aanbieden.
+
+DoD:
+- `frontends` bevat benoemde command- of URL-frontends met een mountpad.
+- HTTP en WebSocket routing kiezen de langste passende frontendroute en behouden het publieke pad upstream.
+- Frontends starten, herstellen, rapporteren en stoppen onafhankelijk; startup wacht op alle frontends.
+- Legacy `frontend` blijft de frontend op `/`.
+
+Backlog:
+- [x] Slice 36.1: configuratiemodel, normalisatie en routevalidatie.
+- [x] Slice 36.2: multi-route HTTP/WebSocket gateway.
+- [x] Slice 36.3: frontendprocess- en statusaggregatie.
+- [x] Slice 36.4: gateway-, lifecycle- en frameworkregressies.
+
+### Phase 37: Composed Build Projects
+
+Goal: zelfstandige Maven- en Gradle-roots delen een lokale Fluxzero omgeving en blijven onafhankelijk compileerbaar.
+
+DoD:
+- `projects` beschrijft benoemde buildroots met eigen appselectie en applicatieconfiguratie.
+- Compile, rolling replacement, watch en tests zijn per project onafhankelijk.
+- Apps uit alle projecten delen runtime/proxy; per-app namespaceoverride is mogelijk.
+- Falen in een project haalt gezonde apps uit andere projecten niet neer.
+
+Backlog:
+- [x] Slice 37.1: projectmodel, padvalidatie, launch-idscoping en namespaceoverride.
+- [x] Slice 37.2: projectgebonden compile-, app- en watchercoordinatie.
+- [x] Slice 37.3: projectgebonden teststatus en gecombineerde diagnostics.
+- [x] Slice 37.4: multi-root whole-app E2E en shutdowncleanup.
+
+### Phase 38: Dashboard And Auditlog Reference
+
+Goal: de echte Dashboard/Auditlog-combinatie vervangt de losse lokale runtime-, proxy- en frontendprocessen door een
+tracked samengesteld dev-profiel.
+
+DoD:
+- Een commando start Rebound, Auditlog en beide Angular-frontends op een gedeelde runtime/proxy/gateway.
+- Dashboard blijft op `/`; Auditlog werkt onder `/marketplace/logs/1` met eigen namespace.
+- Backend- en frontendwijzigingen worden alleen door het bijbehorende project verwerkt.
+- De bestaande legacy Dashboard-config blijft als eenvoudiger profiel beschikbaar.
+
+Backlog:
+- [x] Slice 38.1: tracked Dashboard-profielen en actuele lokale documentatie.
+- [x] Slice 38.2: echte startup-, route-, query- en WebSocket-smoke.
+- [x] Slice 38.3: onafhankelijke backend/frontend reloads en failure isolation bewijzen.
+- [x] Slice 38.4: volledige regressie, cleanup en releasevoorbereiding.
+
+### Phase 39: Managed Local Services
+
+Goal: databases, emulators, log stores en andere lokale dependencies horen bij dezelfde reproduceerbare dev-omgeving
+zonder vaste poorten of tool-specifieke supervisorlogica.
+
+DoD:
+- `services` ondersteunt managed commands en external URLs met benoemde vaste of dynamische poorten.
+- HTTP/TCP-readiness blokkeert startup; status, logs, diagnostics, MCP en stale cleanup tonen dezelfde service-state.
+- Apps en frontends kunnen resolved service URLs en poorten gebruiken zonder hardcoded lokale configuratie.
+- Stopcommando's zijn begrensd en worden altijd gevolgd door harde process-tree cleanup.
+- Dashboard/Auditlog start VictoriaLogs automatisch op een dynamische poort en ruimt de Compose-stack volledig op.
+
+Backlog:
+- [x] Slice 39.1: backward-compatible configmodel, placeholders en validatie.
+- [x] Slice 39.2: protocolneutrale process-, readiness-, health- en cleanup-lifecycle.
+- [x] Slice 39.3: sessie-, control-, diagnostics-, app- en frontendintegratie.
+- [x] Slice 39.4: echte Dashboard/Auditlog/VictoriaLogs dynamic-port smoke en cleanupbewijs.
+- [x] Slice 39.5: volledige regressie, documentatie en releaseverificatie.
+
 ## Verification So Far
 
+- [x] Phase 39 managed services: 21 process/placeholder regressies en 23 supervisor/session/control/app-regressies
+  groen. De echte Dashboard/Auditlog-omgeving startte VictoriaLogs op hostpoort `62782`, injecteerde die URL in beide
+  Auditlog-configwaarden en stopte Compose, serviceproces en listener volledig met één `Ctrl+C`. De volledige
+  `./mvnw -B clean install` eindigde groen met 228 tests en standalone packaging.
+
+- [x] Phase 38 Dashboard/Auditlog reference: de echte samengestelde omgeving was ready in 12.8s; Dashboard `/`,
+  Auditlog `/marketplace/logs/1`, Rebound login, Auditlog health en de publieke `/api/updates` WebSocket waren groen.
+  Dashboard en Auditlog reloaden onafhankelijk, een kapotte Auditlog-compile hield beide laatste werkende apps live,
+  herstel verving alleen Auditlog en `Ctrl+C` stopte supervisor, beide apps en beide frontends en gaf de gatewaypoort vrij.
+- [x] Phase 37 composed projects: 44 focused config, app-process, watcher, lifecycle and gateway tests green;
+  multi-root whole-app E2E proves parallel initial tests, independent rolling reloads, compile-failure isolation and
+  complete process cleanup; `./mvnw -B clean install` green with 219 tests and standalone packaging.
+- [x] Phase 36 multiple frontends: 42 focused config, gateway, WebSocket, watcher and managed-process tests green;
+  `./mvnw -B clean install` green with 215 tests and standalone packaging.
 - [x] Phase 33 default suite: 183 dev-servertests groen.
 - [x] Phase 33 whole-app profiel: 14 complete source-, compile-, rolling-reload-, command- en testimpactscenario's groen.
 - [x] Phase 33 frontend profiel: echte Vite- en Angular-installatie, gateway, websocket en hot-reloadproeven groen.

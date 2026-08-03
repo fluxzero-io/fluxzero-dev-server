@@ -26,6 +26,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -52,6 +53,23 @@ class DevServerStartupOutputTest {
     void keepsPackagesWhenCompactTestNamesWouldBeAmbiguous() {
         assertEquals("sales.OrderTest, billing.OrderTest", DevServer.testScope(TestStatus.running(List.of(
                 "sales.OrderTest", "billing.OrderTest"), "changed test class")));
+    }
+
+    @Test
+    void namesOnlyFrontendsThatAreStillStarting() {
+        List<RoutedFrontend> frontends = List.of(
+                new RoutedFrontend("dashboard", "/", FrontendConfig.command("dashboard")),
+                new RoutedFrontend("auditlog", "/marketplace/logs/1", FrontendConfig.command("auditlog")));
+
+        assertEquals("waiting for frontends: dashboard, auditlog (0/2 ready)",
+                     DevServer.frontendStartupDetail(frontends, Map.of()));
+        assertEquals("waiting for frontend auditlog (1/2 ready)",
+                     DevServer.frontendStartupDetail(frontends, Map.of(
+                             "dashboard", DevSession.ServiceStatus.running(
+                                     "frontend", null, null, null, "ready"),
+                             "auditlog", DevSession.ServiceStatus.running(
+                                     "frontend", null, null, null, "waiting")
+                                     .withState("starting", "waiting"))));
     }
 
     @Test

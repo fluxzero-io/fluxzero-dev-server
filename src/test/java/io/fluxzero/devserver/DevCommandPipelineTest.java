@@ -284,21 +284,18 @@ class DevCommandPipelineTest {
     }
 
     @Test
-    void executesYamlCommandsInDeclarationOrderBeforeFilesAndRetriesOnlyChangedDefinition(
+    void executesSelectedProfileCommandsInDeclarationOrderBeforeFilesAndRetriesOnlyChangedDefinition(
             @TempDir Path projectDirectory) throws Exception {
-        writeYamlCommands(projectDirectory, "first", "second");
+        writeProfileCommands(projectDirectory, "first", "second");
         Path fileCommand = projectDirectory.resolve(DevCommandPipeline.COMMAND_DIRECTORY).resolve("010-file.json");
         Files.createDirectories(fileCommand.getParent());
         writeCreateUserCommand(fileCommand, "file");
         Server runtime = TestServer.startServer(0);
         List<String> processedNames = new CopyOnWriteArrayList<>();
-        DevServerConfig config = new DevServerConfig(
-                projectDirectory, null, "dev-test-app", null,
-                false, false, false,
-                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
-                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
-                DevServerConfig.DEFAULT_DEBOUNCE,
-                FrontendConfig.none(), null);
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--profile", "seeded",
+                "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
         DevSessionStore store = new DevSessionStore(projectDirectory);
         AtomicReference<DevCommandStatus> status = new AtomicReference<>();
         WebSocketClient appClient = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
@@ -325,7 +322,7 @@ class DevCommandPipelineTest {
                          store.readCommandStatus().orElseThrow().commands().stream()
                                  .map(DevCommandStatus.Entry::path).toList());
 
-            writeYamlCommands(projectDirectory, "first", "changed");
+            writeProfileCommands(projectDirectory, "first", "changed");
             pipeline.requestRun();
 
             assertTrue(awaitProcessed(processedNames, "changed", 4));
@@ -376,22 +373,24 @@ class DevCommandPipelineTest {
                 """.formatted(name));
     }
 
-    private static void writeYamlCommands(Path projectDirectory, String first, String second) throws Exception {
+    private static void writeProfileCommands(Path projectDirectory, String first, String second) throws Exception {
         Path config = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(config.getParent());
         Files.writeString(config, """
                 version: 1
-                commands:
-                  create-first:
-                    type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
-                    metadata:
-                      source: yaml
-                    payload:
-                      name: %s
-                  create-second:
-                    type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
-                    payload:
-                      name: %s
+                profiles:
+                  seeded:
+                    commands:
+                      create-first:
+                        type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                        metadata:
+                          source: yaml
+                        payload:
+                          name: %s
+                      create-second:
+                        type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                        payload:
+                          name: %s
                 """.formatted(first, second));
     }
 

@@ -52,6 +52,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -230,6 +231,98 @@ class DevServerWholeAppE2EIT {
             assertNotEquals(second.app().metadata().get("application.plain.clientId"),
                             second.app().metadata().get("application.alternate.clientId"));
         }
+    }
+
+    @Test
+    void composedProjectsCompileRollAndFailIndependently(@TempDir Path tempDirectory) throws Exception {
+        Path environment = tempDirectory.resolve("environment");
+        Files.createDirectories(environment);
+        Path dashboard = copyFixture(environment, "dashboard");
+        Path auditlog = copyFixture(environment, "auditlog");
+        String dashboardName = "dashboard-" + UUID.randomUUID();
+        String auditlogName = "auditlog-" + UUID.randomUUID();
+        DevBuildProject dashboardProject = new DevBuildProject(
+                "dashboard", dashboard, MAIN_CLASS, dashboardName, null, false, List.of(), Map.of());
+        DevBuildProject auditlogProject = new DevBuildProject(
+                "auditlog", auditlog, MAIN_CLASS, auditlogName, "fluxzero_mp_prod-logs", false,
+                List.of(), Map.of());
+        DevServerConfig config = new DevServerConfig(
+                environment, null, "composed-e2e", null,
+                true, true, true, Duration.ofSeconds(35), Duration.ofSeconds(2), Duration.ofMillis(150),
+                FrontendConfig.none(), List.of(), false, "local", List.of(), 0, IdpMode.MANAGED, Map.of(),
+                DevServerConfig.DEFAULT_IDLE_TIMEOUT, null, List.of(),
+                List.of(dashboardProject, auditlogProject));
+
+        long dashboardPid;
+        long auditlogPid;
+        List<Long> launchedPids = new ArrayList<>();
+        try (DevServer ignored = new DevServer(config).start()) {
+            DevSession first = waitForSession(environment, session -> {
+                Map<String, String> metadata = session.app().metadata();
+                return "running".equals(session.app().state())
+                       && "2".equals(metadata.get("count"))
+                       && metadata.containsKey("application.dashboard/" + dashboardName + ".pid")
+                       && metadata.containsKey("application.auditlog/" + auditlogName + ".pid");
+            }, "both composed applications ready");
+            dashboardPid = Long.parseLong(
+                    first.app().metadata().get("application.dashboard/" + dashboardName + ".pid"));
+            auditlogPid = Long.parseLong(
+                    first.app().metadata().get("application.auditlog/" + auditlogName + ".pid"));
+            launchedPids.add(dashboardPid);
+            launchedPids.add(auditlogPid);
+            DevSession tested = waitForSession(environment, session ->
+                    "passed".equals(session.tests().state())
+                    && "passed".equals(session.tests().metadata().get("project.dashboard.state"))
+                    && "passed".equals(session.tests().metadata().get("project.auditlog.state")),
+                                               "both project test pipelines passed");
+            assertTrue(Files.isRegularFile(environment.resolve(
+                    ".fluxzero/dev/projects/dashboard/test-status.json")));
+            assertTrue(Files.isRegularFile(environment.resolve(
+                    ".fluxzero/dev/projects/auditlog/test-status.json")));
+            assertEquals("running", tested.app().state());
+
+            writeVersion(dashboard, "dashboard-v2", false);
+
+            DevSession dashboardReload = waitForSession(environment, session -> {
+                String value = session.app().metadata().get("application.dashboard/" + dashboardName + ".pid");
+                return value != null && Long.parseLong(value) != dashboardPid;
+            }, "dashboard replacement ready");
+            long dashboardV2Pid = Long.parseLong(
+                    dashboardReload.app().metadata().get("application.dashboard/" + dashboardName + ".pid"));
+            launchedPids.add(dashboardV2Pid);
+            assertEquals(auditlogPid, Long.parseLong(
+                    dashboardReload.app().metadata().get("application.auditlog/" + auditlogName + ".pid")));
+
+            writeBrokenVersion(dashboard);
+
+            DevSession failedDashboard = waitForSession(environment,
+                                                         session -> "failed".equals(session.compile().metadata().get(
+                                                                 "project.dashboard.state")),
+                                                         "dashboard compile failure");
+            assertEquals(dashboardV2Pid, Long.parseLong(
+                    failedDashboard.app().metadata().get("application.dashboard/" + dashboardName + ".pid")));
+            assertEquals(auditlogPid, Long.parseLong(
+                    failedDashboard.app().metadata().get("application.auditlog/" + auditlogName + ".pid")));
+
+            writeVersion(auditlog, "auditlog-v2", false);
+
+            DevSession auditlogReload = waitForSession(environment, session -> {
+                String value = session.app().metadata().get("application.auditlog/" + auditlogName + ".pid");
+                return value != null && Long.parseLong(value) != auditlogPid;
+            }, "auditlog replacement ready while dashboard remains broken");
+            assertEquals(dashboardV2Pid, Long.parseLong(
+                    auditlogReload.app().metadata().get("application.dashboard/" + dashboardName + ".pid")));
+            assertTrue(ProcessUtils.isAlive(dashboardV2Pid));
+            long auditlogV2Pid = Long.parseLong(
+                    auditlogReload.app().metadata().get("application.auditlog/" + auditlogName + ".pid"));
+            launchedPids.add(auditlogV2Pid);
+            assertTrue(ProcessUtils.isAlive(auditlogV2Pid));
+            DevSession testedAuditlog = waitForSession(environment, session ->
+                    "failed".equals(session.tests().metadata().get("project.auditlog.state")),
+                                                        "auditlog project tests completed");
+            assertEquals("failed", testedAuditlog.tests().metadata().get("project.dashboard.state"));
+        }
+        assertTrue(launchedPids.stream().noneMatch(ProcessUtils::isAlive));
     }
 
     @Test
@@ -623,12 +716,16 @@ class DevServerWholeAppE2EIT {
     }
 
     private static Path copyFixture(Path tempDirectory) throws IOException, URISyntaxException {
+        return copyFixture(tempDirectory, "plain-app");
+    }
+
+    private static Path copyFixture(Path tempDirectory, String name) throws IOException, URISyntaxException {
         URL resource = DevServerWholeAppE2EIT.class.getResource("/e2e-fixtures/plain-app");
         if (resource == null) {
             throw new IllegalStateException("Missing plain-app E2E fixture");
         }
         Path source = Path.of(resource.toURI());
-        Path target = tempDirectory.resolve("plain-app");
+        Path target = tempDirectory.resolve(name);
         copyTree(source, target);
         copyMavenWrapper(devServerRepositoryRoot(), target);
         Path pom = target.resolve("pom.xml");

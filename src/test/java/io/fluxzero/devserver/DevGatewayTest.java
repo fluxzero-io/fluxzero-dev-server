@@ -37,6 +37,7 @@ import java.net.http.WebSocketHandshakeException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
@@ -177,6 +178,51 @@ public class DevGatewayTest {
     }
 
     @Test
+    void routesHttpAndWebsocketsToTheLongestMatchingFrontendPath() throws Exception {
+        AtomicBoolean auditlogReady = new AtomicBoolean();
+        try (TestUpstream backend = TestUpstream.start("backend");
+             TestUpstream dashboard = TestUpstream.start("dashboard");
+             TestUpstream auditlog = TestUpstream.start("auditlog");
+             DevGateway gateway = DevGateway.start(
+                     backend.url(),
+                     List.of(new DevGateway.FrontendRoute("dashboard", "/", dashboard.url(), () -> true),
+                             new DevGateway.FrontendRoute(
+                                     "auditlog", "/marketplace/logs/1", auditlog.url(), auditlogReady::get)),
+                     () -> true, List.of("/api", "/logs"), 0, () -> {
+                     })) {
+            assertEquals("dashboard GET / ", get(gateway.url() + "/").body());
+            assertEquals("dashboard GET /marketplace/logs/10 ",
+                         get(gateway.url() + "/marketplace/logs/10").body());
+            assertEquals(503, get(gateway.url() + "/marketplace/logs/1/assets/main.js").statusCode());
+
+            auditlogReady.set(true);
+            assertEquals("auditlog GET /marketplace/logs/1/assets/main.js ",
+                         get(gateway.url() + "/marketplace/logs/1/assets/main.js").body());
+            assertEquals("backend POST /api/query payload",
+                         post(gateway.url() + "/api/query", "payload").body());
+            assertEquals("backend POST /logs/search query",
+                         post(gateway.url() + "/logs/search", "query").body());
+            HttpResponse<String> namespaced = HTTP_CLIENT.send(
+                    HttpRequest.newBuilder(URI.create(gateway.url() + "/logs/search"))
+                            .header(DevNamespaceHeader.NAME, DevNamespaceHeaderTest.jwt("fluxzero_mp_prod-logs"))
+                            .POST(HttpRequest.BodyPublishers.ofString("query")).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            assertEquals("fluxzero_mp_prod-logs",
+                         namespaced.headers().firstValue("X-Received-Namespace").orElseThrow());
+
+            CompletableFuture<String> response = new CompletableFuture<>();
+            WebSocket socket = HTTP_CLIENT.newWebSocketBuilder()
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://")
+                                           + "/marketplace/logs/1/hmr"), new TextListener(response))
+                    .get(5, TimeUnit.SECONDS);
+            socket.sendText("refresh", true).get(5, TimeUnit.SECONDS);
+            assertEquals("auditlog:/marketplace/logs/1/hmr:refresh", response.get(5, TimeUnit.SECONDS));
+            assertEquals(auditlog.url(), auditlog.lastWebsocketOrigin());
+            socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
+        }
+    }
+
+    @Test
     void rejectsApplicationTrafficUntilBackendIsReady() throws Exception {
         AtomicBoolean backendReady = new AtomicBoolean();
         try (TestUpstream backend = TestUpstream.start("backend");
@@ -232,12 +278,14 @@ public class DevGatewayTest {
 
             CompletableFuture<String> backendResponse = new CompletableFuture<>();
             WebSocket backendSocket = HTTP_CLIENT.newWebSocketBuilder()
+                    .header(DevNamespaceHeader.NAME, DevNamespaceHeaderTest.jwt("fluxzero_mp_prod-logs"))
                     .buildAsync(URI.create(gateway.url().replace("http://", "ws://")
                                            + DevGateway.BACKEND_PREFIX + "/socket"),
                                 new TextListener(backendResponse))
                     .get(5, TimeUnit.SECONDS);
             backendSocket.sendText("backend-ping", true).get(5, TimeUnit.SECONDS);
             assertEquals("backend:/socket:backend-ping", backendResponse.get(5, TimeUnit.SECONDS));
+            assertEquals("fluxzero_mp_prod-logs", backend.lastWebsocketNamespace());
             backendSocket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
 
             CompletableFuture<String> apiResponse = new CompletableFuture<>();
@@ -335,15 +383,18 @@ public class DevGatewayTest {
         private final int port;
         private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketOrigin;
         private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketHost;
+        private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketNamespace;
 
         private TestUpstream(String name, Server server, int port,
                              java.util.concurrent.atomic.AtomicReference<String> lastWebsocketOrigin,
-                             java.util.concurrent.atomic.AtomicReference<String> lastWebsocketHost) {
+                             java.util.concurrent.atomic.AtomicReference<String> lastWebsocketHost,
+                             java.util.concurrent.atomic.AtomicReference<String> lastWebsocketNamespace) {
             this.name = name;
             this.server = server;
             this.port = port;
             this.lastWebsocketOrigin = lastWebsocketOrigin;
             this.lastWebsocketHost = lastWebsocketHost;
+            this.lastWebsocketNamespace = lastWebsocketNamespace;
         }
 
         static TestUpstream start(String name) throws Exception {
@@ -351,6 +402,8 @@ public class DevGatewayTest {
             java.util.concurrent.atomic.AtomicReference<String> websocketOrigin =
                     new java.util.concurrent.atomic.AtomicReference<>();
             java.util.concurrent.atomic.AtomicReference<String> websocketHost =
+                    new java.util.concurrent.atomic.AtomicReference<>();
+            java.util.concurrent.atomic.AtomicReference<String> websocketNamespace =
                     new java.util.concurrent.atomic.AtomicReference<>();
             ServerConnector connector = new ServerConnector(server);
             connector.setHost("127.0.0.1");
@@ -361,6 +414,7 @@ public class DevGatewayTest {
                     container.addMapping("/*", (request, response, callback) -> {
                         websocketOrigin.set(request.getHeaders().get("Origin"));
                         websocketHost.set(request.getHeaders().get("Host"));
+                        websocketNamespace.set(request.getHeaders().get(DevNamespaceHeader.NAME));
                         if (!request.getSubProtocols().isEmpty()) {
                             response.setAcceptedSubProtocol(request.getSubProtocols().getFirst());
                         }
@@ -383,6 +437,10 @@ public class DevGatewayTest {
                                   + " " + new String(Request.asInputStream(request).readAllBytes(),
                                                      StandardCharsets.UTF_8);
                     response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/plain");
+                    String namespace = request.getHeaders().get(DevNamespaceHeader.NAME);
+                    if (namespace != null) {
+                        response.getHeaders().put("X-Received-Namespace", namespace);
+                    }
                     response.getHeaders().add(HttpHeader.SET_COOKIE, "session=" + name + "; Path=/");
                     response.write(true, ByteBuffer.wrap(body.getBytes(StandardCharsets.UTF_8)), callback);
                     return true;
@@ -391,7 +449,8 @@ public class DevGatewayTest {
             context.setHandler(websocket);
             server.setHandler(context);
             server.start();
-            return new TestUpstream(name, server, connector.getLocalPort(), websocketOrigin, websocketHost);
+            return new TestUpstream(name, server, connector.getLocalPort(), websocketOrigin, websocketHost,
+                                    websocketNamespace);
         }
 
         String url() {
@@ -408,6 +467,10 @@ public class DevGatewayTest {
 
         String lastWebsocketHost() {
             return lastWebsocketHost.get();
+        }
+
+        String lastWebsocketNamespace() {
+            return lastWebsocketNamespace.get();
         }
 
         @Override

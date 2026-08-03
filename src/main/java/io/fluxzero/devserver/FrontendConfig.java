@@ -26,7 +26,7 @@ import java.util.Objects;
  * @param url          URL of an externally managed frontend
  * @param directory    optional working directory for managed frontend commands, relative to the project directory
  * @param setupCommand optional setup command executed once before each managed frontend launch
- * @param backendPaths public paths routed unchanged to the Fluxzero proxy
+ * @param backendPaths environment gateway paths routed unchanged to the Fluxzero proxy
  */
 public record FrontendConfig(
         Mode mode,
@@ -79,6 +79,11 @@ public record FrontendConfig(
     /** Returns a copy with the working directory and optional setup command for the managed frontend. */
     public FrontendConfig withLaunchSetup(String directory, String setupCommand) {
         return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths);
+    }
+
+    FrontendConfig resolve(DevPlaceholderResolver resolver) {
+        return new FrontendConfig(mode, resolver.resolve(command), resolver.resolve(url),
+                                  resolver.resolve(directory), resolver.resolve(setupCommand), backendPaths);
     }
 
     private static String normalize(String value) {

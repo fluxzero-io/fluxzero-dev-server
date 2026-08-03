@@ -22,6 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,7 +39,10 @@ class DevSessionStoreTest {
         DevSessionStore store = new DevSessionStore(projectDirectory);
         DevSession session = DevSession.empty(config)
                 .withStatus("running")
-                .withRuntime(DevSession.ServiceStatus.running("runtime", "ws://localhost:1234", 1234, null, null));
+                .withRuntime(DevSession.ServiceStatus.running("runtime", "ws://localhost:1234", 1234, null, null))
+                .withServices(Map.of("logs", DevSession.ServiceStatus.running(
+                        "logs", "http://localhost:19428", 19428, 42L, "ready")
+                                                       .withMetadata(Map.of("port.http", "19428"))));
 
         store.writeSession(session);
 
@@ -46,12 +50,15 @@ class DevSessionStoreTest {
         JsonNode json = objectMapper.readTree(sessionFile.toFile());
         assertEquals("running", json.path("status").asText());
         assertEquals("ws://localhost:1234", json.path("runtime").path("url").asText());
+        assertEquals("http://localhost:19428", json.path("services").path("logs").path("url").asText());
+        assertEquals("19428", json.path("services").path("logs").path("metadata").path("port.http").asText());
         assertTrue(json.path("observability").path("combinedLog").asText().contains(session.sessionId()));
         assertTrue(json.path("observability").path("diagnostics").asText().endsWith("diagnostics.json"));
         assertFalse(hasTemporaryFiles(store.directory()));
         assertEquals("*\n", Files.readString(store.directory().resolve(DevSessionStore.GITIGNORE_FILE)));
         assertTrue(store.readSession().isPresent());
         assertEquals(session.sessionId(), store.readSession().orElseThrow().sessionId());
+        assertEquals(42L, store.readSession().orElseThrow().services().get("logs").pid());
     }
 
     @Test

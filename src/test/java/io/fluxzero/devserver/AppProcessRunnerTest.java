@@ -94,6 +94,31 @@ class AppProcessRunnerTest {
     }
 
     @Test
+    void applicationNamespaceOverridesProjectNamespace(@TempDir Path projectDirectory) throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "orders-app", "project-namespace",
+                false, false, false, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), List.of());
+        List<String> output = new CopyOnWriteArrayList<>();
+        AppProcessRunner runner = new AppProcessRunner(
+                config, "ws://localhost:1234", "http://localhost:5678", "session-namespace", output::add);
+        Path classes = testClassesDirectory();
+        ApplicationBuild application = new ApplicationBuild(
+                "orders-app", ".", FixtureAppMain.class.getName(), List.of(classes), List.of(), false,
+                "orders", "application-namespace", Map.of(), Map.of());
+        BuildSnapshot snapshot = new BuildSnapshot(
+                1, projectDirectory.resolve("build"), classes, List.of(), Instant.now(), CompileTiming.unknown(),
+                List.of(application));
+
+        AppInstance app = runner.start(snapshot, application);
+        try {
+            assertTrue(await(output, "namespace=application-namespace"));
+        } finally {
+            app.stop(Duration.ofSeconds(2));
+        }
+    }
+
+    @Test
     void distinguishesPublicFluxzeroUrlFromLegacyInternalProxyPort(@TempDir Path projectDirectory) throws Exception {
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, FixtureAppMain.class.getName(), "orders-app", null,
@@ -111,6 +136,36 @@ class AppProcessRunnerTest {
             assertTrue(await(output, "proxy=http://localhost:4200/_fluxzero"));
             assertTrue(await(output, "proxy.port=5678"));
             assertTrue(await(output, "proxy.system.port=5678"));
+        } finally {
+            app.stop(Duration.ofSeconds(2));
+        }
+    }
+
+    @Test
+    void resolvesManagedServicePlaceholdersInApplicationEnvironment(@TempDir Path projectDirectory)
+            throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "orders-app", null,
+                false, false, false, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), List.of());
+        List<String> output = new CopyOnWriteArrayList<>();
+        DevPlaceholderResolver resolver = DevPlaceholderResolver.services(
+                "session-services", Map.of("services.logs.url", "http://127.0.0.1:19428"));
+        AppProcessRunner runner = new AppProcessRunner(
+                config, "ws://localhost:1234", "http://localhost:5678", "http://localhost:5678",
+                "session-services", (applicationName, instanceId, stream, line) -> output.add(line),
+                new OnePasswordEnvironment(projectDirectory), resolver);
+        Path classes = testClassesDirectory();
+        ApplicationBuild application = new ApplicationBuild(
+                "orders-app", ".", FixtureAppMain.class.getName(), List.of(classes), List.of(), false,
+                "orders", null, Map.of("SERVICE_URL", "{services.logs.url}/insert"), Map.of());
+        BuildSnapshot snapshot = new BuildSnapshot(
+                1, projectDirectory.resolve("build"), classes, List.of(), Instant.now(), CompileTiming.unknown(),
+                List.of(application));
+
+        AppInstance app = runner.start(snapshot, application);
+        try {
+            assertTrue(await(output, "service.url=http://127.0.0.1:19428/insert"));
         } finally {
             app.stop(Duration.ofSeconds(2));
         }
