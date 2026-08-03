@@ -23,6 +23,8 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 record DevProjectConfig(
         Integer version,
@@ -38,6 +40,7 @@ record DevProjectConfig(
         Boolean fastCompiler,
         Frontend frontend,
         Map<String, Frontend> frontends,
+        Map<String, Service> services,
         Lifecycle lifecycle,
         Map<String, DevCommandConfig> commands,
         String defaultProfile,
@@ -56,6 +59,9 @@ record DevProjectConfig(
         frontends = frontends == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
         validateFrontends(frontend, frontends);
+        services = services == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(services));
+        validateServices(services);
         lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
@@ -76,7 +82,8 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, projects, port, idp, fastCompiler, frontend, frontends, lifecycle,
+                                           applicationConfig, projects, port, idp, fastCompiler, frontend, frontends,
+                                           services, lifecycle,
                                            commands)) {
                 throw new IllegalArgumentException(
                         "profiles cannot be combined with legacy top-level development settings");
@@ -108,7 +115,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    Map.of(), null, Map.of(), null, Map.of());
+                                    Map.of(), Map.of(), null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -180,6 +187,91 @@ record DevProjectConfig(
     record Lifecycle(String idleTimeout) {
     }
 
+    record Service(
+            String command,
+            String stopCommand,
+            String url,
+            String directory,
+            Map<String, String> ports,
+            Map<String, String> env,
+            Readiness readiness
+    ) {
+        private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+        private static final Pattern PORT_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
+
+        Service {
+            command = normalize(command);
+            stopCommand = normalize(stopCommand);
+            url = normalize(url);
+            directory = normalize(directory);
+            ports = ports == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(ports));
+            env = env == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
+            readiness = readiness == null ? new Readiness(null, null, null) : readiness;
+            if (command == null && url == null) {
+                throw new IllegalArgumentException("service must configure command or url");
+            }
+            if (command == null && (stopCommand != null || directory != null || !ports.isEmpty() || !env.isEmpty())) {
+                throw new IllegalArgumentException(
+                        "service stopCommand, directory, ports and env require service.command");
+            }
+            ports.forEach((name, value) -> {
+                if (name == null || !PORT_NAME.matcher(name).matches()) {
+                    throw new IllegalArgumentException("invalid service port name: " + name);
+                }
+                if (value == null || value.isBlank()) {
+                    throw new IllegalArgumentException("service port " + name + " must be dynamic or a port number");
+                }
+                if (!"dynamic".equalsIgnoreCase(value.strip())) {
+                    try {
+                        int port = Integer.parseInt(value.strip());
+                        if (port < 1 || port > 65535) {
+                            throw new IllegalArgumentException(
+                                    "service port " + name + " must be between 1 and 65535");
+                        }
+                    } catch (NumberFormatException e) {
+                        throw new IllegalArgumentException(
+                                "service port " + name + " must be dynamic or a port number");
+                    }
+                }
+            });
+            env.forEach((name, value) -> {
+                if (name == null || !ENVIRONMENT_NAME.matcher(name).matches()) {
+                    throw new IllegalArgumentException("invalid service environment variable name: " + name);
+                }
+                if (value == null || value.contains("\n") || value.contains("\r")) {
+                    throw new IllegalArgumentException(
+                            "service environment value for " + name + " must be a single line");
+                }
+            });
+            if (url == null && !readiness.configured()) {
+                throw new IllegalArgumentException("managed service must configure url or readiness");
+            }
+        }
+
+        private static String normalize(String value) {
+            return value == null || value.isBlank() ? null : value.strip();
+        }
+    }
+
+    record Readiness(String http, String tcp, String timeout) {
+        Readiness {
+            http = normalize(http);
+            tcp = normalize(tcp);
+            timeout = normalize(timeout);
+            if (http != null && tcp != null) {
+                throw new IllegalArgumentException("service readiness must configure either http or tcp");
+            }
+        }
+
+        boolean configured() {
+            return http != null || tcp != null;
+        }
+
+        private static String normalize(String value) {
+            return value == null || value.isBlank() ? null : value.strip();
+        }
+    }
+
     record Project(
             String directory,
             String mainClass,
@@ -209,6 +301,7 @@ record DevProjectConfig(
             Boolean fastCompiler,
             Frontend frontend,
             Map<String, Frontend> frontends,
+            Map<String, Service> services,
             Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
@@ -223,6 +316,9 @@ record DevProjectConfig(
             frontends = frontends == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(frontends));
             validateFrontends(frontend, frontends);
+            services = services == null ? Map.of()
+                    : Collections.unmodifiableMap(new LinkedHashMap<>(services));
+            validateServices(services);
             lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
             commands = commands == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
@@ -232,7 +328,7 @@ record DevProjectConfig(
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
                                         applicationConfig, projects, port, idp, fastCompiler, frontend, frontends,
-                                        lifecycle, commands, null, Map.of());
+                                        services, lifecycle, commands, null, Map.of());
         }
     }
 
@@ -254,12 +350,13 @@ record DevProjectConfig(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
             Integer port, String idp, Boolean fastCompiler,
-            Frontend frontend, Map<String, Frontend> frontends, Lifecycle lifecycle,
+            Frontend frontend, Map<String, Frontend> frontends, Map<String, Service> services, Lifecycle lifecycle,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
                || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
                || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
+               || !services.isEmpty()
                || lifecycle.idleTimeout() != null
                || !commands.isEmpty();
     }
@@ -317,6 +414,21 @@ record DevProjectConfig(
         if (!frontends.isEmpty() && !paths.containsKey("/")) {
             throw new IllegalArgumentException("frontends must contain exactly one frontend mounted at /");
         }
+    }
+
+    private static void validateServices(Map<String, Service> services) {
+        Set<String> ids = new java.util.HashSet<>();
+        services.forEach((id, service) -> {
+            if (id == null || !id.matches("[A-Za-z][A-Za-z0-9_-]*")) {
+                throw new IllegalArgumentException("services keys must be non-blank identifiers");
+            }
+            if (!ids.add(id)) {
+                throw new IllegalArgumentException("duplicate service id: " + id);
+            }
+            if (service == null) {
+                throw new IllegalArgumentException("services." + id + " must be configured");
+            }
+        });
     }
 
     private static String normalizePath(String value) {

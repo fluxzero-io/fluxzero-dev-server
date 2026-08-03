@@ -17,6 +17,7 @@ package io.fluxzero.devserver;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -46,6 +47,7 @@ import java.util.Objects;
  * @param profile                 selected named development profile, or {@code null} for legacy configuration
  * @param frontends               routed frontend configurations, including the root frontend
  * @param projects                independently built projects sharing this environment
+ * @param services                managed or external support services shared by the environment
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -69,7 +71,8 @@ public record DevServerConfig(
         Duration idleTimeout,
         String profile,
         List<RoutedFrontend> frontends,
-        List<DevBuildProject> projects
+        List<DevBuildProject> projects,
+        Map<String, DevServiceConfig> services
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -105,6 +108,8 @@ public record DevServerConfig(
         }
         projects = normalizeProjects(projectDirectory, mainClass, applicationName, namespace,
                                     fastCompilerEnabled, applications, applicationConfig, projects);
+        services = services == null ? Map.of()
+                : Collections.unmodifiableMap(new java.util.LinkedHashMap<>(services));
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -114,6 +119,36 @@ public record DevServerConfig(
             }
         });
         Objects.requireNonNull(projectDirectory, "projectDirectory must not be null");
+    }
+
+    public DevServerConfig(
+            Path projectDirectory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            boolean watch,
+            boolean compileOnStart,
+            boolean testsEnabled,
+            Duration startupTimeout,
+            Duration gracefulShutdownTimeout,
+            Duration debounce,
+            FrontendConfig frontend,
+            List<String> appArgs,
+            boolean fastCompilerEnabled,
+            String environment,
+            List<String> applications,
+            int gatewayPort,
+            IdpMode idpMode,
+            Map<String, DevApplicationConfig> applicationConfig,
+            Duration idleTimeout,
+            String profile,
+            List<RoutedFrontend> frontends,
+            List<DevBuildProject> projects
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends,
+             projects, Map.of());
     }
 
     public DevServerConfig(
@@ -371,7 +406,8 @@ public record DevServerConfig(
                                   DEFAULT_IDLE_TIMEOUT, "idleTimeout"),
                 projectSelection.profile(),
                 frontends,
-                projects);
+                projects,
+                configuredServices(project.services()));
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -395,7 +431,7 @@ public record DevServerConfig(
                 watch, compileOnStart, testsEnabled, startupTimeout, gracefulShutdownTimeout, debounce,
                 environmentRoot ? frontend : FrontendConfig.none(), appArgs, project.fastCompilerEnabled(),
                 environment, project.applications(), 0, idpMode, project.applicationConfig(), idleTimeout, profile,
-                environmentRoot ? frontends : List.of(), List.of(project));
+                environmentRoot ? frontends : List.of(), List.of(project), services);
     }
 
     private static List<DevBuildProject> configuredProjects(
@@ -416,6 +452,30 @@ public record DevServerConfig(
                     fastCompiler || Boolean.TRUE.equals(project.fastCompiler()), project.apps(),
                     project.applicationConfig());
         }).toList();
+    }
+
+    private static Map<String, DevServiceConfig> configuredServices(
+            Map<String, DevProjectConfig.Service> configured
+    ) {
+        if (configured.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, DevServiceConfig> result = new java.util.LinkedHashMap<>();
+        configured.forEach((id, service) -> {
+            Map<String, Integer> ports = new java.util.LinkedHashMap<>();
+            service.ports().forEach((name, value) -> ports.put(
+                    name, "dynamic".equalsIgnoreCase(value.strip()) ? 0 : Integer.parseInt(value.strip())));
+            DevProjectConfig.Readiness configuredReadiness = service.readiness();
+            String readinessHttp = configuredReadiness.http() == null && configuredReadiness.tcp() == null
+                    ? service.url() : configuredReadiness.http();
+            Duration timeout = lifecycleDuration(
+                    configuredReadiness.timeout(), DevServiceConfig.DEFAULT_STARTUP_TIMEOUT,
+                    "services." + id + ".readiness.timeout");
+            result.put(id, new DevServiceConfig(
+                    service.command(), service.stopCommand(), service.url(), service.directory(), ports, service.env(),
+                    new DevServiceConfig.Readiness(readinessHttp, configuredReadiness.tcp(), timeout)));
+        });
+        return Collections.unmodifiableMap(result);
     }
 
     private static List<DevBuildProject> normalizeProjects(

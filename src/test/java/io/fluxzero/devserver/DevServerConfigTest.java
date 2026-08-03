@@ -556,6 +556,102 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsManagedAndExternalServicesWithNamedPorts(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                services:
+                  victoriaLogs:
+                    directory: local/victoria
+                    command: docker compose up
+                    stopCommand: docker compose down --remove-orphans
+                    ports:
+                      http: dynamic
+                      metrics: 19428
+                    url: "http://127.0.0.1:{port.http}"
+                    env:
+                      COMPOSE_PROJECT_NAME: "fluxzero-{session.id}-victoria"
+                    readiness:
+                      http: "{url}/health"
+                      timeout: 3m
+                  mail:
+                    url: http://127.0.0.1:8025
+                """);
+
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+
+        assertEquals(List.of("victoriaLogs", "mail"), List.copyOf(config.services().keySet()));
+        DevServiceConfig victoriaLogs = config.services().get("victoriaLogs");
+        assertTrue(victoriaLogs.managed());
+        assertEquals(Map.of("http", 0, "metrics", 19428), victoriaLogs.ports());
+        assertEquals("http://127.0.0.1:{port.http}", victoriaLogs.url());
+        assertEquals("{url}/health", victoriaLogs.readiness().http());
+        assertEquals(Duration.ofMinutes(3), victoriaLogs.readiness().timeout());
+        assertFalse(config.services().get("mail").managed());
+        assertEquals("http://127.0.0.1:8025", config.services().get("mail").readiness().http());
+    }
+
+    @Test
+    void keepsServicesProfileScopedAndRejectsInvalidServiceShapes(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                defaultProfile: managed
+                profiles:
+                  managed:
+                    services:
+                      database:
+                        command: start-db --port {port.sql}
+                        ports:
+                          sql: dynamic
+                        readiness:
+                          tcp: "127.0.0.1:{port.sql}"
+                  external:
+                    services:
+                      database:
+                        url: http://localhost:5432
+                """);
+
+        DevServerConfig managed = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+        assertEquals("managed", managed.profile());
+        assertEquals(0, managed.services().get("database").ports().get("sql"));
+
+        DevServerConfig external = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--profile", "external"
+        });
+        assertFalse(external.services().get("database").managed());
+
+        Files.writeString(configFile, """
+                version: 1
+                services:
+                  broken:
+                    stopCommand: stop-it
+                    url: http://localhost:1234
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains(
+                "require service.command"));
+
+        Files.writeString(configFile, """
+                version: 1
+                services:
+                  broken:
+                    command: start-it
+                    ports:
+                      http: eventually
+                    readiness:
+                      tcp: "127.0.0.1:{port.http}"
+                """);
+        assertTrue(assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()})).getMessage().contains(
+                "must be dynamic or a port number"));
+    }
+
+    @Test
     void rejectsEnvironmentVariablesOwnedByTheSupervisor() {
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,
