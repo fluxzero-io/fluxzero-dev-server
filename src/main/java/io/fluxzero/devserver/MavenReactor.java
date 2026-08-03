@@ -121,7 +121,8 @@ final class MavenReactor {
             Set<String> usedNames = new LinkedHashSet<>();
             Map<Candidate, ApplicationBuild> discovered = new LinkedHashMap<>();
             for (Candidate candidate : activeCandidates) {
-                List<Path> classes = dependencyClosure(candidate.module()).stream()
+                List<Module> reactorDependencies = dependencyClosure(candidate.module());
+                List<Path> classes = reactorDependencies.stream()
                         .map(Module::classesDirectory).filter(Files::isDirectory).toList();
                 if (candidate.testApplication() && Files.isDirectory(candidate.module().testClassesDirectory())) {
                     List<Path> testClasses = new ArrayList<>();
@@ -134,11 +135,12 @@ final class MavenReactor {
                 String applicationName = single && !candidate.testApplication() ? config.applicationName()
                         : uniqueName(baseName, candidate.module().relativeName(), usedNames);
                 usedNames.add(applicationName);
+                List<Path> runtimeClasspath = readClasspath(candidate.testApplication()
+                                                                     ? candidate.module().testClasspathFile()
+                                                                     : candidate.module().classpathFile());
                 discovered.put(candidate, new ApplicationBuild(
                         applicationName, candidate.module().relativeName(), candidate.mainClass(), classes,
-                        readClasspath(candidate.testApplication()
-                                              ? candidate.module().testClasspathFile()
-                                              : candidate.module().classpathFile()),
+                        withoutReactorArtifacts(runtimeClasspath, reactorDependencies),
                         candidate.testApplication()));
             }
             List<ApplicationBuild> result = selectedCandidates.isEmpty()
@@ -353,6 +355,12 @@ final class MavenReactor {
         }
     }
 
+    private static List<Path> withoutReactorArtifacts(List<Path> classpath, List<Module> reactorModules) {
+        return classpath.stream()
+                .filter(entry -> reactorModules.stream().noneMatch(module -> module.matchesMainArtifact(entry)))
+                .toList();
+    }
+
     private static String uniqueName(String artifactId, String relativeName, Set<String> usedNames) {
         String base = artifactId == null || artifactId.isBlank() ? relativeName.replace('/', '-') : artifactId;
         if (!usedNames.contains(base)) {
@@ -382,6 +390,17 @@ final class MavenReactor {
         String relativeName() {
             String value = relativeDirectory.toString().replace('\\', '/');
             return value.isBlank() ? "." : value;
+        }
+
+        boolean matchesMainArtifact(Path path) {
+            if (artifactId == null || path == null || path.getFileName() == null || path.getParent() == null
+                || path.getParent().getFileName() == null || path.getParent().getParent() == null
+                || path.getParent().getParent().getFileName() == null) {
+                return false;
+            }
+            String version = path.getParent().getFileName().toString();
+            return artifactId.equals(path.getParent().getParent().getFileName().toString())
+                   && (artifactId + "-" + version + ".jar").equals(path.getFileName().toString());
         }
     }
 
