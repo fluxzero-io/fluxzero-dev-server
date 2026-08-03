@@ -73,6 +73,9 @@ public class DevServer implements AutoCloseable {
     private volatile DevGateway devGateway;
     private volatile int effectiveGatewayPort;
     private volatile ManagedIdpService idpService;
+    private final Map<String, DevServiceProcess> serviceProcesses = new ConcurrentHashMap<>();
+    private final Map<String, DevSession.ServiceStatus> serviceStatuses = new ConcurrentHashMap<>();
+    private volatile DevPlaceholderResolver placeholderResolver;
     private final Map<String, FrontendProcess> frontendProcesses = new ConcurrentHashMap<>();
     private final Map<String, DevSession.ServiceStatus> frontendStatuses = new ConcurrentHashMap<>();
     private volatile DevCommandPipeline commandPipeline;
@@ -112,6 +115,7 @@ public class DevServer implements AutoCloseable {
         this.effectiveGatewayPort = config.gatewayPort();
         this.sessionStore = new DevSessionStore(config.projectDirectory());
         this.session = DevSession.empty(config);
+        this.placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), Map.of());
     }
 
     public synchronized DevServer start() {
@@ -145,6 +149,7 @@ public class DevServer implements AutoCloseable {
             lifetime = new DevServerLifetime(config, this::requestShutdown);
             lifetime.start(scheduler);
             startMcp();
+            startServices();
             registerReadinessMonitor();
             startRuntime();
             startProxy();
@@ -236,6 +241,35 @@ public class DevServer implements AutoCloseable {
         }
     }
 
+    private void startServices() {
+        if (config.services().isEmpty()) {
+            updateSession(current -> current.withServices(Map.of()));
+            return;
+        }
+        Map<String, String> placeholders = new LinkedHashMap<>();
+        config.services().forEach((id, serviceConfig) -> {
+            DevServiceProcess process = DevServiceProcess.prepare(
+                    id, serviceConfig, config.projectDirectory(), session.sessionId(),
+                    status -> updateServiceStatus(id, status),
+                    output -> printServiceOutput(id, output));
+            serviceProcesses.put(id, process);
+            serviceStatuses.put(id, process.status());
+            placeholders.putAll(process.placeholders());
+        });
+        placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), placeholders);
+        updateServicesSession();
+        for (String id : config.services().keySet()) {
+            DevServiceProcess process = serviceProcesses.get(id);
+            terminalProgress.updateTask("service-" + id, "Service " + id, "starting");
+            try {
+                process.start();
+            } catch (RuntimeException e) {
+                announceStartupFailure("Service " + id, e.getMessage());
+                throw e;
+            }
+        }
+    }
+
     void requestCompile(Set<Path> changedFiles) {
         if (closed.get()) {
             return;
@@ -296,7 +330,8 @@ public class DevServer implements AutoCloseable {
         for (RoutedFrontend routed : config.frontends()) {
             try {
                 FrontendProcess process = FrontendProcess.prepare(
-                        config, routed.config(), session.sessionId() + "-frontend-" + routed.id(),
+                        config, routed.config().resolve(placeholderResolver),
+                        session.sessionId() + "-frontend-" + routed.id(),
                         status -> updateFrontendStatus(routed.id(), status),
                         message -> printFrontendOutput(routed.id(), message));
                 frontendProcesses.put(routed.id(), process);
@@ -360,10 +395,23 @@ public class DevServer implements AutoCloseable {
             }
             boolean appCleaned = cleanupApplicationOrphans(previous.app(), previous.sessionId());
             boolean frontendCleaned = cleanupFrontendOrphans(previous.frontend(), previous.sessionId());
-            if (active || appCleaned || frontendCleaned) {
+            boolean servicesCleaned = cleanupServiceOrphans(previous.services(), previous.sessionId());
+            if (active || appCleaned || frontendCleaned || servicesCleaned) {
                 sessionStore.writeSession(previous.withStoppedServices("stale dev session cleaned up"));
             }
         });
+    }
+
+    private boolean cleanupServiceOrphans(
+            Map<String, DevSession.ServiceStatus> services, String ownershipMarker
+    ) {
+        boolean cleaned = false;
+        for (Map.Entry<String, DevSession.ServiceStatus> entry : services.entrySet()) {
+            cleaned |= cleanupOrphan(
+                    "service " + entry.getKey(), entry.getValue(),
+                    ownershipMarker + "-service-" + entry.getKey());
+        }
+        return cleaned;
     }
 
     private boolean cleanupApplicationOrphans(DevSession.ServiceStatus status, String ownershipMarker) {
@@ -934,6 +982,37 @@ public class DevServer implements AutoCloseable {
         observeStatus("mcp", "infrastructure", "mcp", null, status);
     }
 
+    private void updateServiceStatus(String id, DevSession.ServiceStatus status) {
+        serviceStatuses.put(id, status);
+        updateServicesSession();
+        observeStatus("service", "support", id, null, status);
+        switch (status.state()) {
+            case "starting" -> terminalProgress.updateTask("service-" + id, "Service " + id, status.detail());
+            case "running" -> terminalProgress.removeTask("service-" + id);
+            case "degraded", "failed" -> {
+                terminalProgress.removeTask("service-" + id);
+                if (browserReadyAnnounced.get()) {
+                    terminalProgress.printFailure("Service " + id + " " + status.state(), List.of(
+                            "Cause: " + oneLine(status.detail()),
+                            "Details: " + terminalLogPath()));
+                }
+            }
+            default -> terminalProgress.removeTask("service-" + id);
+        }
+        reportStartupOutcome();
+    }
+
+    private void updateServicesSession() {
+        Map<String, DevSession.ServiceStatus> ordered = new LinkedHashMap<>();
+        config.services().keySet().forEach(id -> {
+            DevSession.ServiceStatus status = serviceStatuses.get(id);
+            if (status != null) {
+                ordered.put(id, status);
+            }
+        });
+        updateSession(current -> current.withServices(ordered));
+    }
+
     private void observeStatus(String source, String serviceType, String serviceId, String instanceId,
                                DevSession.ServiceStatus status) {
         devLogStore.observeStatus(source, serviceType, serviceId, instanceId, status.state(), status.detail());
@@ -993,6 +1072,8 @@ public class DevServer implements AutoCloseable {
         if (mcpServer != null) {
             record("MCP:     " + mcpServer.url());
         }
+        serviceProcesses.forEach((id, service) -> record(
+                "Service " + id + ": " + (service.url() == null ? service.ports() : service.url())));
         record("Session: " + sessionStore.directory().resolve(DevSessionStore.SESSION_FILE));
         record("Log:     " + devLogStore.combinedLog());
         record("Events:  " + devLogStore.eventsFile());
@@ -1004,6 +1085,19 @@ public class DevServer implements AutoCloseable {
             return;
         }
         DevSession current = session;
+        if (current.services().values().stream().anyMatch(
+                status -> "failed".equals(status.state()) || "degraded".equals(status.state()))) {
+            Map.Entry<String, DevSession.ServiceStatus> failure = current.services().entrySet().stream()
+                    .filter(entry -> "failed".equals(entry.getValue().state())
+                                     || "degraded".equals(entry.getValue().state()))
+                    .findFirst().orElseThrow();
+            announceStartupFailure("Service " + failure.getKey(), failure.getValue().detail());
+            return;
+        }
+        if (current.services().size() != config.services().size()
+            || current.services().values().stream().anyMatch(status -> !"running".equals(status.state()))) {
+            return;
+        }
         if ("failed".equals(current.reload().state()) || "degraded".equals(current.reload().state())) {
             announceStartupFailure("Application", current.reload().detail());
             return;
@@ -1092,6 +1186,20 @@ public class DevServer implements AutoCloseable {
         print(message.replaceFirst("^\\[frontend]", "[frontend " + java.util.regex.Matcher.quoteReplacement(id) + "]"));
     }
 
+    private void printServiceOutput(String id, ProcessUtils.ProcessOutput output) {
+        if (closed.get()) {
+            return;
+        }
+        DevLogStore logStore = devLogStore;
+        if (logStore != null) {
+            logStore.process("service", "support", id, null, output.stream(), output.line());
+        }
+        if (browserReadyAnnounced.get()) {
+            terminalProgress.println(terminalProgress.currentTime() + "  Service " + id + "  "
+                                     + summarize(output.line()));
+        }
+    }
+
     private void printAppOutput(String applicationName, String instanceId, String stream, String line) {
         if (closed.get()) {
             return;
@@ -1154,6 +1262,8 @@ public class DevServer implements AutoCloseable {
         }
         currentApps.values().forEach(DevServer::closeQuietly);
         currentApps.clear();
+        serviceProcesses.values().forEach(DevServer::closeQuietly);
+        serviceProcesses.clear();
         closeQuietly(idpService);
         cancelQuietly(metricsRegistration);
         cancelQuietly(proxyServer);
@@ -1335,7 +1445,8 @@ public class DevServer implements AutoCloseable {
                     config, buildCoordinator, message -> printCompileOutput(this, message));
             this.appProcessRunner = new AppProcessRunner(
                     config, runtimeBaseUrl, publicFluxzeroUrl, proxyUrl, session.sessionId(),
-                    DevServer.this::printAppOutput);
+                    DevServer.this::printAppOutput, new OnePasswordEnvironment(config.projectDirectory()),
+                    placeholderResolver);
             this.testPipeline = new TestPipeline(
                     config, projectStore, buildCoordinator, status -> updateTestStatus(id, status),
                     message -> printProjectOutput(id, message));

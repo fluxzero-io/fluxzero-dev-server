@@ -142,6 +142,36 @@ class AppProcessRunnerTest {
     }
 
     @Test
+    void resolvesManagedServicePlaceholdersInApplicationEnvironment(@TempDir Path projectDirectory)
+            throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "orders-app", null,
+                false, false, false, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), List.of());
+        List<String> output = new CopyOnWriteArrayList<>();
+        DevPlaceholderResolver resolver = DevPlaceholderResolver.services(
+                "session-services", Map.of("services.logs.url", "http://127.0.0.1:19428"));
+        AppProcessRunner runner = new AppProcessRunner(
+                config, "ws://localhost:1234", "http://localhost:5678", "http://localhost:5678",
+                "session-services", (applicationName, instanceId, stream, line) -> output.add(line),
+                new OnePasswordEnvironment(projectDirectory), resolver);
+        Path classes = testClassesDirectory();
+        ApplicationBuild application = new ApplicationBuild(
+                "orders-app", ".", FixtureAppMain.class.getName(), List.of(classes), List.of(), false,
+                "orders", null, Map.of("SERVICE_URL", "{services.logs.url}/insert"), Map.of());
+        BuildSnapshot snapshot = new BuildSnapshot(
+                1, projectDirectory.resolve("build"), classes, List.of(), Instant.now(), CompileTiming.unknown(),
+                List.of(application));
+
+        AppInstance app = runner.start(snapshot, application);
+        try {
+            assertTrue(await(output, "service.url=http://127.0.0.1:19428/insert"));
+        } finally {
+            app.stop(Duration.ofSeconds(2));
+        }
+    }
+
+    @Test
     void launchesExplicitTestApplicationWithoutFrameworkSpecificConfiguration(@TempDir Path projectDirectory)
             throws Exception {
         DevServerConfig config = new DevServerConfig(

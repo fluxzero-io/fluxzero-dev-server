@@ -81,6 +81,11 @@ public record FrontendConfig(
         return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths);
     }
 
+    FrontendConfig resolve(DevPlaceholderResolver resolver) {
+        return new FrontendConfig(mode, resolver.resolve(command), resolver.resolve(url),
+                                  resolver.resolve(directory), resolver.resolve(setupCommand), backendPaths);
+    }
+
     private static String normalize(String value) {
         return value == null || value.isBlank() ? null : value.strip();
     }

@@ -28,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -394,7 +395,12 @@ final class DevTerminalAttachment {
     }
 
     private void updateStartupProgress(DevSession session) {
-        if ("running".equals(session.compile().state())) {
+        Map.Entry<String, DevSession.ServiceStatus> startingService = session.services().entrySet().stream()
+                .filter(entry -> "starting".equals(entry.getValue().state())).findFirst().orElse(null);
+        if (startingService != null) {
+            progress.update("Starting Fluxzero dev environment: Service " + startingService.getKey() + ": "
+                            + value(startingService.getValue().detail(), "starting"));
+        } else if ("running".equals(session.compile().state())) {
             progress.update("Building: Backend: " + value(session.compile().detail(), "compiling"));
         } else if ("starting".equals(session.frontend().state())) {
             progress.update("Starting Fluxzero dev environment: Frontend: "
@@ -421,13 +427,15 @@ final class DevTerminalAttachment {
                                 || "running".equals(session.frontend().state());
         return "running".equals(session.runtime().state()) && "running".equals(session.proxy().state())
                && "running".equals(session.app().state()) && "succeeded".equals(session.reload().state())
-               && frontendReady;
+               && frontendReady && session.services().values().stream()
+                       .allMatch(status -> "running".equals(status.state()));
     }
 
     private static boolean startupFailed(DevSession session) {
         return "failed".equals(session.compile().state()) || "failed".equals(session.reload().state())
                || "degraded".equals(session.reload().state()) || "failed".equals(session.frontend().state())
-               || "exited".equals(session.frontend().state());
+               || "exited".equals(session.frontend().state()) || session.services().values().stream()
+                       .anyMatch(status -> "failed".equals(status.state()) || "degraded".equals(status.state()));
     }
 
     private static Optional<String> publicUrl(DevSession session) {

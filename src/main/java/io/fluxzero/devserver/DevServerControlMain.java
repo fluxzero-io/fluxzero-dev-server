@@ -24,6 +24,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
@@ -66,6 +67,11 @@ public final class DevServerControlMain {
         System.out.println("PID: " + session.pid());
         publicUrl(session).ifPresent(url -> System.out.println("URL: " + url));
         System.out.println("Runtime: " + session.runtime().state());
+        if (!session.services().isEmpty()) {
+            System.out.println("Services: " + session.services().entrySet().stream()
+                    .map(entry -> entry.getKey() + "=" + entry.getValue().state())
+                    .collect(java.util.stream.Collectors.joining(", ")));
+        }
         System.out.println("Applications: " + session.app().state());
         System.out.println("Tests: " + session.tests().state());
         System.out.println("Commands: " + session.commands().state());
@@ -289,7 +295,8 @@ public final class DevServerControlMain {
     }
 
     private static boolean infrastructureReady(DevSession session) {
-        return "running".equals(session.runtime().state()) && "running".equals(session.proxy().state());
+        return "running".equals(session.runtime().state()) && "running".equals(session.proxy().state())
+               && servicesReady(session);
     }
 
     private static boolean applicationReady(DevSession session) {
@@ -302,7 +309,8 @@ public final class DevServerControlMain {
     private static boolean startupFailed(DevSession session) {
         return "failed".equals(session.compile().state()) || "failed".equals(session.reload().state())
                || "degraded".equals(session.reload().state()) || "failed".equals(session.frontend().state())
-               || "exited".equals(session.frontend().state());
+               || "exited".equals(session.frontend().state()) || session.services().values().stream()
+                       .anyMatch(status -> "failed".equals(status.state()) || "degraded".equals(status.state()));
     }
 
     private static String startupFailure(DevSession session) {
@@ -312,7 +320,16 @@ public final class DevServerControlMain {
                 return status.name() + ": " + status.detail();
             }
         }
+        for (Map.Entry<String, DevSession.ServiceStatus> entry : session.services().entrySet()) {
+            if ("failed".equals(entry.getValue().state()) || "degraded".equals(entry.getValue().state())) {
+                return "service " + entry.getKey() + ": " + entry.getValue().detail();
+            }
+        }
         return "unknown startup failure";
+    }
+
+    private static boolean servicesReady(DevSession session) {
+        return session.services().values().stream().allMatch(status -> "running".equals(status.state()));
     }
 
     private static Optional<String> publicUrl(DevSession session) {
