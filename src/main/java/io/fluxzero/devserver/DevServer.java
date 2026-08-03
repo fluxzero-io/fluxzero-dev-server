@@ -86,6 +86,7 @@ public class DevServer implements AutoCloseable {
     private final Map<String, AppInstance> currentApps = new ConcurrentHashMap<>();
     private final Map<String, PendingReadiness> appReadiness = new ConcurrentHashMap<>();
     private final AppTerminalFilter appTerminalFilter = new AppTerminalFilter();
+    private final FrontendTerminalFilter frontendTerminalFilter = new FrontendTerminalFilter();
     private volatile Registration metricsRegistration = Registration.noOp();
     private volatile EmbeddedLogCapture embeddedLogCapture;
     private volatile AgentQueryService agentQueryService;
@@ -1183,7 +1184,12 @@ public class DevServer implements AutoCloseable {
     }
 
     private void printFrontendOutput(String id, String message) {
-        print(message.replaceFirst("^\\[frontend]", "[frontend " + java.util.regex.Matcher.quoteReplacement(id) + "]"));
+        record(message.replaceFirst("^\\[frontend]",
+                                    "[frontend " + java.util.regex.Matcher.quoteReplacement(id) + "]"));
+        String terminalLine = frontendTerminalFilter.visibleLine(message);
+        if (browserReadyAnnounced.get() && terminalLine != null) {
+            terminalProgress.println(terminalProgress.currentTime() + "  Frontend " + id + "  " + terminalLine);
+        }
     }
 
     private void printServiceOutput(String id, ProcessUtils.ProcessOutput output) {
@@ -1353,13 +1359,6 @@ public class DevServer implements AutoCloseable {
         }
         if (message.matches("^\\[test(?: [^]]+)?] .*")) {
             return false;
-        }
-        if (message.startsWith("[frontend] ")) {
-            return message.startsWith("[frontend] still waiting")
-                   || message.startsWith("[frontend] unavailable")
-                   || message.startsWith("[frontend] process exited")
-                   || message.startsWith("[frontend] remained unavailable")
-                   || message.startsWith("[frontend] failed to restart");
         }
         if (message.matches("^\\[reload(?: [^]]+)?] .*")) {
             return message.substring(message.indexOf(']') + 1).stripLeading().startsWith("failed");
