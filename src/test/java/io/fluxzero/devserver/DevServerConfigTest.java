@@ -221,6 +221,122 @@ class DevServerConfigTest {
     }
 
     @Test
+    void selectsDefaultAndExplicitDevelopmentProfiles(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                defaultProfile: encrypted
+                profiles:
+                  encrypted:
+                    environment: local
+                    apps: [rebound-encrypted]
+                    applicationConfig:
+                      rebound-encrypted:
+                        application: rebound
+                        env:
+                          SPRING_PROFILES_ACTIVE: main
+                        secrets:
+                          ENCRYPTION_KEY: "op://Shared Vault/rebound/local key"
+                    port: 4200
+                    idp: external
+                    frontend:
+                      directory: frontend
+                      command: "npm start -- --port {port}"
+                  reporting:
+                    environment: reporting
+                    apps: [rebound, reporting]
+                    frontend:
+                      directory: reporting-ui
+                      command: "npm run reporting -- --port {port}"
+                """);
+
+        DevServerConfig defaults = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+        assertEquals("encrypted", defaults.profile());
+        assertEquals(List.of("rebound-encrypted"), defaults.applications());
+        assertEquals("frontend", defaults.frontend().directory());
+        assertEquals(4200, defaults.gatewayPort());
+        assertEquals(IdpMode.EXTERNAL, defaults.idpMode());
+
+        DevServerConfig reporting = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--profile", "reporting"
+        });
+        assertEquals("reporting", reporting.profile());
+        assertEquals("reporting", reporting.environment());
+        assertEquals(List.of("rebound", "reporting"), reporting.applications());
+        assertEquals("reporting-ui", reporting.frontend().directory());
+    }
+
+    @Test
+    void preservesLegacyConfigurationAndAutoSelectsASingleProfile(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                apps: [app]
+                frontend:
+                  command: "npm start -- --port {port}"
+                """);
+
+        DevServerConfig legacy = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+        assertEquals(null, legacy.profile());
+        assertEquals(List.of("app"), legacy.applications());
+
+        Files.writeString(configFile, """
+                version: 1
+                profiles:
+                  only:
+                    apps: [worker]
+                """);
+        DevServerConfig only = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+        assertEquals("only", only.profile());
+        assertEquals(List.of("worker"), only.applications());
+    }
+
+    @Test
+    void rejectsAmbiguousUnknownAndMixedDevelopmentProfiles(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                profiles:
+                  app:
+                    apps: [app]
+                  worker:
+                    apps: [worker]
+                """);
+
+        DevServerStartupException ambiguous = assertThrows(
+                DevServerStartupException.class,
+                () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
+        assertTrue(ambiguous.getMessage().contains("--profile"));
+        assertTrue(ambiguous.getMessage().contains("app, worker"));
+
+        DevServerStartupException unknown = assertThrows(
+                DevServerStartupException.class,
+                () -> DevServerConfig.fromArgs(new String[]{
+                        "--project-dir", projectDirectory.toString(), "--profile", "missing"
+                }));
+        assertTrue(unknown.getMessage().contains("Unknown development profile 'missing'"));
+
+        Files.writeString(configFile, """
+                version: 1
+                apps: [legacy]
+                defaultProfile: app
+                profiles:
+                  app:
+                    apps: [app]
+                """);
+        DevServerStartupException mixed = assertThrows(
+                DevServerStartupException.class,
+                () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
+        assertTrue(mixed.getMessage().contains("cannot be combined"));
+    }
+
+    @Test
     void loadsNamedApplicationConfigurationsWithoutChangingDirectSelection(@TempDir Path projectDirectory)
             throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);

@@ -21,6 +21,19 @@ public final class DevProjectConfigMain {
             # .fluxzero/dev.yaml
             version: 1
 
+            # For multiple complete development configurations, replace the legacy fields below with profiles.
+            # Select one with `fz dev --profile worker` or configure defaultProfile.
+            # defaultProfile: app
+            # profiles:
+            #   app:
+            #     environment: local
+            #     apps: [app]
+            #   worker:
+            #     environment: local
+            #     apps: [worker-local]
+            #     frontend:
+            #       command: "npm run worker -- --port {port}"
+
             # Shared application defaults. All fields except version are optional.
             environment: local
             # mainClass: com.example.Application

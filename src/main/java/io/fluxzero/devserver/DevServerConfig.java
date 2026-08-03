@@ -43,6 +43,7 @@ import java.util.Objects;
  * @param idpMode                 managed local IDP or application-owned external IDP
  * @param applicationConfig       named per-application launch configurations loaded from project config
  * @param idleTimeout             inactivity timeout for the environment; zero disables it
+ * @param profile                 selected named development profile, or {@code null} for legacy configuration
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -63,7 +64,8 @@ public record DevServerConfig(
         int gatewayPort,
         IdpMode idpMode,
         Map<String, DevApplicationConfig> applicationConfig,
-        Duration idleTimeout
+        Duration idleTimeout,
+        String profile
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -91,6 +93,7 @@ public record DevServerConfig(
         idpMode = idpMode == null ? IdpMode.MANAGED : idpMode;
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         idleTimeout = validateLifecycleTimeout(idleTimeout, DEFAULT_IDLE_TIMEOUT, "idleTimeout");
+        profile = profile == null || profile.isBlank() ? null : profile.strip();
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -100,6 +103,32 @@ public record DevServerConfig(
             }
         });
         Objects.requireNonNull(projectDirectory, "projectDirectory must not be null");
+    }
+
+    public DevServerConfig(
+            Path projectDirectory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            boolean watch,
+            boolean compileOnStart,
+            boolean testsEnabled,
+            Duration startupTimeout,
+            Duration gracefulShutdownTimeout,
+            Duration debounce,
+            FrontendConfig frontend,
+            List<String> appArgs,
+            boolean fastCompilerEnabled,
+            String environment,
+            List<String> applications,
+            int gatewayPort,
+            IdpMode idpMode,
+            Map<String, DevApplicationConfig> applicationConfig,
+            Duration idleTimeout
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, null);
     }
 
     public DevServerConfig(
@@ -203,7 +232,9 @@ public record DevServerConfig(
         ParsedArgs parsed = ParsedArgs.parse(args);
         Path projectDirectory = parsed.path("project-dir", parsed.path("dir", Path.of("")));
         projectDirectory = projectDirectory.toAbsolutePath().normalize();
-        DevProjectConfig project = DevProjectConfig.load(projectDirectory);
+        DevProjectConfig.Selection projectSelection = DevProjectConfig.load(projectDirectory).select(
+                parsed.value("profile", environment("FLUXZERO_DEV_PROFILE")));
+        DevProjectConfig project = projectSelection.config();
         boolean noFrontend = parsed.flag("no-frontend");
         String frontendCommand = parsed.value("frontend-command");
         String frontendUrl = parsed.value("frontend-url");
@@ -266,7 +297,8 @@ public record DevServerConfig(
                                 environment("FLUXZERO_DEV_IDP"), project.idp(), "managed"))),
                 project.applicationConfig(),
                 lifecycleDuration(parsed.value("idle-timeout", project.lifecycle().idleTimeout()),
-                                  DEFAULT_IDLE_TIMEOUT, "idleTimeout"));
+                                  DEFAULT_IDLE_TIMEOUT, "idleTimeout"),
+                projectSelection.profile());
     }
 
     List<ApplicationSelection> applicationSelections() {

@@ -137,6 +137,11 @@ Print the configuration reference for the current dev-server version with:
 fz dev config
 ```
 
+Projects with several complete local setups can define `profiles`, select a `defaultProfile`, and override it with
+`fz dev --profile <name>` or `FLUXZERO_DEV_PROFILE`. Existing top-level configuration remains supported. Profile
+configuration is deliberately complete rather than inherited, so selecting another profile cannot accidentally retain
+applications, secrets, commands, or frontend settings from the default profile.
+
 The output is valid YAML and documents application selection, named application flavors, managed or external
 frontends, backend pass-through paths, 1Password secret references, ordered startup commands, and lifecycle
 timeouts. Environments stop after 24 hours without source, browser, build, test, command, or attach activity by

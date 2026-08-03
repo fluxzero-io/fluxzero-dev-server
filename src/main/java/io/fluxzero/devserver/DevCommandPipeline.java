@@ -207,7 +207,8 @@ final class DevCommandPipeline implements AutoCloseable {
 
     private List<CommandFile> discover() throws IOException {
         List<CommandFile> result = new ArrayList<>();
-        DevProjectConfig.load(config.projectDirectory()).commands().forEach((id, command) -> {
+        DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config().commands()
+                .forEach((id, command) -> {
             try {
                 result.add(readConfiguredCommand(id, command));
             } catch (IOException e) {
