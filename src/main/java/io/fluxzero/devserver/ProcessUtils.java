@@ -18,6 +18,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -41,6 +44,20 @@ final class ProcessUtils {
     private static final Duration OUTPUT_DRAIN_TIMEOUT = Duration.ofSeconds(2);
 
     private ProcessUtils() {
+    }
+
+    static int availablePort() throws IOException {
+        try (ServerSocket socket = new ServerSocket()) {
+            socket.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            return socket.getLocalPort();
+        }
+    }
+
+    static List<String> shellCommand(String command, String ownershipMarker) {
+        String marker = "fluxzero-dev-owner=" + ownershipMarker;
+        return isWindows()
+                ? List.of("cmd", "/d", "/s", "/c", command + " & rem " + marker)
+                : List.of("sh", "-c", command, marker);
     }
 
     static Process start(List<String> command, Path directory, Map<String, String> environment,

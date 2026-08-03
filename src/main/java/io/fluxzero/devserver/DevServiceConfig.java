@@ -15,6 +15,8 @@
 package io.fluxzero.devserver;
 
 import java.time.Duration;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /** Configuration for a managed command service or an externally supplied local service. */
@@ -30,8 +32,9 @@ public record DevServiceConfig(
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofMinutes(2);
 
     public DevServiceConfig {
-        ports = ports == null ? Map.of() : Map.copyOf(ports);
-        environment = environment == null ? Map.of() : Map.copyOf(environment);
+        ports = ports == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(ports));
+        environment = environment == null ? Map.of()
+                : Collections.unmodifiableMap(new LinkedHashMap<>(environment));
         readiness = readiness == null ? new Readiness(null, null, DEFAULT_STARTUP_TIMEOUT) : readiness;
     }
 
