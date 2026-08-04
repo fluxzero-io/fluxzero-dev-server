@@ -163,7 +163,7 @@ mix existing TestFixture JSON resources with named inline commands:
 
 ```yaml
 commands:
-  - src/test/resources/user/create-admin.json
+  - src/test/resources/users/*.json
   - src/test/resources/items/create-product.json
   - create-extra-admin:
       type: com.example.CreateUser
@@ -178,6 +178,10 @@ covered by `@RegisterType`; fully qualified class names remain supported. Files 
 in-memory runtime; changed or failed commands are retried without re-running unchanged successful predecessors. The
 conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
 configured commands in normalized path order.
+
+File entries may use `*`, `?`, and recursive `**` glob patterns. Matches are inserted alphabetically by normalized
+project-relative path at the pattern's position in the command list. A pattern without matches is reported as a
+configuration error and remains watched, so adding its first matching file recovers automatically.
 
 Use `services` for databases, emulators, log stores, or other local dependencies. A service with `command` is owned
 by the dev server; a service with only `url` is external and is never stopped. Named ports accept a fixed number or

@@ -129,8 +129,9 @@ public final class DevProjectConfigMain {
             # Startup commands run once per in-memory runtime, in declaration order, and retry after failure.
             # Entries may reference TestFixture JSON files or define a named command inline.
             # TestFixture @class aliases resolve through application types covered by @RegisterType.
+            # Glob matches are inserted alphabetically at the pattern's position; ** matches recursively.
             # commands:
-            #   - src/test/resources/user/create-admin.json
+            #   - src/test/resources/users/*.json
             #   - create-extra-admin:
             #       type: com.example.CreateUser
             #       revision: 0

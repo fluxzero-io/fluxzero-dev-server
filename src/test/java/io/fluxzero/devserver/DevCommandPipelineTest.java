@@ -413,6 +413,102 @@ class DevCommandPipelineTest {
     }
 
     @Test
+    void expandsFixtureGlobsAlphabeticallyAtTheirDeclaredPosition(@TempDir Path projectDirectory) throws Exception {
+        Path users = projectDirectory.resolve("src/test/resources/users");
+        Files.createDirectories(users.resolve("nested"));
+        writeFixtureCommand(users.resolve("020-second.json"), "second");
+        writeFixtureCommand(users.resolve("010-first.json"), "first");
+        writeFixtureCommand(users.resolve("nested/015-nested.json"), "nested");
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commands:
+                  - before:
+                      type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                      payload:
+                        name: before
+                  - src/test/resources/users/*.json
+                  - after:
+                      type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                      payload:
+                        name: after
+                """);
+        Server runtime = TestServer.startServer(0);
+        List<String> processedNames = new CopyOnWriteArrayList<>();
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        WebSocketClient appClient = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
+                .runtimeBaseUrl("ws://localhost:" + localPort(runtime))
+                .name("dev-test-app")
+                .id("dev-test-app")
+                .build());
+        Fluxzero fluxzero = DefaultFluxzero.builder()
+                .disableShutdownHook()
+                .disableKeepalive()
+                .disableTrackingMetrics()
+                .disableCacheEvictionMetrics()
+                .build(appClient);
+        Registration registration = fluxzero.registerHandlers(new ListHandler(processedNames));
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                config, store, "ws://localhost:" + localPort(runtime), status::set, ignored -> {
+        })) {
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("before", "first", "second", "after"), processedNames);
+            assertEquals(List.of("commands.before", "src/test/resources/users/010-first.json",
+                                 "src/test/resources/users/020-second.json", "commands.after"),
+                         store.readCommandStatus().orElseThrow().commands().stream()
+                                 .map(DevCommandStatus.Entry::path).toList());
+
+            Path added = users.resolve("015-added.json");
+            assertTrue(pipeline.references(added));
+            writeFixtureCommand(added, "added");
+            status.set(null);
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("before", "first", "second", "after", "added"), processedNames);
+        } finally {
+            registration.cancel();
+            fluxzero.close();
+            runtime.stop();
+        }
+    }
+
+    @Test
+    void reportsEmptyFixtureGlobAndKeepsItWatched(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commands:
+                  - src/test/resources/users/**/*.json
+                """);
+        Server runtime = TestServer.startServer(0);
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        List<String> output = new CopyOnWriteArrayList<>();
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                config, new DevSessionStore(projectDirectory), "ws://localhost:" + localPort(runtime),
+                status::set, output::add)) {
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "failed"));
+            assertTrue(output.stream().anyMatch(line -> line.contains("glob matched no files")));
+            assertTrue(pipeline.references(projectDirectory.resolve("src/test/resources/users/new/create.json")));
+        } finally {
+            runtime.stop();
+        }
+    }
+
+    @Test
     void keepsMissingConfiguredFileWatchedForRecovery(@TempDir Path projectDirectory) throws Exception {
         Path missing = projectDirectory.resolve("src/test/resources/user/create-admin.json");
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);

@@ -606,6 +606,8 @@ Backlog:
 - [x] Slice 21.5: whole-appbewijs voor live toevoegen en herstellen van een YAML-command.
 - [x] Slice 21.6: geordende JSON-bestandsreferenties naast inline commands, inclusief TestFixture-inheritance en live
   change-detectie van alle betrokken bestanden.
+- [x] Slice 21.7: globreferenties voor JSON-testfixtures, alfabetisch uitgeklapt op hun declaratiepositie en ook bij
+  aanvankelijk ontbrekende matches live gevolgd.
 
 ## Phase 22: Explainable Rebuild And Test Feedback
 

@@ -36,6 +36,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -54,6 +55,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -79,6 +81,7 @@ final class DevCommandPipeline implements AutoCloseable {
     private final RequestHandler requestHandler;
     private final ApplicationTypeRegistry typeRegistry = new ApplicationTypeRegistry();
     private volatile Set<Path> referencedFiles = Set.of();
+    private volatile List<PathMatcher> referencedGlobs = List.of();
 
     DevCommandPipeline(DevServerConfig config, DevSessionStore sessionStore, String runtimeBaseUrl,
                        Consumer<DevCommandStatus> statusConsumer, Consumer<String> output) {
@@ -218,11 +221,12 @@ final class DevCommandPipeline implements AutoCloseable {
         List<CommandFile> result = new ArrayList<>();
         LinkedHashSet<Path> references = new LinkedHashSet<>();
         LinkedHashSet<Path> explicitlyConfiguredFiles = new LinkedHashSet<>();
+        List<PathMatcher> globs = new ArrayList<>();
         try {
             DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config().commands()
                     .forEach((id, command) -> {
                 try {
-                    result.add(readConfiguredCommand(id, command, references, explicitlyConfiguredFiles));
+                    result.addAll(readConfiguredCommands(id, command, references, explicitlyConfiguredFiles, globs));
                 } catch (IOException e) {
                     throw new IllegalStateException("Could not read commands." + id + ": " + e.getMessage(), e);
                 }
@@ -246,25 +250,135 @@ final class DevCommandPipeline implements AutoCloseable {
             }
         } finally {
             referencedFiles = Set.copyOf(references);
+            referencedGlobs = List.copyOf(globs);
         }
     }
 
-    private CommandFile readConfiguredCommand(String id, DevCommandConfig command, Set<Path> references,
-                                              Set<Path> explicitlyConfiguredFiles) throws IOException {
+    private List<CommandFile> readConfiguredCommands(String id, DevCommandConfig command, Set<Path> references,
+                                                     Set<Path> explicitlyConfiguredFiles,
+                                                     List<PathMatcher> globs) throws IOException {
         if (command.fileReference()) {
+            if (globPattern(command.file())) {
+                if (!id.equals(command.file())) {
+                    throw new IllegalArgumentException(
+                            "Command glob '" + command.file() + "' must be an unnamed commands list entry");
+                }
+                List<Path> matches = resolveConfiguredGlob(command.file(), globs);
+                explicitlyConfiguredFiles.addAll(matches);
+                return matches.stream().map(file -> {
+                    try {
+                        return readCommand(file, normalizedRelativePath(file), references);
+                    } catch (IOException e) {
+                        throw new IllegalStateException("Could not read " + file + ": " + e.getMessage(), e);
+                    }
+                }).toList();
+            }
             Path file = resolveConfiguredFile(command.file());
             explicitlyConfiguredFiles.add(file);
             String identity = id.equals(command.file()) ? normalizedRelativePath(file) : "commands." + id;
-            return readCommand(file, identity, references);
+            return List.of(readCommand(file, identity, references));
         }
         String identity = "commands." + id;
         JsonNode payload = command.payload() == null || command.payload().isNull()
                 ? objectMapper.createObjectNode() : command.payload();
         String type = typeRegistry.resolve(command.type());
-        return createCommand(identity, commandHash(type, command.effectiveRevision(), payload,
-                                                   command.metadata()),
-                             type, command.effectiveRevision(), payload,
-                             command.metadata());
+        return List.of(createCommand(identity, commandHash(type, command.effectiveRevision(), payload,
+                                                          command.metadata()),
+                                     type, command.effectiveRevision(), payload,
+                                     command.metadata()));
+    }
+
+    private List<Path> resolveConfiguredGlob(String configuredPattern, List<PathMatcher> globs) throws IOException {
+        Path configuredPath = Path.of(configuredPattern);
+        Path absolutePattern = (configuredPath.isAbsolute() ? configuredPath
+                : config.projectDirectory().resolve(configuredPath)).toAbsolutePath().normalize();
+        PathMatcher matcher = globMatcher(absolutePattern);
+        globs.add(matcher);
+
+        int firstGlob = firstGlobSegment(absolutePattern);
+        Path searchRoot = absolutePattern.getRoot();
+        for (int i = 0; i < firstGlob; i++) {
+            searchRoot = searchRoot.resolve(absolutePattern.getName(i));
+        }
+        Path normalizedRoot = searchRoot.toAbsolutePath().normalize();
+        if (config.projects().stream().map(DevBuildProject::directory)
+                .noneMatch(normalizedRoot::startsWith)) {
+            throw new IllegalArgumentException(
+                    "Dev command glob must start inside a configured project: " + configuredPattern);
+        }
+        int maxDepth = globDepth(absolutePattern, firstGlob);
+        List<Path> matches;
+        if (!Files.isDirectory(normalizedRoot)) {
+            matches = List.of();
+        } else {
+            try (Stream<Path> paths = Files.walk(normalizedRoot, maxDepth)) {
+                matches = paths.filter(Files::isRegularFile).map(path -> path.toAbsolutePath().normalize())
+                        .filter(matcher::matches).sorted(Comparator.comparing(this::normalizedRelativePath)).toList();
+            }
+        }
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Dev command glob matched no files: " + configuredPattern);
+        }
+        return matches;
+    }
+
+    private static int firstGlobSegment(Path pattern) {
+        for (int i = 0; i < pattern.getNameCount(); i++) {
+            if (globPattern(pattern.getName(i).toString())) {
+                return i;
+            }
+        }
+        throw new IllegalArgumentException("Not a glob pattern: " + pattern);
+    }
+
+    private static int globDepth(Path pattern, int firstGlob) {
+        for (int i = firstGlob; i < pattern.getNameCount(); i++) {
+            if (pattern.getName(i).toString().contains("**")) {
+                return Integer.MAX_VALUE;
+            }
+        }
+        return pattern.getNameCount() - firstGlob;
+    }
+
+    private static boolean globPattern(String value) {
+        return value != null && (value.indexOf('*') >= 0 || value.indexOf('?') >= 0);
+    }
+
+    private static PathMatcher globMatcher(Path glob) {
+        Pattern pattern = Pattern.compile(globRegex(normalizedGlobPath(glob)));
+        return path -> pattern.matcher(normalizedGlobPath(path.toAbsolutePath().normalize())).matches();
+    }
+
+    private static String normalizedGlobPath(Path path) {
+        return path.toString().replace('\\', '/');
+    }
+
+    private static String globRegex(String glob) {
+        StringBuilder regex = new StringBuilder("^");
+        for (int i = 0; i < glob.length(); i++) {
+            char current = glob.charAt(i);
+            if (current == '*') {
+                if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
+                    i++;
+                    if (i + 1 < glob.length() && glob.charAt(i + 1) == '/') {
+                        i++;
+                        regex.append("(?:.*/)?");
+                    } else {
+                        regex.append(".*");
+                    }
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (current == '?') {
+                regex.append("[^/]");
+            } else {
+                if (".\\+()^$|{}[]".indexOf(current) >= 0) {
+                    regex.append('\\');
+                }
+                regex.append(current);
+            }
+        }
+        return regex.append('$').toString();
     }
 
     private CommandFile readCommand(Path file, String identity, Set<Path> references) throws IOException {
@@ -396,7 +510,9 @@ final class DevCommandPipeline implements AutoCloseable {
     }
 
     boolean references(Path path) {
-        return referencedFiles.contains(path.toAbsolutePath().normalize());
+        Path normalized = path.toAbsolutePath().normalize();
+        return referencedFiles.contains(normalized)
+               || referencedGlobs.stream().anyMatch(glob -> glob.matches(normalized));
     }
 
     private String commandHash(String type, int revision, JsonNode payload, Map<String, Object> metadata)
