@@ -552,6 +552,7 @@ public class DevServer implements AutoCloseable {
             if (candidates.isEmpty()) {
                 throw new IllegalStateException(failureSummary(failures));
             }
+            Set<String> registeredTypes = ApplicationTypeRegistry.read(applications);
             long switchStarted = System.nanoTime();
             for (AppInstance candidate : candidates.values()) {
                 AppInstance previous = currentApps.put(candidate.launchId(), candidate);
@@ -575,6 +576,7 @@ public class DevServer implements AutoCloseable {
             project.compilePipeline.activate(snapshot, currentApps.values().stream()
                     .filter(app -> app.launchId().startsWith(project.launchPrefix()))
                     .map(AppInstance::buildNumber).collect(java.util.stream.Collectors.toSet()));
+            commandPipeline.updateRegisteredTypes(project.id, registeredTypes);
             long switchMillis = elapsedMillis(switchStarted);
             long appTotalMillis = elapsedMillis(reloadStarted);
             long totalMillis = safeAdd(snapshot.compileTiming().millis(), appTotalMillis);
@@ -1359,7 +1361,8 @@ public class DevServer implements AutoCloseable {
         Path projectConfig = config.projectDirectory().resolve(DevProjectConfig.FILE).toAbsolutePath().normalize();
         return changes.stream().map(path -> path.isAbsolute() ? path : config.projectDirectory().resolve(path))
                 .map(path -> path.toAbsolutePath().normalize())
-                .anyMatch(path -> path.startsWith(commandDirectory) || path.equals(projectConfig));
+                .anyMatch(path -> path.startsWith(commandDirectory) || path.equals(projectConfig)
+                                  || commandPipeline != null && commandPipeline.references(path));
     }
 
     private static String failureSummary(Map<String, String> failures) {

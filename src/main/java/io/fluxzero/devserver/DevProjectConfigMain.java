@@ -127,14 +127,17 @@ public final class DevProjectConfigMain {
               idleTimeout: 24h
 
             # Startup commands run once per in-memory runtime, in declaration order, and retry after failure.
+            # Entries may reference TestFixture JSON files or define a named command inline.
+            # TestFixture @class aliases resolve through application types covered by @RegisterType.
             # commands:
-            #   create-admin:
-            #     type: com.example.CreateUser
-            #     revision: 0
-            #     payload:
-            #       name: Local Admin
-            #     metadata:
-            #       source: dev
+            #   - src/test/resources/user/create-admin.json
+            #   - create-extra-admin:
+            #       type: com.example.CreateUser
+            #       revision: 0
+            #       payload:
+            #         name: Local Admin
+            #       metadata:
+            #         source: dev
             """;
 
     private DevProjectConfigMain() {

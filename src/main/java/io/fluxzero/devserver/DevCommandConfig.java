@@ -19,9 +19,13 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import java.util.Map;
 
-record DevCommandConfig(String type, Integer revision, JsonNode payload, Map<String, Object> metadata) {
+record DevCommandConfig(String file, String type, Integer revision, JsonNode payload, Map<String, Object> metadata) {
     DevCommandConfig {
         metadata = metadata == null ? Map.of() : Map.copyOf(metadata);
+    }
+
+    boolean fileReference() {
+        return file != null && !file.isBlank();
     }
 
     int effectiveRevision() {

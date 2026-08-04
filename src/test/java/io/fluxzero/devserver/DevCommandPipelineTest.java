@@ -334,6 +334,112 @@ class DevCommandPipelineTest {
         }
     }
 
+    @Test
+    void executesReferencedTestFixtureFilesAndTracksInheritedChanges(@TempDir Path projectDirectory) throws Exception {
+        Path resourceDirectory = projectDirectory.resolve("src/test/resources/user");
+        Files.createDirectories(resourceDirectory);
+        Path base = resourceDirectory.resolve("base-user.json");
+        Path inherited = resourceDirectory.resolve("create-inherited-user.json");
+        Path direct = resourceDirectory.resolve("create-direct-user.json");
+        writeFixtureCommand(base, "file");
+        writeFixtureCommand(direct, "second-file");
+        Files.writeString(inherited, """
+                {
+                  "@extends": "/user/base-user.json",
+                  "@revision": 0
+                }
+                """);
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                profiles:
+                  seeded:
+                    commands:
+                      - src/test/resources/user/create-inherited-user.json
+                      - create-inline:
+                          type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                          payload:
+                            name: inline
+                      - src/test/resources/user/create-direct-user.json
+                """);
+        Server runtime = TestServer.startServer(0);
+        List<String> processedNames = new CopyOnWriteArrayList<>();
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--profile", "seeded",
+                "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        WebSocketClient appClient = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
+                .runtimeBaseUrl("ws://localhost:" + localPort(runtime))
+                .name("dev-test-app")
+                .id("dev-test-app")
+                .build());
+        Fluxzero fluxzero = DefaultFluxzero.builder()
+                .disableShutdownHook()
+                .disableKeepalive()
+                .disableTrackingMetrics()
+                .disableCacheEvictionMetrics()
+                .build(appClient);
+        Registration registration = fluxzero.registerHandlers(new ListHandler(processedNames));
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                config, store, "ws://localhost:" + localPort(runtime), status::set, ignored -> {
+        })) {
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("file", "inline", "second-file"), processedNames);
+            assertEquals(List.of("src/test/resources/user/create-inherited-user.json",
+                                 "commands.create-inline",
+                                 "src/test/resources/user/create-direct-user.json"),
+                         store.readCommandStatus().orElseThrow().commands().stream()
+                                 .map(DevCommandStatus.Entry::path).toList());
+            assertTrue(pipeline.references(base));
+            assertTrue(pipeline.references(inherited));
+            assertTrue(pipeline.references(direct));
+
+            writeFixtureCommand(base, "changed");
+            status.set(null);
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("file", "inline", "second-file", "changed"), processedNames);
+        } finally {
+            registration.cancel();
+            fluxzero.close();
+            runtime.stop();
+        }
+    }
+
+    @Test
+    void keepsMissingConfiguredFileWatchedForRecovery(@TempDir Path projectDirectory) throws Exception {
+        Path missing = projectDirectory.resolve("src/test/resources/user/create-admin.json");
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commands:
+                  - src/test/resources/user/create-admin.json
+                """);
+        Server runtime = TestServer.startServer(0);
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                config, new DevSessionStore(projectDirectory), "ws://localhost:" + localPort(runtime),
+                status::set, ignored -> {
+                })) {
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "failed"));
+            assertTrue(pipeline.references(missing));
+        } finally {
+            runtime.stop();
+        }
+    }
+
     private static boolean awaitStatus(AtomicReference<DevCommandStatus> status, String expected)
             throws InterruptedException {
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
@@ -369,6 +475,15 @@ class DevCommandPipelineTest {
                   "payload": {
                     "name": "%s"
                   }
+                }
+                """.formatted(name));
+    }
+
+    private static void writeFixtureCommand(Path command, String name) throws Exception {
+        Files.writeString(command, """
+                {
+                  "@class": "io.fluxzero.devserver.DevCommandPipelineTest$CreateUser",
+                  "name": "%s"
                 }
                 """.formatted(name));
     }

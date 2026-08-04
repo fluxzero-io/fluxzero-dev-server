@@ -590,6 +590,9 @@ DoD status:
 - File-command ids blijven hun relatieve JSON-pad; YAML-command ids zijn hun mapkey onder `commands`.
 - YAML-declaratievolgorde is uitvoervolgorde; daarna volgen file-commands lexicografisch.
 - Type, revision, payload en metadata zijn inline configureerbaar en worden met dezelfde statusledger uitgevoerd.
+- Een profiel kan in dezelfde expliciete commandvolgorde bestaande TestFixture JSON-bestanden en inline commands
+  combineren; gerefereerde bestanden ondersteunen `@class`, `@revision` en `@extends`, waarbij korte `@class`-namen
+  via de door `@RegisterType` gegenereerde applicatieregistratie worden opgelost.
 - Een gewijzigde commanddefinitie wordt opnieuw uitgevoerd; succesvolle ongewijzigde commands worden overgeslagen.
 - Een wijziging aan `.fluxzero/dev.yaml` herlaadt commands live zonder app-redeploy of achtergrondtests.
 - Config- en uitvoerfouten noemen de command-id en blijven zichtbaar in diagnostics en commandstatus.
@@ -601,6 +604,8 @@ Backlog:
 - [x] Slice 21.3: live watcherpad voor `.fluxzero/dev.yaml` zonder compile/redeploy/testbijwerking.
 - [x] Slice 21.4: regressies voor volgorde, retry, gewijzigde payload, dubbele payloads en backwards compatibility.
 - [x] Slice 21.5: whole-appbewijs voor live toevoegen en herstellen van een YAML-command.
+- [x] Slice 21.6: geordende JSON-bestandsreferenties naast inline commands, inclusief TestFixture-inheritance en live
+  change-detectie van alle betrokken bestanden.
 
 ## Phase 22: Explainable Rebuild And Test Feedback
 

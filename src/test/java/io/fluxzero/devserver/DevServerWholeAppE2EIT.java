@@ -428,6 +428,39 @@ class DevServerWholeAppE2EIT {
     }
 
     @Test
+    void executesConfiguredTestFixtureJsonAfterApplicationReadiness(@TempDir Path tempDirectory) throws Exception {
+        Path project = copyFixture(tempDirectory);
+        Files.writeString(project.resolve("src/main/java/com/example/app/package-info.java"), """
+                @io.fluxzero.common.serialization.RegisterType
+                package com.example.app;
+                """, UTF_8);
+        Path command = project.resolve("src/test/resources/user/create-greeting.json");
+        Files.createDirectories(command.getParent());
+        Files.writeString(command, """
+                {
+                  "@class": "CreateGreeting",
+                  "name": "Fixture"
+                }
+                """, UTF_8);
+        Path configFile = project.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commands:
+                  - src/test/resources/user/create-greeting.json
+                """, UTF_8);
+
+        try (DevServer ignored = new DevServer(config(project)).start();
+             RawFluxzeroClient rawClient = new RawFluxzeroClient("ws://localhost:" + waitForRuntimePort(project))) {
+            waitForVersion(rawClient, "v1");
+            DevCommandStatus.Entry entry = waitForCommandIdentity(
+                    project, "src/test/resources/user/create-greeting.json", "succeeded");
+            assertTrue(entry.detail().contains("processed by app"), entry.detail());
+            waitForGreeting(rawClient, "base:Fixture:v1");
+        }
+    }
+
+    @Test
     void testFixtureChangesRunTestsWithoutRedeployAndHandlerChangesUseImpactIndex(@TempDir Path tempDirectory)
             throws Exception {
         Path project = copyFixture(tempDirectory);

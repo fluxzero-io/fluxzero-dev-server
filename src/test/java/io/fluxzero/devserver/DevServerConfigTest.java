@@ -180,6 +180,32 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsOrderedCommandFilesAndInlineDefinitions(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commands:
+                  - src/test/resources/user/create-admin.json
+                  - create-extra-admin:
+                      type: com.example.CreateUser
+                      payload:
+                        name: Local Admin
+                  - create-product: src/test/resources/items/create-product.json
+                """);
+
+        Map<String, DevCommandConfig> commands = DevProjectConfig.load(projectDirectory).commands();
+
+        assertEquals(List.of("src/test/resources/user/create-admin.json", "create-extra-admin", "create-product"),
+                     List.copyOf(commands.keySet()));
+        assertEquals("src/test/resources/user/create-admin.json",
+                     commands.get("src/test/resources/user/create-admin.json").file());
+        assertEquals("com.example.CreateUser", commands.get("create-extra-admin").type());
+        assertEquals("Local Admin", commands.get("create-extra-admin").payload().path("name").asText());
+        assertEquals("src/test/resources/items/create-product.json", commands.get("create-product").file());
+    }
+
+    @Test
     void rejectsUnknownProjectConfigKeys(@TempDir Path projectDirectory) throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());

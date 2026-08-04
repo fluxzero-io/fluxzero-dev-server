@@ -16,6 +16,7 @@ package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 import java.nio.file.Files;
@@ -44,7 +45,7 @@ record DevProjectConfig(
         Map<String, Frontend> frontends,
         Map<String, Service> services,
         Lifecycle lifecycle,
-        Map<String, DevCommandConfig> commands,
+        @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
         String defaultProfile,
         Map<String, Profile> profiles
 ) {
@@ -307,7 +308,7 @@ record DevProjectConfig(
             Map<String, Frontend> frontends,
             Map<String, Service> services,
             Lifecycle lifecycle,
-            Map<String, DevCommandConfig> commands
+            @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands
     ) {
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
@@ -345,7 +346,16 @@ record DevProjectConfig(
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException(path + " keys must not be blank");
             }
-            if (command == null || command.type() == null || command.type().isBlank()) {
+            if (command == null) {
+                throw new IllegalArgumentException(path + "." + id + " must be configured");
+            }
+            if (command.fileReference()) {
+                if (command.type() != null || command.revision() != null || command.payload() != null
+                    || !command.metadata().isEmpty()) {
+                    throw new IllegalArgumentException(path + "." + id
+                                                       + " cannot combine file with an inline command definition");
+                }
+            } else if (command.type() == null || command.type().isBlank()) {
                 throw new IllegalArgumentException(path + "." + id + ".type must be configured");
             }
         });

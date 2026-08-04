@@ -158,6 +158,27 @@ application configuration can override its namespace. A failed compile or startu
 ready applications from all projects running. `projects` is additive configuration: existing single-project files
 continue to use `apps` and `applicationConfig` unchanged.
 
+Define startup data with profile-level `commands`. Entries run in declaration order across all applications and may
+mix existing TestFixture JSON resources with named inline commands:
+
+```yaml
+commands:
+  - src/test/resources/user/create-admin.json
+  - src/test/resources/items/create-product.json
+  - create-extra-admin:
+      type: com.example.CreateUser
+      payload:
+        name: Local Admin
+```
+
+Referenced JSON resources support TestFixture's `@class`, `@revision`, and recursive `@extends` properties. A short
+`@class` value such as `CreateAccount` resolves through the application's generated type registry when the type is
+covered by `@RegisterType`; fully qualified class names remain supported. Files may also use the dev server's existing
+`type`/`revision`/`payload`/`metadata` envelope. Successful commands run once per
+in-memory runtime; changed or failed commands are retried without re-running unchanged successful predecessors. The
+conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
+configured commands in normalized path order.
+
 Use `services` for databases, emulators, log stores, or other local dependencies. A service with `command` is owned
 by the dev server; a service with only `url` is external and is never stopped. Named ports accept a fixed number or
 `dynamic`. Service-local fields reference a named allocated port as `{servicePort.<name>}`. The resolved URL and ports
