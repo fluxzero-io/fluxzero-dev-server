@@ -446,6 +446,10 @@ class DevServerWholeAppE2EIT {
         Files.createDirectories(configFile.getParent());
         Files.writeString(configFile, """
                 version: 1
+                commandDefaults:
+                  systemUser:
+                    subject: $system
+                    roles: [system]
                 commands:
                   - src/test/resources/user/create-greeting.json
                 """, UTF_8);
@@ -1002,6 +1006,7 @@ class DevServerWholeAppE2EIT {
 
     private static void writeCommand(Path projectDirectory, String fileName, String type, String payload)
             throws IOException {
+        writeLegacyCommandDefaults(projectDirectory);
         Path command = projectDirectory.resolve(DevCommandPipeline.COMMAND_DIRECTORY).resolve(fileName);
         Files.createDirectories(command.getParent());
         Files.writeString(command, """
@@ -1017,12 +1022,31 @@ class DevServerWholeAppE2EIT {
         Files.createDirectories(config.getParent());
         Files.writeString(config, """
                 version: 1
+                commandDefaults:
+                  systemUser:
+                    subject: $system
+                    roles: [system]
                 commands:
                   live-greeting:
                     type: %s
                     payload:
                       name: %s
                 """.formatted(type, name), UTF_8);
+    }
+
+    private static void writeLegacyCommandDefaults(Path projectDirectory) throws IOException {
+        Path config = projectDirectory.resolve(DevProjectConfig.FILE);
+        if (Files.exists(config)) {
+            return;
+        }
+        Files.createDirectories(config.getParent());
+        Files.writeString(config, """
+                version: 1
+                commandDefaults:
+                  systemUser:
+                    subject: $system
+                    roles: [system]
+                """, UTF_8);
     }
 
     private static void writeVersion(Path projectDirectory, String version, boolean failOnStart) throws IOException {

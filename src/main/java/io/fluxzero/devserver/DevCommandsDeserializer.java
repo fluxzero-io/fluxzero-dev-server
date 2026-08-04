@@ -19,6 +19,7 @@ import com.fasterxml.jackson.core.ObjectCodec;
 import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.JsonDeserializer;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.util.Iterator;
@@ -74,9 +75,20 @@ final class DevCommandsDeserializer extends JsonDeserializer<Map<String, DevComm
             context.reportInputMismatch(Map.class,
                                         "Command '%s' must be a file path or an inline command definition", id);
         }
-        DevCommandConfig command = value.isTextual()
-                ? new DevCommandConfig(value.textValue(), null, null, null, Map.of())
-                : codec.treeToValue(value, DevCommandConfig.class);
+        JsonNode definition = value;
+        if (value.isObject() && fileReferenceId(id) && !value.has("file") && !value.has("type")) {
+            ObjectNode fileDefinition = ((ObjectNode) value).deepCopy();
+            fileDefinition.put("file", id);
+            definition = fileDefinition;
+        }
+        DevCommandConfig command = definition.isTextual()
+                ? new DevCommandConfig(definition.textValue(), null, null, null, Map.of(), null)
+                : codec.treeToValue(definition, DevCommandConfig.class);
         target.put(id, command);
+    }
+
+    private static boolean fileReferenceId(String id) {
+        String normalized = id.toLowerCase(java.util.Locale.ROOT);
+        return normalized.endsWith(".json") || normalized.indexOf('*') >= 0 || normalized.indexOf('?') >= 0;
     }
 }

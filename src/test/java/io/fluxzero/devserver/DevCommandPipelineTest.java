@@ -17,6 +17,7 @@ package io.fluxzero.devserver;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.fluxzero.common.Registration;
+import io.fluxzero.common.api.Metadata;
 import io.fluxzero.sdk.Fluxzero;
 import io.fluxzero.sdk.common.exception.FunctionalException;
 import io.fluxzero.sdk.configuration.DefaultFluxzero;
@@ -32,6 +33,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
@@ -49,6 +51,7 @@ class DevCommandPipelineTest {
         writeCreateUserCommand(commandDirectory.resolve("create-user.json"), "Ada");
         Server runtime = TestServer.startServer(0);
         AtomicReference<String> processedName = new AtomicReference<>();
+        AtomicReference<Metadata> processedMetadata = new AtomicReference<>();
         try {
             DevServerConfig config = new DevServerConfig(
                     projectDirectory, null, "dev-test-app", null,
@@ -72,13 +75,14 @@ class DevCommandPipelineTest {
                     .disableCacheEvictionMetrics()
                     .build(appClient);
 
-            Registration registration = fluxzero.registerHandlers(new Handler(processedName));
+            Registration registration = fluxzero.registerHandlers(new Handler(processedName, processedMetadata));
             try (DevCommandPipeline pipeline = new DevCommandPipeline(
                     config, store, "ws://localhost:" + localPort(runtime), status::set, output::add)) {
                 pipeline.requestRun();
 
                 assertTrue(awaitStatus(status, "succeeded"));
                 assertEquals("Ada", processedName.get());
+                assertEquals("$system", processedMetadata.get().get("$user"));
             } finally {
                 registration.cancel();
                 fluxzero.close();
@@ -91,6 +95,94 @@ class DevCommandPipelineTest {
             assertTrue(json.path("commands").get(0).path("detail").asText().contains("processed by app"));
             assertTrue(output.stream().anyMatch(line -> line.contains("executing")));
         } finally {
+            runtime.stop();
+        }
+    }
+
+    @Test
+    void appliesConfiguredUsersToInlineAndReferencedCommands(@TempDir Path projectDirectory) throws Exception {
+        Path users = projectDirectory.resolve("src/test/resources/users");
+        Files.createDirectories(users);
+        writeFixtureCommand(users.resolve("create-system.json"), "system");
+        writeFixtureCommand(users.resolve("create-admin.json"), "admin");
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                defaultProfile: seeded
+                profiles:
+                  seeded:
+                    commandDefaults:
+                      userMetadataKey: $actor
+                      systemUser:
+                        name: Local System
+                        roles: [admin]
+                    commands:
+                      - src/test/resources/users/create-system.json
+                      - src/test/resources/users/create-admin.json:
+                          user: admin
+                          metadata:
+                            source: referenced
+                      - create-legacy-user:
+                          user:
+                            name: Legacy Admin
+                            roles: [admin]
+                          type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                          payload:
+                            name: legacy
+                      - create-custom-metadata-user:
+                          type: io.fluxzero.devserver.DevCommandPipelineTest$CreateUser
+                          metadata:
+                            $sender: delegated-admin
+                          payload:
+                            name: custom
+                """);
+        Server runtime = TestServer.startServer(0);
+        List<String> processedNames = new CopyOnWriteArrayList<>();
+        List<Metadata> processedMetadata = new CopyOnWriteArrayList<>();
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests"
+        });
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        WebSocketClient appClient = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
+                .runtimeBaseUrl("ws://localhost:" + localPort(runtime))
+                .name("dev-test-app")
+                .id("dev-test-app")
+                .build());
+        Fluxzero fluxzero = DefaultFluxzero.builder()
+                .disableShutdownHook()
+                .disableKeepalive()
+                .disableTrackingMetrics()
+                .disableCacheEvictionMetrics()
+                .build(appClient);
+        Registration registration = fluxzero.registerHandlers(new MetadataHandler(processedNames, processedMetadata));
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                config, store, "ws://localhost:" + localPort(runtime), status::set, ignored -> {
+        })) {
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("system", "admin", "legacy", "custom"), processedNames);
+            assertEquals("Local System", processedMetadata.get(0).get("$actor", Map.class).get("name"));
+            assertEquals("admin", processedMetadata.get(1).get("$actor"));
+            assertEquals("referenced", processedMetadata.get(1).get("source"));
+            assertEquals("Legacy Admin", processedMetadata.get(2).get("$actor", Map.class).get("name"));
+            assertEquals("delegated-admin", processedMetadata.get(3).get("$sender"));
+
+            String originalHash = store.readCommandStatus().orElseThrow().commands().get(1).hash();
+            Files.writeString(configFile, Files.readString(configFile).replace("user: admin", "user: operator"));
+            status.set(null);
+            pipeline.requestRun();
+
+            assertTrue(awaitStatus(status, "succeeded"));
+            assertEquals(List.of("system", "admin", "legacy", "custom", "admin"), processedNames);
+            assertEquals("operator", processedMetadata.getLast().get("$actor"));
+            String changedHash = store.readCommandStatus().orElseThrow().commands().get(1).hash();
+            assertTrue(!originalHash.equals(changedHash));
+        } finally {
+            registration.cancel();
+            fluxzero.close();
             runtime.stop();
         }
     }
@@ -615,10 +707,20 @@ class DevCommandPipelineTest {
     private record CreatedUser(String name) {
     }
 
-    private record Handler(AtomicReference<String> processedName) {
+    private record Handler(AtomicReference<String> processedName, AtomicReference<Metadata> processedMetadata) {
         @HandleCommand
-        CreatedUser handle(CreateUser command) {
+        CreatedUser handle(CreateUser command, Metadata metadata) {
             processedName.set(command.name());
+            processedMetadata.set(metadata);
+            return new CreatedUser(command.name());
+        }
+    }
+
+    private record MetadataHandler(List<String> processedNames, List<Metadata> processedMetadata) {
+        @HandleCommand
+        CreatedUser handle(CreateUser command, Metadata metadata) {
+            processedNames.add(command.name());
+            processedMetadata.add(metadata);
             return new CreatedUser(command.name());
         }
     }

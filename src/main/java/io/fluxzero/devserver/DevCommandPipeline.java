@@ -223,10 +223,14 @@ final class DevCommandPipeline implements AutoCloseable {
         LinkedHashSet<Path> explicitlyConfiguredFiles = new LinkedHashSet<>();
         List<PathMatcher> globs = new ArrayList<>();
         try {
-            DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config().commands()
+            DevProjectConfig projectConfig = DevProjectConfig.load(config.projectDirectory())
+                    .select(config.profile()).config();
+            DevProjectConfig.CommandDefaults commandDefaults = projectConfig.commandDefaults();
+            projectConfig.commands()
                     .forEach((id, command) -> {
                 try {
-                    result.addAll(readConfiguredCommands(id, command, references, explicitlyConfiguredFiles, globs));
+                    result.addAll(readConfiguredCommands(id, command, commandDefaults, references,
+                                                         explicitlyConfiguredFiles, globs));
                 } catch (IOException e) {
                     throw new IllegalStateException("Could not read commands." + id + ": " + e.getMessage(), e);
                 }
@@ -243,7 +247,8 @@ final class DevCommandPipeline implements AutoCloseable {
                 for (Path file : files) {
                     Path normalized = file.toAbsolutePath().normalize();
                     if (!explicitlyConfiguredFiles.contains(normalized)) {
-                        result.add(readCommand(normalized, normalizedRelativePath(normalized), references));
+                        result.add(readCommand(normalized, normalizedRelativePath(normalized), references,
+                                               null, commandDefaults));
                     }
                 }
                 return List.copyOf(result);
@@ -254,7 +259,9 @@ final class DevCommandPipeline implements AutoCloseable {
         }
     }
 
-    private List<CommandFile> readConfiguredCommands(String id, DevCommandConfig command, Set<Path> references,
+    private List<CommandFile> readConfiguredCommands(String id, DevCommandConfig command,
+                                                     DevProjectConfig.CommandDefaults commandDefaults,
+                                                     Set<Path> references,
                                                      Set<Path> explicitlyConfiguredFiles,
                                                      List<PathMatcher> globs) throws IOException {
         if (command.fileReference()) {
@@ -267,7 +274,8 @@ final class DevCommandPipeline implements AutoCloseable {
                 explicitlyConfiguredFiles.addAll(matches);
                 return matches.stream().map(file -> {
                     try {
-                        return readCommand(file, normalizedRelativePath(file), references);
+                        return readCommand(file, normalizedRelativePath(file), references, command,
+                                           commandDefaults);
                     } catch (IOException e) {
                         throw new IllegalStateException("Could not read " + file + ": " + e.getMessage(), e);
                     }
@@ -276,16 +284,17 @@ final class DevCommandPipeline implements AutoCloseable {
             Path file = resolveConfiguredFile(command.file());
             explicitlyConfiguredFiles.add(file);
             String identity = id.equals(command.file()) ? normalizedRelativePath(file) : "commands." + id;
-            return List.of(readCommand(file, identity, references));
+            return List.of(readCommand(file, identity, references, command, commandDefaults));
         }
         String identity = "commands." + id;
         JsonNode payload = command.payload() == null || command.payload().isNull()
                 ? objectMapper.createObjectNode() : command.payload();
         String type = typeRegistry.resolve(command.type());
+        Map<String, Object> metadata = withUserMetadata(command.metadata(), command.user(), commandDefaults);
         return List.of(createCommand(identity, commandHash(type, command.effectiveRevision(), payload,
-                                                          command.metadata()),
+                                                          metadata),
                                      type, command.effectiveRevision(), payload,
-                                     command.metadata()));
+                                     metadata));
     }
 
     private List<Path> resolveConfiguredGlob(String configuredPattern, List<PathMatcher> globs) throws IOException {
@@ -381,7 +390,9 @@ final class DevCommandPipeline implements AutoCloseable {
         return regex.append('$').toString();
     }
 
-    private CommandFile readCommand(Path file, String identity, Set<Path> references) throws IOException {
+    private CommandFile readCommand(Path file, String identity, Set<Path> references,
+                                    DevCommandConfig configuredCommand,
+                                    DevProjectConfig.CommandDefaults commandDefaults) throws IOException {
         ObjectNode root = readFixture(file, references, new LinkedHashSet<>());
         String type;
         int revision;
@@ -404,6 +415,13 @@ final class DevCommandPipeline implements AutoCloseable {
                     })
                     : Map.of();
         }
+        if (configuredCommand != null && !configuredCommand.metadata().isEmpty()) {
+            LinkedHashMap<String, Object> merged = new LinkedHashMap<>(metadata);
+            merged.putAll(configuredCommand.metadata());
+            metadata = Map.copyOf(merged);
+        }
+        JsonNode user = configuredCommand == null ? null : configuredCommand.user();
+        metadata = withUserMetadata(metadata, user, commandDefaults);
         type = typeRegistry.resolve(type);
         return createCommand(identity, commandHash(type, revision, payload, metadata),
                              type, revision, payload, metadata);
@@ -523,6 +541,18 @@ final class DevCommandPipeline implements AutoCloseable {
         definition.put("payload", objectMapper.convertValue(payload, Object.class));
         definition.put("metadata", metadata);
         return sha256(objectMapper.writeValueAsBytes(definition));
+    }
+
+    private Map<String, Object> withUserMetadata(Map<String, Object> metadata, JsonNode user,
+                                                 DevProjectConfig.CommandDefaults defaults) {
+        String key = defaults.userMetadataKey();
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(metadata);
+        if (user == null && result.containsKey(key)) {
+            return Map.copyOf(result);
+        }
+        JsonNode effectiveUser = user == null ? defaults.systemUser() : user;
+        result.put(key, objectMapper.convertValue(effectiveUser, Object.class));
+        return Map.copyOf(result);
     }
 
     private CommandFile createCommand(String identity, String hash, String type, int revision, JsonNode payload,

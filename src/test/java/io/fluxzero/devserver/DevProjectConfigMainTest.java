@@ -27,9 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevProjectConfigMainTest {
     @Test
     void referenceIsAcceptedByTheCurrentProjectConfigParser(@TempDir Path projectDirectory) throws Exception {
+        String reference = DevProjectConfigMain.reference();
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());
-        Files.writeString(configFile, DevProjectConfigMain.reference());
+        Files.writeString(configFile, reference);
 
         DevProjectConfig config = DevProjectConfig.load(projectDirectory);
 
@@ -39,5 +40,10 @@ class DevProjectConfigMainTest {
         assertEquals("worker", config.applicationConfig().get("worker-local").application());
         assertEquals("frontend", config.frontend().directory());
         assertTrue(config.frontend().command().contains("{frontendPort}"));
+        assertTrue(reference.contains("# commandDefaults:"));
+        assertTrue(reference.contains("#   userMetadataKey: $user"));
+        assertTrue(reference.contains("#   systemUser: $system"));
+        assertTrue(reference.contains("#       user: admin"));
+        assertTrue(reference.contains("#         $sender: admin"));
     }
 }
