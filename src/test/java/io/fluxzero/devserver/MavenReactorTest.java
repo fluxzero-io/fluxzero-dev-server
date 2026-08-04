@@ -18,13 +18,19 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.jar.JarEntry;
+import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -170,6 +176,85 @@ class MavenReactorTest {
     }
 
     @Test
+    void keepsExternalSnapshotWhenReactorModuleHasSameArtifactId(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("com.flowmaps", "root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+        """));
+        writeModule(project, "common", "com.flowmaps", "");
+        writeModule(project, "app", "com.flowmaps", """
+                <dependencies>
+                  <dependency>
+                    <groupId>com.flowmaps</groupId><artifactId>common</artifactId><version>1</version>
+                  </dependency>
+                  <dependency>
+                    <groupId>io.fluxzero</groupId><artifactId>common</artifactId><version>0-SNAPSHOT</version>
+                  </dependency>
+                </dependencies>
+                """);
+        compileMain(project.resolve("common"), "com.flowmaps.common.ReactorCommon");
+        compileMain(project.resolve("app"), "com.flowmaps.AppMain");
+        Path installedReactorArtifact = project.resolve(
+                "repository/com/flowmaps/common/1/common-1.jar");
+        Path externalSnapshot = project.resolve(
+                "repository/io/fluxzero/common/0-SNAPSHOT/common-0-SNAPSHOT.jar");
+        writeJarWithClass(installedReactorArtifact, "com.flowmaps.common.StaleCommon");
+        writeJarWithClass(externalSnapshot, "io.fluxzero.common.ExternalCommon");
+        writeClasspath(project.resolve("app"), installedReactorArtifact, externalSnapshot);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("common/target/classes")),
+                     application.classesDirectories());
+        assertEquals(List.of(externalSnapshot), application.runtimeClasspath());
+        try (URLClassLoader classLoader = classLoader(application)) {
+            assertNotNull(Class.forName("com.flowmaps.common.ReactorCommon", true, classLoader));
+            assertNotNull(Class.forName("io.fluxzero.common.ExternalCommon", true, classLoader));
+        }
+    }
+
+    @Test
+    void preservesClassifiedDependencyInsteadOfReplacingItWithMainClasses(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("com.acme", "common", "test-jar", "tests"));
+        compileMain(project.resolve("common"), "com.acme.CommonMain");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path testJar = project.resolve("repository/com/acme/common/1/common-1-tests.jar");
+        writeJarWithClass(testJar, "com.acme.CommonTestSupport");
+        writeClasspath(project.resolve("app"), testJar);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes")), application.classesDirectories());
+        assertEquals(List.of(testJar), application.runtimeClasspath());
+    }
+
+    @Test
+    void resolvesInheritedProjectGroupForReactorDependencies(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("com.acme", "root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeInheritedModule(project, "common", "");
+        writeInheritedModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>${project.groupId}</groupId><artifactId>common</artifactId><version>1</version>
+                </dependency></dependencies>
+                """);
+        compileMain(project.resolve("common"), "com.acme.CommonMain");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("common/target/classes")),
+                     application.classesDirectories());
+    }
+
+    @Test
     void launchesMultipleNamedFlavorsOfTheSameTestApplication(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
                 <modules><module>app</module></modules>
@@ -202,29 +287,59 @@ class MavenReactorTest {
     }
 
     private static void writeModule(Path project, String module, String body) throws Exception {
+        writeModule(project, module, "com.acme", body);
+    }
+
+    private static void writeModule(Path project, String module, String groupId, String body) throws Exception {
         Path directory = Files.createDirectories(project.resolve(module));
-        Files.writeString(directory.resolve("pom.xml"), pom(module, "jar", body));
+        Files.writeString(directory.resolve("pom.xml"), pom(groupId, module, "jar", body));
+    }
+
+    private static void writeInheritedModule(Path project, String module, String body) throws Exception {
+        Path directory = Files.createDirectories(project.resolve(module));
+        Files.writeString(directory.resolve("pom.xml"), """
+                <project>
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent>
+                    <groupId>com.acme</groupId><artifactId>root</artifactId><version>1</version>
+                  </parent>
+                  <artifactId>%s</artifactId>
+                  %s
+                </project>
+                """.formatted(module, body));
     }
 
     private static String pom(String artifactId, String packaging, String body) {
+        return pom("com.acme", artifactId, packaging, body);
+    }
+
+    private static String pom(String groupId, String artifactId, String packaging, String body) {
         return """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
-                  <groupId>com.acme</groupId>
+                  <groupId>%s</groupId>
                   <artifactId>%s</artifactId>
                   <version>1</version>
                   <packaging>%s</packaging>
                   %s
                 </project>
-                """.formatted(artifactId, packaging, body);
+                """.formatted(groupId, artifactId, packaging, body);
     }
 
     private static String dependency(String artifactId) {
+        return dependency("com.acme", artifactId, null, null);
+    }
+
+    private static String dependency(String groupId, String artifactId, String type, String classifier) {
         return """
                 <dependencies><dependency>
-                  <groupId>com.acme</groupId><artifactId>%s</artifactId><version>1</version>
+                  <groupId>%s</groupId><artifactId>%s</artifactId><version>1</version>
+                  %s
+                  %s
                 </dependency></dependencies>
-                """.formatted(artifactId);
+                """.formatted(groupId, artifactId,
+                               type == null ? "" : "<type>" + type + "</type>",
+                               classifier == null ? "" : "<classifier>" + classifier + "</classifier>");
     }
 
     private static String configuredMainClass(String mainClass) {
@@ -259,9 +374,11 @@ class MavenReactorTest {
                 null, null, null, "-d", classes.toString(), source.toString()));
     }
 
-    private static void writeClasspath(Path module, Path dependency) throws Exception {
+    private static void writeClasspath(Path module, Path... dependencies) throws Exception {
         Files.createDirectories(module.resolve(MavenReactor.CLASSPATH_FILE).getParent());
-        Files.writeString(module.resolve(MavenReactor.CLASSPATH_FILE), dependency.toString());
+        Files.writeString(module.resolve(MavenReactor.CLASSPATH_FILE),
+                          String.join(System.getProperty("path.separator"),
+                                      java.util.Arrays.stream(dependencies).map(Path::toString).toList()));
     }
 
     private static void writeTestClasspath(Path module, Path... dependencies) throws Exception {
@@ -269,6 +386,38 @@ class MavenReactorTest {
         Files.writeString(module.resolve(MavenReactor.TEST_CLASSPATH_FILE),
                           String.join(System.getProperty("path.separator"),
                                       java.util.Arrays.stream(dependencies).map(Path::toString).toList()));
+    }
+
+    private static void writeJarWithClass(Path jar, String className) throws Exception {
+        Path workDirectory = jar.getParent().resolve("build-" + className.replace('.', '-'));
+        Path source = workDirectory.resolve("src").resolve(className.replace('.', '/') + ".java");
+        Path classes = workDirectory.resolve("classes");
+        Files.createDirectories(source.getParent());
+        Files.createDirectories(classes);
+        Files.writeString(source, "package " + className.substring(0, className.lastIndexOf('.'))
+                                  + "; public class " + className.substring(className.lastIndexOf('.') + 1) + " {}");
+        assertEquals(0, ToolProvider.getSystemJavaCompiler().run(
+                null, null, null, "-d", classes.toString(), source.toString()));
+        Files.createDirectories(jar.getParent());
+        try (JarOutputStream output = new JarOutputStream(Files.newOutputStream(jar));
+             var files = Files.walk(classes)) {
+            for (Path file : files.filter(Files::isRegularFile).toList()) {
+                output.putNextEntry(new JarEntry(classes.relativize(file).toString().replace('\\', '/')));
+                Files.copy(file, output);
+                output.closeEntry();
+            }
+        }
+    }
+
+    private static URLClassLoader classLoader(ApplicationBuild application) throws Exception {
+        List<URL> entries = new ArrayList<>();
+        for (Path path : application.classesDirectories()) {
+            entries.add(path.toUri().toURL());
+        }
+        for (Path path : application.runtimeClasspath()) {
+            entries.add(path.toUri().toURL());
+        }
+        return new URLClassLoader(entries.toArray(URL[]::new), ClassLoader.getPlatformClassLoader());
     }
 
     private static DevServerConfig config(Path project) {

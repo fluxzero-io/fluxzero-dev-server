@@ -36,15 +36,15 @@ final class MavenReactor {
 
     private final Path root;
     private final List<Module> modules;
-    private final Map<String, Module> modulesByArtifactId;
+    private final Map<ArtifactKey, Module> modulesByArtifact;
 
     private MavenReactor(Path root, List<Module> modules) {
         this.root = root;
         this.modules = List.copyOf(modules);
-        Map<String, Module> byArtifactId = new LinkedHashMap<>();
-        modules.stream().filter(module -> module.artifactId() != null)
-                .forEach(module -> byArtifactId.putIfAbsent(module.artifactId(), module));
-        this.modulesByArtifactId = Map.copyOf(byArtifactId);
+        Map<ArtifactKey, Module> byArtifact = new LinkedHashMap<>();
+        modules.stream().filter(module -> module.mainArtifact() != null)
+                .forEach(module -> byArtifact.putIfAbsent(module.mainArtifact(), module));
+        this.modulesByArtifact = Map.copyOf(byArtifact);
     }
 
     static MavenReactor load(Path root) {
@@ -55,8 +55,8 @@ final class MavenReactor {
             if (modules.isEmpty()) {
                 Path normalized = root.toAbsolutePath().normalize();
                 Path fileName = normalized.getFileName();
-                modules.add(new Module(normalized, Path.of(""), fileName == null ? "app" : fileName.toString(),
-                                       List.of(), null));
+                modules.add(new Module(normalized, Path.of(""), null,
+                                       fileName == null ? "app" : fileName.toString(), "jar", List.of(), null));
             }
             return new MavenReactor(root.toAbsolutePath().normalize(), modules);
         } catch (Exception e) {
@@ -245,8 +245,8 @@ final class MavenReactor {
         if (!result.add(module)) {
             return;
         }
-        for (String dependency : module.dependencyArtifactIds()) {
-            Module dependencyModule = modulesByArtifactId.get(dependency);
+        for (ArtifactKey dependency : module.dependencies()) {
+            Module dependencyModule = modulesByArtifact.get(dependency);
             if (dependencyModule != null) {
                 collectDependencies(dependencyModule, result);
             }
@@ -267,10 +267,25 @@ final class MavenReactor {
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         Document document = factory.newDocumentBuilder().parse(pom.toFile());
         Element project = document.getDocumentElement();
+        Element parent = child(project, "parent");
+        String groupId = childText(project, "groupId");
+        if (groupId == null && parent != null) {
+            groupId = childText(parent, "groupId");
+        }
         String artifactId = childText(project, "artifactId");
-        List<String> dependencies = dependencyArtifactIds(project);
+        String version = childText(project, "version");
+        if (version == null && parent != null) {
+            version = childText(parent, "version");
+        }
+        Map<String, String> properties = projectProperties(project, groupId, artifactId, version);
+        groupId = resolve(groupId, properties);
+        artifactId = resolve(artifactId, properties);
+        String configuredPackaging = childText(project, "packaging");
+        String packaging = configuredPackaging == null ? "jar" : resolve(configuredPackaging, properties);
+        List<ArtifactKey> dependencies = dependencies(project, properties);
         String configuredMain = configuredMainClass(project);
-        Module module = new Module(normalized, root.relativize(normalized), artifactId, dependencies, configuredMain);
+        Module module = new Module(normalized, root.relativize(normalized), groupId, artifactId, packaging,
+                                   dependencies, configuredMain);
         modules.add(module);
         Element modulesElement = child(project, "modules");
         if (modulesElement != null) {
@@ -280,19 +295,66 @@ final class MavenReactor {
         }
     }
 
-    private static List<String> dependencyArtifactIds(Element project) {
+    private static List<ArtifactKey> dependencies(Element project, Map<String, String> properties) {
         Element dependencies = child(project, "dependencies");
         if (dependencies == null) {
             return List.of();
         }
-        List<String> result = new ArrayList<>();
+        List<ArtifactKey> result = new ArrayList<>();
         for (Element dependency : children(dependencies, "dependency")) {
-            String artifactId = childText(dependency, "artifactId");
-            if (artifactId != null) {
-                result.add(artifactId);
+            String configuredType = childText(dependency, "type");
+            String configuredClassifier = childText(dependency, "classifier");
+            String type = configuredType == null ? "jar" : resolve(configuredType, properties);
+            String classifier = configuredClassifier == null ? null : resolve(configuredClassifier, properties);
+            ArtifactKey artifact = type == null || (configuredClassifier != null && classifier == null) ? null
+                    : ArtifactKey.of(resolve(childText(dependency, "groupId"), properties),
+                                     resolve(childText(dependency, "artifactId"), properties), type, classifier);
+            if (artifact != null) {
+                result.add(artifact);
             }
         }
         return List.copyOf(result);
+    }
+
+    private static Map<String, String> projectProperties(Element project, String groupId, String artifactId,
+                                                         String version) {
+        Map<String, String> result = new LinkedHashMap<>();
+        Element properties = child(project, "properties");
+        if (properties != null) {
+            for (Node node = properties.getFirstChild(); node != null; node = node.getNextSibling()) {
+                if (node instanceof Element element && element.getTextContent() != null) {
+                    result.put(element.getTagName(), element.getTextContent().strip());
+                }
+            }
+        }
+        putProjectProperty(result, "groupId", groupId);
+        putProjectProperty(result, "artifactId", artifactId);
+        putProjectProperty(result, "version", version);
+        return Map.copyOf(result);
+    }
+
+    private static void putProjectProperty(Map<String, String> properties, String name, String value) {
+        if (value != null) {
+            properties.put("project." + name, value);
+            properties.put("pom." + name, value);
+        }
+    }
+
+    private static String resolve(String value, Map<String, String> properties) {
+        if (value == null || !value.contains("${")) {
+            return value;
+        }
+        String result = value;
+        for (int attempt = 0; attempt < properties.size() + 1 && result.contains("${"); attempt++) {
+            String previous = result;
+            for (Map.Entry<String, String> property : properties.entrySet()) {
+                result = result.replace("${" + property.getKey() + "}", property.getValue());
+            }
+            if (previous.equals(result)) {
+                break;
+            }
+        }
+        return result.contains("${") ? null : result;
     }
 
     private static String configuredMainClass(Element project) {
@@ -369,8 +431,17 @@ final class MavenReactor {
         return relativeName.replace('/', '-');
     }
 
-    record Module(Path directory, Path relativeDirectory, String artifactId, List<String> dependencyArtifactIds,
-                  String configuredMainClass) {
+    record Module(Path directory, Path relativeDirectory, String groupId, String artifactId, String packaging,
+                  List<ArtifactKey> dependencies, String configuredMainClass) {
+        Module {
+            packaging = packaging == null || packaging.isBlank() ? null : packaging.strip();
+            dependencies = List.copyOf(dependencies);
+        }
+
+        ArtifactKey mainArtifact() {
+            return packaging == null ? null : ArtifactKey.of(groupId, artifactId, packaging, null);
+        }
+
         Path classesDirectory() {
             return directory.resolve("target/classes");
         }
@@ -393,14 +464,49 @@ final class MavenReactor {
         }
 
         boolean matchesMainArtifact(Path path) {
-            if (artifactId == null || path == null || path.getFileName() == null || path.getParent() == null
+            ArtifactKey artifact = mainArtifact();
+            if (artifact == null || path == null || path.getFileName() == null || path.getParent() == null
                 || path.getParent().getFileName() == null || path.getParent().getParent() == null
                 || path.getParent().getParent().getFileName() == null) {
                 return false;
             }
             String version = path.getParent().getFileName().toString();
-            return artifactId.equals(path.getParent().getParent().getFileName().toString())
-                   && (artifactId + "-" + version + ".jar").equals(path.getFileName().toString());
+            Path artifactDirectory = path.getParent().getParent();
+            return artifact.artifactId().equals(artifactDirectory.getFileName().toString())
+                   && groupMatches(artifactDirectory.getParent(), artifact.groupId())
+                   && (artifact.artifactId() + "-" + version + "." + artifact.extension())
+                    .equals(path.getFileName().toString());
+        }
+
+        private static boolean groupMatches(Path directory, String groupId) {
+            String[] segments = groupId.split("\\.");
+            Path current = directory;
+            for (int index = segments.length - 1; index >= 0; index--) {
+                if (current == null || current.getFileName() == null
+                    || !segments[index].equals(current.getFileName().toString())) {
+                    return false;
+                }
+                current = current.getParent();
+            }
+            return true;
+        }
+    }
+
+    record ArtifactKey(String groupId, String artifactId, String type, String classifier) {
+        static ArtifactKey of(String groupId, String artifactId, String type, String classifier) {
+            if (groupId == null || groupId.isBlank() || artifactId == null || artifactId.isBlank()) {
+                return null;
+            }
+            String normalizedType = type == null || type.isBlank() ? "jar" : type.strip();
+            String normalizedClassifier = classifier == null || classifier.isBlank() ? null : classifier.strip();
+            return new ArtifactKey(groupId.strip(), artifactId.strip(), normalizedType, normalizedClassifier);
+        }
+
+        String extension() {
+            return switch (type) {
+                case "bundle", "ejb", "maven-plugin", "test-jar" -> "jar";
+                default -> type;
+            };
         }
     }
 
