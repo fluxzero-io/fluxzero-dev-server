@@ -214,6 +214,57 @@ class MavenReactorTest {
     }
 
     @Test
+    void keepsExternalDependencyWhenReactorModuleHasDifferentVersion(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>common</artifactId><version>2</version>
+                </dependency></dependencies>
+                """);
+        compileMain(project.resolve("common"), "com.acme.common.ReactorVersionOne");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path externalVersionTwo = project.resolve("repository/com/acme/common/2/common-2.jar");
+        writeJarWithClass(externalVersionTwo, "com.acme.common.ExternalVersionTwo");
+        writeClasspath(project.resolve("app"), externalVersionTwo);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes")), application.classesDirectories());
+        assertEquals(List.of(externalVersionTwo), application.runtimeClasspath());
+        try (URLClassLoader classLoader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.common.ExternalVersionTwo", true, classLoader));
+            assertThrows(ClassNotFoundException.class,
+                         () -> Class.forName("com.acme.common.ReactorVersionOne", true, classLoader));
+        }
+    }
+
+    @Test
+    void resolvesProjectVersionForReactorDependencies(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>common</artifactId>
+                  <version>${project.version}</version>
+                </dependency></dependencies>
+                """);
+        compileMain(project.resolve("common"), "com.acme.CommonMain");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("common/target/classes")),
+                     application.classesDirectories());
+    }
+
+    @Test
     void preservesClassifiedDependencyInsteadOfReplacingItWithMainClasses(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
                 <modules><module>common</module><module>app</module></modules>

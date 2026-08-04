@@ -56,7 +56,7 @@ final class MavenReactor {
                 Path normalized = root.toAbsolutePath().normalize();
                 Path fileName = normalized.getFileName();
                 modules.add(new Module(normalized, Path.of(""), null,
-                                       fileName == null ? "app" : fileName.toString(), "jar", List.of(), null));
+                                       fileName == null ? "app" : fileName.toString(), null, "jar", List.of(), null));
             }
             return new MavenReactor(root.toAbsolutePath().normalize(), modules);
         } catch (Exception e) {
@@ -280,11 +280,12 @@ final class MavenReactor {
         Map<String, String> properties = projectProperties(project, groupId, artifactId, version);
         groupId = resolve(groupId, properties);
         artifactId = resolve(artifactId, properties);
+        version = resolve(version, properties);
         String configuredPackaging = childText(project, "packaging");
         String packaging = configuredPackaging == null ? "jar" : resolve(configuredPackaging, properties);
         List<ArtifactKey> dependencies = dependencies(project, properties);
         String configuredMain = configuredMainClass(project);
-        Module module = new Module(normalized, root.relativize(normalized), groupId, artifactId, packaging,
+        Module module = new Module(normalized, root.relativize(normalized), groupId, artifactId, version, packaging,
                                    dependencies, configuredMain);
         modules.add(module);
         Element modulesElement = child(project, "modules");
@@ -308,7 +309,8 @@ final class MavenReactor {
             String classifier = configuredClassifier == null ? null : resolve(configuredClassifier, properties);
             ArtifactKey artifact = type == null || (configuredClassifier != null && classifier == null) ? null
                     : ArtifactKey.of(resolve(childText(dependency, "groupId"), properties),
-                                     resolve(childText(dependency, "artifactId"), properties), type, classifier);
+                                     resolve(childText(dependency, "artifactId"), properties),
+                                     resolve(childText(dependency, "version"), properties), type, classifier);
             if (artifact != null) {
                 result.add(artifact);
             }
@@ -431,7 +433,8 @@ final class MavenReactor {
         return relativeName.replace('/', '-');
     }
 
-    record Module(Path directory, Path relativeDirectory, String groupId, String artifactId, String packaging,
+    record Module(Path directory, Path relativeDirectory, String groupId, String artifactId, String version,
+                  String packaging,
                   List<ArtifactKey> dependencies, String configuredMainClass) {
         Module {
             packaging = packaging == null || packaging.isBlank() ? null : packaging.strip();
@@ -439,7 +442,7 @@ final class MavenReactor {
         }
 
         ArtifactKey mainArtifact() {
-            return packaging == null ? null : ArtifactKey.of(groupId, artifactId, packaging, null);
+            return packaging == null ? null : ArtifactKey.of(groupId, artifactId, version, packaging, null);
         }
 
         Path classesDirectory() {
@@ -470,11 +473,12 @@ final class MavenReactor {
                 || path.getParent().getParent().getFileName() == null) {
                 return false;
             }
-            String version = path.getParent().getFileName().toString();
+            String artifactVersion = path.getParent().getFileName().toString();
             Path artifactDirectory = path.getParent().getParent();
             return artifact.artifactId().equals(artifactDirectory.getFileName().toString())
                    && groupMatches(artifactDirectory.getParent(), artifact.groupId())
-                   && (artifact.artifactId() + "-" + version + "." + artifact.extension())
+                   && artifact.version().equals(artifactVersion)
+                   && (artifact.artifactId() + "-" + artifactVersion + "." + artifact.extension())
                     .equals(path.getFileName().toString());
         }
 
@@ -492,14 +496,16 @@ final class MavenReactor {
         }
     }
 
-    record ArtifactKey(String groupId, String artifactId, String type, String classifier) {
-        static ArtifactKey of(String groupId, String artifactId, String type, String classifier) {
-            if (groupId == null || groupId.isBlank() || artifactId == null || artifactId.isBlank()) {
+    record ArtifactKey(String groupId, String artifactId, String version, String type, String classifier) {
+        static ArtifactKey of(String groupId, String artifactId, String version, String type, String classifier) {
+            if (groupId == null || groupId.isBlank() || artifactId == null || artifactId.isBlank()
+                || version == null || version.isBlank()) {
                 return null;
             }
             String normalizedType = type == null || type.isBlank() ? "jar" : type.strip();
             String normalizedClassifier = classifier == null || classifier.isBlank() ? null : classifier.strip();
-            return new ArtifactKey(groupId.strip(), artifactId.strip(), normalizedType, normalizedClassifier);
+            return new ArtifactKey(groupId.strip(), artifactId.strip(), version.strip(), normalizedType,
+                                   normalizedClassifier);
         }
 
         String extension() {
