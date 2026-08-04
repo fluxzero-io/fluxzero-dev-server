@@ -99,7 +99,8 @@ class DevServerStartupOutputTest {
             server.requestCompile(Set.of(projectDirectory.resolve("pom.xml")));
             assertTrue(await(() -> "failed".equals(server.session().compile().state())));
             assertTrue(await(() -> output.toString(StandardCharsets.UTF_8)
-                    .contains("Fluxzero dev could not start")));
+                    .contains("Watching for changes.")),
+                       () -> output.toString(StandardCharsets.UTF_8));
 
             String terminal = output.toString(StandardCharsets.UTF_8);
             assertTrue(terminal.contains("Fluxzero dev could not start"), terminal);
