@@ -45,6 +45,8 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      - name: Disable compiler annotations for negative tests
+        run: echo "::remove-matcher owner=maven-javac::"
       - name: Test complete application workflows
         run: ./mvnw -B verify -Pdev-server-e2e
 
