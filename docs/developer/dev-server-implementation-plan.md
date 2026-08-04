@@ -181,7 +181,8 @@ DoD status:
 - Examples kunnen met `com.example.app.App` draaien zonder `TestApp` runtime/proxy bootstrap.
 - Session JSON en terminalstatus tonen IDP URL/status.
 - Managed IDP ondersteunt authorization-code, token en userinfo flow via de dev proxy.
-- Een echte app endpoint kan de managed IDP access token accepteren via de SDK `OidcUserProvider`.
+- Een complete testapp accepteert het managed-IDP access token via een testlokale userinfo-adapter, zonder een
+  onvolledige generieke OIDC-`UserProvider` als publieke SDK-API aan te bieden.
 - IDP failure laat runtime/proxy/app status begrijpelijk achter.
 - Apps met een eigen externe IDP kunnen `--idp external` gebruiken; de dev-server start dan geen test-IDP en injecteert geen `fluxzero.auth.oidc.*` overrides.
 
@@ -1049,7 +1050,7 @@ Backlog:
 - [x] `./mvnw -pl dev-server -am -Dtest=DevCommandPipelineTest,DevSessionStoreTest -Dsurefire.failIfNoSpecifiedTests=false test` after slices 8.9-8.11 (8 tests green).
 - [x] `./mvnw -pl dev-server -am -Pdev-server-e2e '-Dit.test=DevServerWholeAppE2EIT#retriesSeedCommandAfterHandlerIsAdded+liveSeedChangesRunWithoutReloadAndReplayForFreshRuntime+removingHandlerMakesNewSeedCommandFailWithoutKillingApp' verify` after slices 8.9-8.11 (3 whole-app scenarios green).
 - [x] `./mvnw -B clean install` after slices 8.9-8.11 (all 10 reactor modules green).
-- [x] `./mvnw -pl sdk -am -Dtest=OidcUserProviderTest -Dsurefire.failIfNoSpecifiedTests=false test`
+- [x] De managed-IDP userinfo-keten wordt door de complete Dev Server-testapp geverifieerd.
 - [x] `./mvnw -pl dev-server -am -Pdev-server-e2e -Dit.test=DevServerWholeAppE2EIT#authenticatedAppEndpointAcceptsManagedIdpToken verify`
 - [x] `./mvnw -pl dev-server -am -Pdev-server-e2e verify`
 - [x] `./mvnw -pl dev-server -am -Dtest=AgentQueryServiceTest,DevMcpServerTest,DevServerLifecycleTest -Dsurefire.failIfNoSpecifiedTests=false test` after Phase 16 (13 focused tests green).

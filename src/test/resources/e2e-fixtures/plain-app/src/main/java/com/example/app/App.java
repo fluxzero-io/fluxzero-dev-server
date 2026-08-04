@@ -17,7 +17,6 @@ package com.example.app;
 import io.fluxzero.sdk.Fluxzero;
 import io.fluxzero.sdk.configuration.DefaultFluxzero;
 import io.fluxzero.sdk.configuration.client.WebSocketClient;
-import io.fluxzero.sdk.tracking.handling.authentication.OidcUserProvider;
 
 import java.io.InputStream;
 import java.util.Objects;
@@ -46,7 +45,7 @@ public final class App {
         }
 
         Fluxzero fluxzero = DefaultFluxzero.builder()
-                .registerUserProvider(OidcUserProvider.fromProperties())
+                .registerUserProvider(FixtureOidcUserProvider.fromProperties())
                 .disableTrackingMetrics()
                 .disableCacheEvictionMetrics()
                 .build(WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder().build()));

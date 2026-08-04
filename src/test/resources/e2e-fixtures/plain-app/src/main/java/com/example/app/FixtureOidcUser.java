@@ -14,25 +14,19 @@
 
 package com.example.app;
 
-import io.fluxzero.sdk.tracking.handling.authentication.RequiresUser;
 import io.fluxzero.sdk.tracking.handling.authentication.User;
-import io.fluxzero.sdk.web.HandleGet;
-import io.fluxzero.sdk.web.WebResponse;
 
-import java.util.Map;
+import java.util.Set;
 
-public class AuthenticatedWebHandlers {
+record FixtureOidcUser(String subject, String email, String tenantId, Set<String> roles) implements User {
 
-    @HandleGet("/secure/me")
-    @RequiresUser
-    public WebResponse me(User user) {
-        FixtureOidcUser oidcUser = (FixtureOidcUser) user;
-        return WebResponse.ok(Map.of(
-                "subject", oidcUser.subject(),
-                "email", oidcUser.email(),
-                "tenantId", oidcUser.tenantId(),
-                "authenticated", user.hasRole("authenticated"),
-                "version", AppVersion.VALUE),
-                              Map.of("Content-Type", "application/json"));
+    @Override
+    public String getName() {
+        return subject;
+    }
+
+    @Override
+    public boolean hasRole(String role) {
+        return roles.contains(role);
     }
 }
