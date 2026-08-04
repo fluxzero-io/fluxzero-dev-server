@@ -15,7 +15,9 @@
 package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 
 import java.nio.file.Files;
@@ -44,7 +46,8 @@ record DevProjectConfig(
         Map<String, Frontend> frontends,
         Map<String, Service> services,
         Lifecycle lifecycle,
-        Map<String, DevCommandConfig> commands,
+        CommandDefaults commandDefaults,
+        @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
         String defaultProfile,
         Map<String, Profile> profiles
 ) {
@@ -86,7 +89,7 @@ record DevProjectConfig(
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
                                            applicationConfig, projects, port, idp, fastCompiler, backendPaths,
-                                           frontend, frontends, services, lifecycle,
+                                           frontend, frontends, services, lifecycle, commandDefaults,
                                            commands)) {
                 throw new IllegalArgumentException(
                         "profiles cannot be combined with legacy top-level development settings");
@@ -96,6 +99,7 @@ record DevProjectConfig(
                                                    + "' does not match a configured profile");
             }
         }
+        commandDefaults = commandDefaults == null ? new CommandDefaults(null, null) : commandDefaults;
     }
 
     static DevProjectConfig load(Path projectDirectory) {
@@ -118,7 +122,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    null, Map.of(), Map.of(), null, Map.of(), null, Map.of());
+                                    null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -188,6 +192,17 @@ record DevProjectConfig(
     }
 
     record Lifecycle(String idleTimeout) {
+    }
+
+    record CommandDefaults(String userMetadataKey, JsonNode systemUser) {
+        CommandDefaults {
+            userMetadataKey = userMetadataKey == null ? "$user" : userMetadataKey.strip();
+            systemUser = systemUser == null ? MAPPER.getNodeFactory().textNode("$system") : systemUser.deepCopy();
+            if (userMetadataKey.isBlank()) {
+                throw new IllegalArgumentException("commandDefaults.userMetadataKey must not be blank");
+            }
+            validateUser(systemUser, "commandDefaults.systemUser");
+        }
     }
 
     record Service(
@@ -307,7 +322,8 @@ record DevProjectConfig(
             Map<String, Frontend> frontends,
             Map<String, Service> services,
             Lifecycle lifecycle,
-            Map<String, DevCommandConfig> commands
+            CommandDefaults commandDefaults,
+            @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands
     ) {
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
@@ -325,6 +341,7 @@ record DevProjectConfig(
                     : Collections.unmodifiableMap(new LinkedHashMap<>(services));
             validateServices(services);
             lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
+            commandDefaults = commandDefaults == null ? new CommandDefaults(null, null) : commandDefaults;
             commands = commands == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
             validateCommands(commands, "commands");
@@ -333,7 +350,8 @@ record DevProjectConfig(
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
                                         applicationConfig, projects, port, idp, fastCompiler, backendPaths,
-                                        frontend, frontends, services, lifecycle, commands, null, Map.of());
+                                        frontend, frontends, services, lifecycle, commandDefaults, commands,
+                                        null, Map.of());
         }
     }
 
@@ -345,7 +363,16 @@ record DevProjectConfig(
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException(path + " keys must not be blank");
             }
-            if (command == null || command.type() == null || command.type().isBlank()) {
+            if (command == null) {
+                throw new IllegalArgumentException(path + "." + id + " must be configured");
+            }
+            validateUser(command.user(), path + "." + id + ".user");
+            if (command.fileReference()) {
+                if (command.type() != null || command.revision() != null || command.payload() != null) {
+                    throw new IllegalArgumentException(path + "." + id
+                                                       + " cannot combine file with an inline command definition");
+                }
+            } else if (command.type() == null || command.type().isBlank()) {
                 throw new IllegalArgumentException(path + "." + id + ".type must be configured");
             }
         });
@@ -356,6 +383,7 @@ record DevProjectConfig(
             Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
             Integer port, String idp, Boolean fastCompiler, List<String> backendPaths,
             Frontend frontend, Map<String, Frontend> frontends, Map<String, Service> services, Lifecycle lifecycle,
+            CommandDefaults commandDefaults,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
@@ -363,7 +391,15 @@ record DevProjectConfig(
                || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
                || !backendPaths.isEmpty() || !services.isEmpty()
                || lifecycle.idleTimeout() != null
+               || commandDefaults != null
                || !commands.isEmpty();
+    }
+
+    private static void validateUser(JsonNode user, String path) {
+        if (user != null && (user.isNull() || user.isArray()
+                             || (user.isTextual() && user.textValue().isBlank()))) {
+            throw new IllegalArgumentException(path + " must be a user id or JSON object");
+        }
     }
 
     private static void validateProjects(Map<String, Project> projects) {

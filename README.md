@@ -158,6 +158,59 @@ application configuration can override its namespace. A failed compile or startu
 ready applications from all projects running. `projects` is additive configuration: existing single-project files
 continue to use `apps` and `applicationConfig` unchanged.
 
+Define startup data with profile-level `commands`. Entries run in declaration order across all applications and may
+mix existing TestFixture JSON resources with named inline commands:
+
+```yaml
+commandDefaults:
+  userMetadataKey: $user
+  systemUser: $system
+commands:
+  - src/test/resources/users/*.json
+  - src/test/resources/items/create-product.json:
+      user: admin
+  - create-extra-admin:
+      user:
+        name: Legacy Admin
+      type: com.example.CreateUser
+      payload:
+        name: Local Admin
+```
+
+Referenced JSON resources support TestFixture's `@class`, `@revision`, and recursive `@extends` properties. A short
+`@class` value such as `CreateAccount` resolves through the application's generated type registry when the type is
+covered by `@RegisterType`; fully qualified class names remain supported. Files may also use the dev server's existing
+`type`/`revision`/`payload`/`metadata` envelope. Successful commands run once per
+in-memory runtime; changed or failed commands are retried without re-running unchanged successful predecessors. The
+conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
+configured commands in normalized path order.
+
+Every startup command receives `$user: "$system"` metadata by default. `commandDefaults.userMetadataKey` changes the
+profile-wide key and `commandDefaults.systemUser` may be either an id or a complete JSON/YAML user object. A command or
+file reference can override the identity with `user`; ids use the SDK's user-id metadata support, while complete user
+objects remain suitable for applications using compatibility defaults. Ordinary `metadata` is merged on inline and
+referenced commands and remains the escape hatch for a command that uses a different user key. Explicit command
+metadata wins over defaults; `user` wins over metadata at `userMetadataKey` when both are present. Changing identity
+metadata changes the command hash so the command runs again.
+
+```yaml
+commands:
+  - create-as-sender:
+      metadata:
+        $sender: admin
+      type: com.example.CreateUser
+      payload:
+        name: Local Admin
+```
+
+User ids, including `$system`, require Fluxzero SDK 1.236.0 or newer with defaults version `2026.08.04` or newer, or
+`fluxzero.auth.useUserIdMetadata=true`. Configure a complete `systemUser` and complete command `user` objects when an
+older application must deserialize user metadata directly.
+
+File entries may use `*`, `?`, and recursive `**` glob patterns. Matches are inserted alphabetically by normalized
+project-relative path at the pattern's position in the command list. A pattern without matches is reported as a
+configuration error and remains watched, so adding its first matching file recovers automatically.
+
 Use `services` for databases, emulators, log stores, or other local dependencies. A service with `command` is owned
 by the dev server; a service with only `url` is external and is never stopped. Named ports accept a fixed number or
 `dynamic`. Service-local fields reference a named allocated port as `{servicePort.<name>}`. The resolved URL and ports

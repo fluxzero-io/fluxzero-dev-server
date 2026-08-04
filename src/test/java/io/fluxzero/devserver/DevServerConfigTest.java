@@ -180,6 +180,46 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsOrderedCommandFilesAndInlineDefinitions(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                commandDefaults:
+                  userMetadataKey: $actor
+                  systemUser:
+                    name: Local System
+                commands:
+                  - src/test/resources/user/create-admin.json
+                  - src/test/resources/items/create-product.json:
+                      user: admin
+                      metadata:
+                        source: dev
+                  - create-extra-admin:
+                      type: com.example.CreateUser
+                      payload:
+                        name: Local Admin
+                  - create-product: src/test/resources/items/create-product.json
+                """);
+
+        Map<String, DevCommandConfig> commands = DevProjectConfig.load(projectDirectory).commands();
+
+        assertEquals(List.of("src/test/resources/user/create-admin.json",
+                             "src/test/resources/items/create-product.json", "create-extra-admin", "create-product"),
+                     List.copyOf(commands.keySet()));
+        DevProjectConfig projectConfig = DevProjectConfig.load(projectDirectory);
+        assertEquals("$actor", projectConfig.commandDefaults().userMetadataKey());
+        assertEquals("Local System", projectConfig.commandDefaults().systemUser().path("name").asText());
+        assertEquals("src/test/resources/user/create-admin.json",
+                     commands.get("src/test/resources/user/create-admin.json").file());
+        assertEquals("admin", commands.get("src/test/resources/items/create-product.json").user().asText());
+        assertEquals("dev", commands.get("src/test/resources/items/create-product.json").metadata().get("source"));
+        assertEquals("com.example.CreateUser", commands.get("create-extra-admin").type());
+        assertEquals("Local Admin", commands.get("create-extra-admin").payload().path("name").asText());
+        assertEquals("src/test/resources/items/create-product.json", commands.get("create-product").file());
+    }
+
+    @Test
     void rejectsUnknownProjectConfigKeys(@TempDir Path projectDirectory) throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());

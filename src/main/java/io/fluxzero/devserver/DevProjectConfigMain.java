@@ -127,14 +127,35 @@ public final class DevProjectConfigMain {
               idleTimeout: 24h
 
             # Startup commands run once per in-memory runtime, in declaration order, and retry after failure.
+            # Entries may reference TestFixture JSON files or define a named command inline.
+            # TestFixture @class aliases resolve through application types covered by @RegisterType.
+            # Glob matches are inserted alphabetically at the pattern's position; ** matches recursively.
+            # Every command runs as $system under $user by default. Configure these once per profile.
+            # systemUser and a command's user may be an id or a complete JSON/YAML user object. User ids require
+            # Fluxzero SDK 1.236.0+ with defaults 2026.08.04+ (or fluxzero.auth.useUserIdMetadata=true); use complete
+            # objects for applications on compatibility defaults. Explicit metadata wins over defaults; user wins
+            # over metadata at userMetadataKey when both are configured on the same command.
+            # commandDefaults:
+            #   userMetadataKey: $user
+            #   systemUser: $system
             # commands:
-            #   create-admin:
-            #     type: com.example.CreateUser
-            #     revision: 0
-            #     payload:
-            #       name: Local Admin
-            #     metadata:
-            #       source: dev
+            #   - src/test/resources/users/*.json
+            #   # Add user and/or metadata to one referenced file or glob using its path as the key.
+            #   - src/test/resources/items/create-product.json:
+            #       user: admin
+            #       metadata:
+            #         tenant: local
+            #         # A custom provider key can also be supplied directly instead of user.
+            #         $sender: admin
+            #   - create-extra-admin:
+            #       user:
+            #         name: Legacy Admin
+            #       type: com.example.CreateUser
+            #       revision: 0
+            #       payload:
+            #         name: Local Admin
+            #       metadata:
+            #         source: dev
             """;
 
     private DevProjectConfigMain() {

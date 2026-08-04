@@ -18,6 +18,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.fluxzero.common.Guarantee;
 import io.fluxzero.common.MessageType;
 import io.fluxzero.common.api.Data;
@@ -35,6 +36,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
@@ -43,14 +45,17 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -74,6 +79,9 @@ final class DevCommandPipeline implements AutoCloseable {
     private final WebSocketClient client;
     private final GatewayClient commandGateway;
     private final RequestHandler requestHandler;
+    private final ApplicationTypeRegistry typeRegistry = new ApplicationTypeRegistry();
+    private volatile Set<Path> referencedFiles = Set.of();
+    private volatile List<PathMatcher> referencedGlobs = List.of();
 
     DevCommandPipeline(DevServerConfig config, DevSessionStore sessionStore, String runtimeBaseUrl,
                        Consumer<DevCommandStatus> statusConsumer, Consumer<String> output) {
@@ -104,6 +112,10 @@ final class DevCommandPipeline implements AutoCloseable {
         if (running.compareAndSet(false, true)) {
             executor.submit(this::runLoop);
         }
+    }
+
+    void updateRegisteredTypes(String projectId, Set<String> types) {
+        typeRegistry.update(projectId, types);
     }
 
     private void runLoop() {
@@ -207,54 +219,321 @@ final class DevCommandPipeline implements AutoCloseable {
 
     private List<CommandFile> discover() throws IOException {
         List<CommandFile> result = new ArrayList<>();
-        DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config().commands()
-                .forEach((id, command) -> {
-            try {
-                result.add(readConfiguredCommand(id, command));
-            } catch (IOException e) {
-                throw new IllegalStateException("Could not read commands." + id + ": " + e.getMessage(), e);
+        LinkedHashSet<Path> references = new LinkedHashSet<>();
+        LinkedHashSet<Path> explicitlyConfiguredFiles = new LinkedHashSet<>();
+        List<PathMatcher> globs = new ArrayList<>();
+        try {
+            DevProjectConfig projectConfig = DevProjectConfig.load(config.projectDirectory())
+                    .select(config.profile()).config();
+            DevProjectConfig.CommandDefaults commandDefaults = projectConfig.commandDefaults();
+            projectConfig.commands()
+                    .forEach((id, command) -> {
+                try {
+                    result.addAll(readConfiguredCommands(id, command, commandDefaults, references,
+                                                         explicitlyConfiguredFiles, globs));
+                } catch (IOException e) {
+                    throw new IllegalStateException("Could not read commands." + id + ": " + e.getMessage(), e);
+                }
+            });
+            Path directory = config.projectDirectory().resolve(COMMAND_DIRECTORY);
+            if (!Files.isDirectory(directory)) {
+                return List.copyOf(result);
             }
-        });
-        Path directory = config.projectDirectory().resolve(COMMAND_DIRECTORY);
-        if (!Files.isDirectory(directory)) {
-            return List.copyOf(result);
-        }
-        try (Stream<Path> paths = Files.walk(directory)) {
-            List<Path> files = paths.filter(path -> Files.isRegularFile(path)
-                                                   && path.getFileName().toString().endsWith(".json"))
-                    .sorted(Comparator.comparing(this::normalizedRelativePath))
-                    .toList();
-            for (Path file : files) {
-                result.add(readCommand(file));
+            try (Stream<Path> paths = Files.walk(directory)) {
+                List<Path> files = paths.filter(path -> Files.isRegularFile(path)
+                                                       && path.getFileName().toString().endsWith(".json"))
+                        .sorted(Comparator.comparing(this::normalizedRelativePath))
+                        .toList();
+                for (Path file : files) {
+                    Path normalized = file.toAbsolutePath().normalize();
+                    if (!explicitlyConfiguredFiles.contains(normalized)) {
+                        result.add(readCommand(normalized, normalizedRelativePath(normalized), references,
+                                               null, commandDefaults));
+                    }
+                }
+                return List.copyOf(result);
             }
-            return List.copyOf(result);
+        } finally {
+            referencedFiles = Set.copyOf(references);
+            referencedGlobs = List.copyOf(globs);
         }
     }
 
-    private CommandFile readConfiguredCommand(String id, DevCommandConfig command) throws IOException {
+    private List<CommandFile> readConfiguredCommands(String id, DevCommandConfig command,
+                                                     DevProjectConfig.CommandDefaults commandDefaults,
+                                                     Set<Path> references,
+                                                     Set<Path> explicitlyConfiguredFiles,
+                                                     List<PathMatcher> globs) throws IOException {
+        if (command.fileReference()) {
+            if (globPattern(command.file())) {
+                if (!id.equals(command.file())) {
+                    throw new IllegalArgumentException(
+                            "Command glob '" + command.file() + "' must be an unnamed commands list entry");
+                }
+                List<Path> matches = resolveConfiguredGlob(command.file(), globs);
+                explicitlyConfiguredFiles.addAll(matches);
+                return matches.stream().map(file -> {
+                    try {
+                        return readCommand(file, normalizedRelativePath(file), references, command,
+                                           commandDefaults);
+                    } catch (IOException e) {
+                        throw new IllegalStateException("Could not read " + file + ": " + e.getMessage(), e);
+                    }
+                }).toList();
+            }
+            Path file = resolveConfiguredFile(command.file());
+            explicitlyConfiguredFiles.add(file);
+            String identity = id.equals(command.file()) ? normalizedRelativePath(file) : "commands." + id;
+            return List.of(readCommand(file, identity, references, command, commandDefaults));
+        }
         String identity = "commands." + id;
         JsonNode payload = command.payload() == null || command.payload().isNull()
                 ? objectMapper.createObjectNode() : command.payload();
-        return createCommand(identity, commandHash(command.type(), command.effectiveRevision(), payload,
-                                                   command.metadata()),
-                             command.type(), command.effectiveRevision(), payload,
-                             command.metadata());
+        String type = typeRegistry.resolve(command.type());
+        Map<String, Object> metadata = withUserMetadata(command.metadata(), command.user(), commandDefaults);
+        return List.of(createCommand(identity, commandHash(type, command.effectiveRevision(), payload,
+                                                          metadata),
+                                     type, command.effectiveRevision(), payload,
+                                     metadata));
     }
 
-    private CommandFile readCommand(Path file) throws IOException {
-        byte[] bytes = Files.readAllBytes(file);
-        JsonNode root = objectMapper.readTree(bytes);
-        String type = requiredText(root, "type", file);
-        int revision = root.path("revision").isMissingNode() ? 0 : root.path("revision").asInt();
-        JsonNode payload = root.path("payload").isMissingNode() ? objectMapper.createObjectNode()
-                : root.path("payload");
-        Map<String, Object> metadata = root.path("metadata").isObject()
-                ? objectMapper.convertValue(root.path("metadata"), new TypeReference<>() {
-                })
-                : Map.of();
-        String relativePath = normalizedRelativePath(file);
-        return createCommand(relativePath, commandHash(type, revision, payload, metadata),
+    private List<Path> resolveConfiguredGlob(String configuredPattern, List<PathMatcher> globs) throws IOException {
+        String normalizedPattern = configuredPattern.replace('\\', '/');
+        int firstGlob = firstGlobIndex(normalizedPattern);
+        int rootEnd = normalizedPattern.lastIndexOf('/', firstGlob);
+        String configuredRootValue = rootEnd < 0 ? "" : normalizedPattern.substring(0, rootEnd + 1);
+        String wildcardPattern = normalizedPattern.substring(rootEnd + 1);
+        Path configuredRoot = Path.of(configuredRootValue);
+        Path normalizedRoot = (configuredRoot.isAbsolute() ? configuredRoot
+                : config.projectDirectory().resolve(configuredRoot)).toAbsolutePath().normalize();
+        String normalizedRootValue = normalizedGlobPath(normalizedRoot);
+        String absolutePattern = normalizedRootValue.endsWith("/")
+                ? normalizedRootValue + wildcardPattern : normalizedRootValue + "/" + wildcardPattern;
+        PathMatcher matcher = globMatcher(absolutePattern);
+        globs.add(matcher);
+
+        if (config.projects().stream().map(DevBuildProject::directory)
+                .noneMatch(normalizedRoot::startsWith)) {
+            throw new IllegalArgumentException(
+                    "Dev command glob must start inside a configured project: " + configuredPattern);
+        }
+        int maxDepth = globDepth(wildcardPattern);
+        List<Path> matches;
+        if (!Files.isDirectory(normalizedRoot)) {
+            matches = List.of();
+        } else {
+            try (Stream<Path> paths = Files.walk(normalizedRoot, maxDepth)) {
+                matches = paths.filter(Files::isRegularFile).map(path -> path.toAbsolutePath().normalize())
+                        .filter(matcher::matches).sorted(Comparator.comparing(this::normalizedRelativePath)).toList();
+            }
+        }
+        if (matches.isEmpty()) {
+            throw new IllegalArgumentException("Dev command glob matched no files: " + configuredPattern);
+        }
+        return matches;
+    }
+
+    private static int firstGlobIndex(String pattern) {
+        int star = pattern.indexOf('*');
+        int questionMark = pattern.indexOf('?');
+        if (star < 0 && questionMark < 0) {
+            throw new IllegalArgumentException("Not a glob pattern: " + pattern);
+        }
+        if (star < 0) {
+            return questionMark;
+        }
+        return questionMark < 0 ? star : Math.min(star, questionMark);
+    }
+
+    private static int globDepth(String wildcardPattern) {
+        if (wildcardPattern.contains("**")) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.toIntExact(wildcardPattern.chars().filter(value -> value == '/').count() + 1);
+    }
+
+    private static boolean globPattern(String value) {
+        return value != null && (value.indexOf('*') >= 0 || value.indexOf('?') >= 0);
+    }
+
+    private static PathMatcher globMatcher(String glob) {
+        Pattern pattern = Pattern.compile(globRegex(glob));
+        return path -> pattern.matcher(normalizedGlobPath(path.toAbsolutePath().normalize())).matches();
+    }
+
+    private static String normalizedGlobPath(Path path) {
+        return path.toString().replace('\\', '/');
+    }
+
+    private static String globRegex(String glob) {
+        StringBuilder regex = new StringBuilder("^");
+        for (int i = 0; i < glob.length(); i++) {
+            char current = glob.charAt(i);
+            if (current == '*') {
+                if (i + 1 < glob.length() && glob.charAt(i + 1) == '*') {
+                    i++;
+                    if (i + 1 < glob.length() && glob.charAt(i + 1) == '/') {
+                        i++;
+                        regex.append("(?:.*/)?");
+                    } else {
+                        regex.append(".*");
+                    }
+                } else {
+                    regex.append("[^/]*");
+                }
+            } else if (current == '?') {
+                regex.append("[^/]");
+            } else {
+                if (".\\+()^$|{}[]".indexOf(current) >= 0) {
+                    regex.append('\\');
+                }
+                regex.append(current);
+            }
+        }
+        return regex.append('$').toString();
+    }
+
+    private CommandFile readCommand(Path file, String identity, Set<Path> references,
+                                    DevCommandConfig configuredCommand,
+                                    DevProjectConfig.CommandDefaults commandDefaults) throws IOException {
+        ObjectNode root = readFixture(file, references, new LinkedHashSet<>());
+        String type;
+        int revision;
+        JsonNode payload;
+        Map<String, Object> metadata;
+        if (root.has("@class")) {
+            type = requiredText(root, "@class", file);
+            revision = fixtureRevision(root, file);
+            ObjectNode fixturePayload = root.deepCopy();
+            fixturePayload.remove(List.of("@class", "@revision"));
+            payload = fixturePayload;
+            metadata = Map.of();
+        } else {
+            type = requiredText(root, "type", file);
+            revision = envelopeRevision(root, file);
+            payload = root.path("payload").isMissingNode() ? objectMapper.createObjectNode()
+                    : root.path("payload");
+            metadata = root.path("metadata").isObject()
+                    ? objectMapper.convertValue(root.path("metadata"), new TypeReference<>() {
+                    })
+                    : Map.of();
+        }
+        if (configuredCommand != null && !configuredCommand.metadata().isEmpty()) {
+            LinkedHashMap<String, Object> merged = new LinkedHashMap<>(metadata);
+            merged.putAll(configuredCommand.metadata());
+            metadata = Map.copyOf(merged);
+        }
+        JsonNode user = configuredCommand == null ? null : configuredCommand.user();
+        metadata = withUserMetadata(metadata, user, commandDefaults);
+        type = typeRegistry.resolve(type);
+        return createCommand(identity, commandHash(type, revision, payload, metadata),
                              type, revision, payload, metadata);
+    }
+
+    private ObjectNode readFixture(Path file, Set<Path> references, Set<Path> chain) throws IOException {
+        Path normalized = file.toAbsolutePath().normalize();
+        references.add(normalized);
+        validateReferencedFile(normalized);
+        if (!chain.add(normalized)) {
+            throw new IllegalArgumentException("Circular @extends reference involving " + normalized);
+        }
+        JsonNode parsed = objectMapper.readTree(Files.readAllBytes(normalized));
+        if (!(parsed instanceof ObjectNode current)) {
+            throw new IllegalArgumentException("Dev command " + normalized + " must contain a JSON object");
+        }
+        String extended = extensionReference(current, normalized);
+        current.remove(List.of("@extends", "@extend"));
+        if (extended == null) {
+            chain.remove(normalized);
+            return current;
+        }
+        ObjectNode base = readFixture(resolveExtendedFile(normalized, extended), references, chain);
+        merge(base, current);
+        chain.remove(normalized);
+        return base;
+    }
+
+    private Path resolveConfiguredFile(String configuredPath) {
+        Path path = Path.of(configuredPath);
+        return (path.isAbsolute() ? path : config.projectDirectory().resolve(path)).toAbsolutePath().normalize();
+    }
+
+    private Path resolveExtendedFile(Path file, String reference) {
+        if (!reference.startsWith("/")) {
+            return file.getParent().resolve(reference).normalize();
+        }
+        Path resourceRoot = file.getParent();
+        Path resourceSuffix = Path.of("src", "test", "resources");
+        while (resourceRoot != null && !resourceRoot.endsWith(resourceSuffix)) {
+            resourceRoot = resourceRoot.getParent();
+        }
+        if (resourceRoot == null) {
+            throw new IllegalArgumentException("Absolute @extends reference " + reference + " in " + file
+                                               + " requires the command file to be under src/test/resources");
+        }
+        return resourceRoot.resolve(reference.substring(1)).normalize();
+    }
+
+    private void validateReferencedFile(Path file) {
+        Path normalized = file.toAbsolutePath().normalize();
+        if (!Files.isRegularFile(normalized)) {
+            throw new IllegalArgumentException("Dev command file does not exist: " + normalized);
+        }
+        boolean watched = config.projects().stream().map(DevBuildProject::directory)
+                .anyMatch(normalized::startsWith);
+        if (!watched) {
+            throw new IllegalArgumentException("Dev command file must be inside a configured project: " + normalized);
+        }
+    }
+
+    private static String extensionReference(ObjectNode node, Path file) {
+        JsonNode value = node.has("@extends") ? node.get("@extends") : node.get("@extend");
+        if (value == null) {
+            return null;
+        }
+        if (!value.isTextual() || value.textValue().isBlank()) {
+            throw new IllegalArgumentException("Dev command " + file + " must contain a textual `@extends`");
+        }
+        return value.textValue();
+    }
+
+    private static void merge(ObjectNode target, ObjectNode overrides) {
+        overrides.properties().forEach(entry -> {
+            JsonNode existing = target.get(entry.getKey());
+            if (existing instanceof ObjectNode existingObject && entry.getValue() instanceof ObjectNode override) {
+                merge(existingObject, override);
+            } else {
+                target.set(entry.getKey(), entry.getValue());
+            }
+        });
+    }
+
+    private static int fixtureRevision(ObjectNode root, Path file) {
+        JsonNode revision = root.get("@revision");
+        if (revision == null) {
+            return 0;
+        }
+        if (!revision.isIntegralNumber() || !revision.canConvertToInt()) {
+            throw new IllegalArgumentException("Dev command " + file + " must contain an integer `@revision`");
+        }
+        return revision.intValue();
+    }
+
+    private static int envelopeRevision(ObjectNode root, Path file) {
+        JsonNode revision = root.get("revision");
+        if (revision == null) {
+            return 0;
+        }
+        if (!revision.isIntegralNumber() || !revision.canConvertToInt()) {
+            throw new IllegalArgumentException("Dev command " + file + " must contain an integer `revision`");
+        }
+        return revision.intValue();
+    }
+
+    boolean references(Path path) {
+        Path normalized = path.toAbsolutePath().normalize();
+        return referencedFiles.contains(normalized)
+               || referencedGlobs.stream().anyMatch(glob -> glob.matches(normalized));
     }
 
     private String commandHash(String type, int revision, JsonNode payload, Map<String, Object> metadata)
@@ -265,6 +544,18 @@ final class DevCommandPipeline implements AutoCloseable {
         definition.put("payload", objectMapper.convertValue(payload, Object.class));
         definition.put("metadata", metadata);
         return sha256(objectMapper.writeValueAsBytes(definition));
+    }
+
+    private Map<String, Object> withUserMetadata(Map<String, Object> metadata, JsonNode user,
+                                                 DevProjectConfig.CommandDefaults defaults) {
+        String key = defaults.userMetadataKey();
+        LinkedHashMap<String, Object> result = new LinkedHashMap<>(metadata);
+        if (user == null && result.containsKey(key)) {
+            return Map.copyOf(result);
+        }
+        JsonNode effectiveUser = user == null ? defaults.systemUser() : user;
+        result.put(key, objectMapper.convertValue(effectiveUser, Object.class));
+        return Map.copyOf(result);
     }
 
     private CommandFile createCommand(String identity, String hash, String type, int revision, JsonNode payload,
@@ -289,7 +580,12 @@ final class DevCommandPipeline implements AutoCloseable {
     }
 
     private String normalizedRelativePath(Path file) {
-        return config.projectDirectory().relativize(file.toAbsolutePath().normalize()).toString().replace('\\', '/');
+        Path normalized = file.toAbsolutePath().normalize();
+        try {
+            return config.projectDirectory().relativize(normalized).toString().replace('\\', '/');
+        } catch (IllegalArgumentException e) {
+            return normalized.toString().replace('\\', '/');
+        }
     }
 
     private void update(DevCommandStatus status) {
