@@ -298,24 +298,26 @@ final class DevCommandPipeline implements AutoCloseable {
     }
 
     private List<Path> resolveConfiguredGlob(String configuredPattern, List<PathMatcher> globs) throws IOException {
-        Path configuredPath = Path.of(configuredPattern);
-        Path absolutePattern = (configuredPath.isAbsolute() ? configuredPath
-                : config.projectDirectory().resolve(configuredPath)).toAbsolutePath().normalize();
+        String normalizedPattern = configuredPattern.replace('\\', '/');
+        int firstGlob = firstGlobIndex(normalizedPattern);
+        int rootEnd = normalizedPattern.lastIndexOf('/', firstGlob);
+        String configuredRootValue = rootEnd < 0 ? "" : normalizedPattern.substring(0, rootEnd + 1);
+        String wildcardPattern = normalizedPattern.substring(rootEnd + 1);
+        Path configuredRoot = Path.of(configuredRootValue);
+        Path normalizedRoot = (configuredRoot.isAbsolute() ? configuredRoot
+                : config.projectDirectory().resolve(configuredRoot)).toAbsolutePath().normalize();
+        String normalizedRootValue = normalizedGlobPath(normalizedRoot);
+        String absolutePattern = normalizedRootValue.endsWith("/")
+                ? normalizedRootValue + wildcardPattern : normalizedRootValue + "/" + wildcardPattern;
         PathMatcher matcher = globMatcher(absolutePattern);
         globs.add(matcher);
 
-        int firstGlob = firstGlobSegment(absolutePattern);
-        Path searchRoot = absolutePattern.getRoot();
-        for (int i = 0; i < firstGlob; i++) {
-            searchRoot = searchRoot.resolve(absolutePattern.getName(i));
-        }
-        Path normalizedRoot = searchRoot.toAbsolutePath().normalize();
         if (config.projects().stream().map(DevBuildProject::directory)
                 .noneMatch(normalizedRoot::startsWith)) {
             throw new IllegalArgumentException(
                     "Dev command glob must start inside a configured project: " + configuredPattern);
         }
-        int maxDepth = globDepth(absolutePattern, firstGlob);
+        int maxDepth = globDepth(wildcardPattern);
         List<Path> matches;
         if (!Files.isDirectory(normalizedRoot)) {
             matches = List.of();
@@ -331,30 +333,31 @@ final class DevCommandPipeline implements AutoCloseable {
         return matches;
     }
 
-    private static int firstGlobSegment(Path pattern) {
-        for (int i = 0; i < pattern.getNameCount(); i++) {
-            if (globPattern(pattern.getName(i).toString())) {
-                return i;
-            }
+    private static int firstGlobIndex(String pattern) {
+        int star = pattern.indexOf('*');
+        int questionMark = pattern.indexOf('?');
+        if (star < 0 && questionMark < 0) {
+            throw new IllegalArgumentException("Not a glob pattern: " + pattern);
         }
-        throw new IllegalArgumentException("Not a glob pattern: " + pattern);
+        if (star < 0) {
+            return questionMark;
+        }
+        return questionMark < 0 ? star : Math.min(star, questionMark);
     }
 
-    private static int globDepth(Path pattern, int firstGlob) {
-        for (int i = firstGlob; i < pattern.getNameCount(); i++) {
-            if (pattern.getName(i).toString().contains("**")) {
-                return Integer.MAX_VALUE;
-            }
+    private static int globDepth(String wildcardPattern) {
+        if (wildcardPattern.contains("**")) {
+            return Integer.MAX_VALUE;
         }
-        return pattern.getNameCount() - firstGlob;
+        return Math.toIntExact(wildcardPattern.chars().filter(value -> value == '/').count() + 1);
     }
 
     private static boolean globPattern(String value) {
         return value != null && (value.indexOf('*') >= 0 || value.indexOf('?') >= 0);
     }
 
-    private static PathMatcher globMatcher(Path glob) {
-        Pattern pattern = Pattern.compile(globRegex(normalizedGlobPath(glob)));
+    private static PathMatcher globMatcher(String glob) {
+        Pattern pattern = Pattern.compile(globRegex(glob));
         return path -> pattern.matcher(normalizedGlobPath(path.toAbsolutePath().normalize())).matches();
     }
 
