@@ -195,7 +195,8 @@ final class CompilePipeline {
                                          "failed after " + CompileTiming.format(elapsedMillis)
                                          + System.lineSeparator() + result.tail(20));
             }
-            if (config.fastCompilerEnabled() && plan.goals().contains("dependency:build-classpath")) {
+            if (config.fastCompilerEnabled() && plan.goals().contains("dependency:build-classpath")
+                && !MavenReactor.load(config.projectDirectory()).multiModule()) {
                 MavenBuildIntrospection.load(config).refreshCompileClasspath(output);
             }
             long elapsedMillis = Duration.ofNanos(System.nanoTime() - started).toMillis();
@@ -252,8 +253,14 @@ final class CompilePipeline {
 
     private ProcessUtils.ProcessResult generateTestClasspath() throws Exception {
         output.accept("[compile] resolving test application classpath");
+        List<String> goals = new java.util.ArrayList<>();
+        if (MavenReactor.load(config.projectDirectory()).multiModule()) {
+            goals.add("test-compile");
+        }
+        goals.add("dependency:build-classpath");
+        goals.add("-DincludeScope=test");
         List<String> command = new java.util.ArrayList<>(MavenCommand.command(
-                config.projectDirectory(), "dependency:build-classpath", "-DincludeScope=test"));
+                config.projectDirectory(), goals.toArray(String[]::new)));
         command.add("-Dmdep.outputFile=" + MavenReactor.TEST_CLASSPATH_FILE.toString().replace('\\', '/'));
         return ProcessUtils.run(command, config.projectDirectory(), MavenCommand.environment(),
                                 line -> output.accept("[compile] " + line));
