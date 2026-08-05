@@ -27,6 +27,7 @@ import java.util.Objects;
  * @param directory    optional working directory for managed frontend commands, relative to the project directory
  * @param setupCommand optional setup command executed once before each managed frontend launch
  * @param backendPaths environment gateway paths routed unchanged to the Fluxzero proxy
+ * @param readinessPath HTTP path used to determine whether the frontend is accepting requests
  */
 public record FrontendConfig(
         Mode mode,
@@ -34,7 +35,8 @@ public record FrontendConfig(
         String url,
         String directory,
         String setupCommand,
-        List<String> backendPaths
+        List<String> backendPaths,
+        String readinessPath
 ) {
     /** Default path routed unchanged from the public gateway to Fluxzero. */
     public static final List<String> DEFAULT_BACKEND_PATHS = List.of("/api");
@@ -44,9 +46,15 @@ public record FrontendConfig(
         directory = normalize(directory);
         setupCommand = normalize(setupCommand);
         backendPaths = normalizePaths(backendPaths == null ? DEFAULT_BACKEND_PATHS : backendPaths);
+        readinessPath = normalizeReadinessPath(readinessPath);
         if (mode != Mode.COMMAND && (directory != null || setupCommand != null)) {
             throw new IllegalArgumentException("Frontend directory and setup command require a managed command");
         }
+    }
+
+    public FrontendConfig(Mode mode, String command, String url, String directory, String setupCommand,
+                          List<String> backendPaths) {
+        this(mode, command, url, directory, setupCommand, backendPaths, "/");
     }
 
     public FrontendConfig(Mode mode, String command, String url) {
@@ -73,17 +81,23 @@ public record FrontendConfig(
      * Returns a copy with the public paths that should bypass the frontend and retain their path toward Fluxzero.
      */
     public FrontendConfig withBackendPaths(List<String> backendPaths) {
-        return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths);
+        return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths, readinessPath);
     }
 
     /** Returns a copy with the working directory and optional setup command for the managed frontend. */
     public FrontendConfig withLaunchSetup(String directory, String setupCommand) {
-        return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths);
+        return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths, readinessPath);
+    }
+
+    /** Returns a copy that probes the given HTTP path for frontend readiness. */
+    public FrontendConfig withReadinessPath(String readinessPath) {
+        return new FrontendConfig(mode, command, url, directory, setupCommand, backendPaths, readinessPath);
     }
 
     FrontendConfig resolve(DevPlaceholderResolver resolver) {
         return new FrontendConfig(mode, resolver.resolve(command), resolver.resolve(url),
-                                  resolver.resolve(directory), resolver.resolve(setupCommand), backendPaths);
+                                  resolver.resolve(directory), resolver.resolve(setupCommand), backendPaths,
+                                  resolver.resolve(readinessPath));
     }
 
     private static String normalize(String value) {
@@ -113,6 +127,21 @@ public record FrontendConfig(
             result.add(normalized);
         }
         return List.copyOf(result);
+    }
+
+    private static String normalizeReadinessPath(String path) {
+        if (path == null || path.isBlank()) {
+            return "/";
+        }
+        String result = path.strip();
+        if (!result.startsWith("/")) {
+            throw new IllegalArgumentException("Frontend readiness path must start with '/': " + path);
+        }
+        if (result.indexOf('?') >= 0 || result.indexOf('#') >= 0) {
+            throw new IllegalArgumentException(
+                    "Frontend readiness path must not contain a query or fragment: " + path);
+        }
+        return result;
     }
 
     public enum Mode {

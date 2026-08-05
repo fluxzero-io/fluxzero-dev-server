@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.function.Consumer;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -249,6 +250,31 @@ class CompilePipelineTest {
         assertTrue("v1".equals(Files.readString(snapshotClass)));
     }
 
+    @Test
+    void startsTestApplicationWithUninstalledTestScopedReactorDependency(@TempDir Path projectDirectory)
+            throws Exception {
+        installRealMavenWrapper(projectDirectory, projectDirectory.resolve("repository"));
+        installTestApplicationReactor(projectDirectory);
+
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString()
+        });
+        CompileResult result = new CompilePipeline(config, ignored -> {
+        }).compile(Set.of(projectDirectory.resolve("pom.xml")));
+
+        assertTrue(result.success(), result.detail());
+        assertNotNull(result.snapshot());
+        assertEquals(1, result.snapshot().applications().size());
+        ApplicationBuild application = result.snapshot().applications().getFirst();
+        assertTrue(application.testApplication());
+        assertEquals("auth-engine", application.module());
+        assertTrue(application.classesDirectories().stream().anyMatch(
+                path -> Files.isRegularFile(path.resolve("com/acme/auth/AuthEngineTestApp.class"))));
+        assertTrue(application.classesDirectories().stream().anyMatch(
+                path -> Files.isRegularFile(path.resolve("com/acme/core/TestConfiguration.class"))));
+        assertFalse(Files.exists(projectDirectory.resolve("repository/com/acme/core/1/core-1.jar")));
+    }
+
     private static DevServerConfig config(Path projectDirectory) {
         return config(projectDirectory, false);
     }
@@ -309,5 +335,90 @@ class CompilePipelineTest {
                 exit 0
                 """);
         assertTrue(mvnw.toFile().setExecutable(true));
+    }
+
+    private static void installRealMavenWrapper(Path projectDirectory, Path repository) throws Exception {
+        Path wrapper = projectDirectory.resolve("mvnw");
+        Files.writeString(wrapper, """
+                #!/bin/sh
+                exec "%s" -Dmaven.repo.local="%s" "$@"
+                """.formatted(findRepositoryMavenWrapper(), repository));
+        assertTrue(wrapper.toFile().setExecutable(true));
+    }
+
+    private static Path findRepositoryMavenWrapper() {
+        Path directory = Path.of("").toAbsolutePath();
+        while (directory != null) {
+            Path candidate = directory.resolve("mvnw");
+            if (Files.isRegularFile(candidate)) {
+                return candidate;
+            }
+            directory = directory.getParent();
+        }
+        throw new IllegalStateException("Could not find repository Maven wrapper");
+    }
+
+    private static void installTestApplicationReactor(Path projectDirectory) throws Exception {
+        String cachedRepository = Path.of(System.getProperty("user.home"), ".m2", "repository").toUri().toString();
+        Files.writeString(projectDirectory.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId><artifactId>reactor</artifactId><version>1</version>
+                  <packaging>pom</packaging>
+                  <modules><module>core</module><module>auth-engine</module></modules>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                  <repositories><repository><id>local-cache</id><url>%s</url></repository></repositories>
+                  <pluginRepositories><pluginRepository><id>local-plugin-cache</id><url>%s</url></pluginRepository></pluginRepositories>
+                  <build><pluginManagement><plugins>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.15.0</version></plugin>
+                    <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-dependency-plugin</artifactId><version>3.11.0</version></plugin>
+                  </plugins></pluginManagement></build>
+                </project>
+                """.formatted(cachedRepository, cachedRepository));
+
+        Path core = Files.createDirectories(projectDirectory.resolve("core/src/main/java/com/acme/core"));
+        Files.writeString(projectDirectory.resolve("core/pom.xml"), modulePom("core", ""));
+        Files.writeString(core.resolve("TestConfiguration.java"), """
+                package com.acme.core;
+                public final class TestConfiguration {
+                }
+                """);
+
+        Path authEngine = Files.createDirectories(
+                projectDirectory.resolve("auth-engine/src/test/java/com/acme/auth"));
+        Files.writeString(projectDirectory.resolve("auth-engine/pom.xml"), modulePom("auth-engine", """
+                <dependency>
+                  <groupId>com.acme</groupId><artifactId>core</artifactId><version>1</version><scope>test</scope>
+                </dependency>
+                """));
+        Files.writeString(authEngine.resolve("AuthEngineTestApp.java"), """
+                package com.acme.auth;
+                import com.acme.core.TestConfiguration;
+                public final class AuthEngineTestApp {
+                    static void main(String[] args) {
+                        new TestConfiguration();
+                    }
+                }
+                """);
+
+        Path config = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(config.getParent());
+        Files.writeString(config, """
+                version: 1
+                apps: [AuthEngineTestApp]
+                fastCompiler: true
+                idp: external
+                """);
+    }
+
+    private static String modulePom(String artifactId, String dependencies) {
+        return """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <parent><groupId>com.acme</groupId><artifactId>reactor</artifactId><version>1</version></parent>
+                  <artifactId>%s</artifactId>
+                  <dependencies>%s</dependencies>
+                </project>
+                """.formatted(artifactId, dependencies);
     }
 }

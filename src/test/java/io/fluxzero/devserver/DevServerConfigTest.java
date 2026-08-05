@@ -273,10 +273,12 @@ class DevServerConfigTest {
                   dashboard:
                     directory: frontend
                     command: "npm run dashboard -- --port {frontendPort}"
+                    readinessPath: /healthz
                   auditlog:
                     path: /marketplace/logs/1/
                     directory: ../fluxzero-auditlog/frontend
                     command: "npm run start-dashboard -- --port {frontendPort}"
+                    readinessPath: /ready
                 """);
 
         DevServerConfig config = DevServerConfig.fromArgs(
@@ -285,6 +287,8 @@ class DevServerConfigTest {
         assertEquals(List.of("dashboard", "auditlog"), config.frontends().stream().map(RoutedFrontend::id).toList());
         assertEquals(List.of("/", "/marketplace/logs/1"),
                      config.frontends().stream().map(RoutedFrontend::path).toList());
+        assertEquals(List.of("/healthz", "/ready"),
+                     config.frontends().stream().map(frontend -> frontend.config().readinessPath()).toList());
         assertEquals(4200, config.gatewayPort());
         assertEquals("npm run dashboard -- --port {frontendPort}", config.frontend().command());
         assertEquals(List.of("/api", "/webhooks", "/logs", "/observer"),
@@ -296,11 +300,47 @@ class DevServerConfigTest {
         assertEquals(1, overridden.frontends().size());
         assertEquals("frontend", overridden.frontends().getFirst().id());
         assertEquals("http://localhost:5173", overridden.frontend().url());
+        assertEquals("/", overridden.frontend().readinessPath());
 
         DevServerConfig disabled = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(), "--no-frontend"
         });
         assertTrue(disabled.frontends().isEmpty());
+    }
+
+    @Test
+    void loadsSingleFrontendReadinessPath(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                frontend:
+                  command: npm start
+                  readinessPath: /healthz
+                """);
+
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString()});
+
+        assertEquals("/healthz", config.frontend().readinessPath());
+    }
+
+    @Test
+    void rejectsInvalidFrontendReadinessPath(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                frontend:
+                  command: npm start
+                  readinessPath: healthz
+                """);
+
+        IllegalArgumentException exception = assertThrows(
+                IllegalArgumentException.class,
+                () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
+
+        assertTrue(exception.getMessage().contains("readiness path must start with '/'"));
     }
 
     @Test

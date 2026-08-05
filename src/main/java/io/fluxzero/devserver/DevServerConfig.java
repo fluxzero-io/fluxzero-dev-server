@@ -333,6 +333,9 @@ public record DevServerConfig(
         FrontendConfig frontend = noFrontend ? FrontendConfig.none() : frontendCommand != null
                 ? FrontendConfig.command(frontendCommand).withLaunchSetup(frontendDirectory, frontendSetupCommand)
                 : frontendUrl == null ? FrontendConfig.none() : FrontendConfig.externalUrl(frontendUrl);
+        if (!noFrontend && frontend.mode() != FrontendConfig.Mode.NONE) {
+            frontend = frontend.withReadinessPath(project.frontend().readinessPath());
+        }
         List<String> backendPaths = backendPaths(project, parsed.values("backend-path"));
         if (!backendPaths.isEmpty()) {
             frontend = frontend.withBackendPaths(backendPaths);
@@ -501,7 +504,8 @@ public record DevServerConfig(
             FrontendConfig frontend = value.command() != null
                     ? FrontendConfig.command(value.command()).withLaunchSetup(value.directory(), value.setupCommand())
                     : FrontendConfig.externalUrl(value.url());
-            return new RoutedFrontend(entry.getKey(), value.path(), frontend.withBackendPaths(backendPaths));
+            frontend = frontend.withBackendPaths(backendPaths).withReadinessPath(value.readinessPath());
+            return new RoutedFrontend(entry.getKey(), value.path(), frontend);
         }).toList();
     }
 

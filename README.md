@@ -148,6 +148,8 @@ and lifecycle timeouts. `port` is the one public port for the complete dev envir
 a separate private `{frontendPort}` in its command. Existing `frontend` configuration continues to serve one UI at
 `/`. Use the additive `frontends` map when one environment needs several UIs: each entry has a stable id and optional public mount `path`,
 the root frontend omits `path`, and the gateway uses the longest matching path for HTTP and WebSocket traffic.
+Set `readinessPath` on a frontend when its functional root redirects or is unsuitable as a health probe; it defaults
+to `/`, and readiness probes never follow redirects.
 Profile-level `backendPaths` add pass-through routes to the built-in `/api` route and keep priority over frontends.
 Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
 

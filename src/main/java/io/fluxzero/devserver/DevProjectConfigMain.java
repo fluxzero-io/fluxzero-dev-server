@@ -108,6 +108,7 @@ public final class DevProjectConfigMain {
               directory: frontend
               setupCommand: "npm install --prefer-offline --no-audit --no-fund"
               command: "npm run dev -- --host 127.0.0.1 --port {frontendPort}"
+              # readinessPath: /healthz # defaults to /; redirects are never followed
               # url: "http://127.0.0.1:5173"
 
             # To serve several frontends through one public gateway, replace frontend with frontends.
@@ -121,6 +122,7 @@ public final class DevProjectConfigMain {
             #     path: /marketplace/logs/1
             #     directory: ../fluxzero-auditlog/frontend
             #     command: "npm run start-dashboard -- --host 127.0.0.1 --port {frontendPort}"
+            #     readinessPath: /healthz
 
             # Stop forgotten environments after inactivity. Use disabled to keep one running indefinitely.
             lifecycle:
