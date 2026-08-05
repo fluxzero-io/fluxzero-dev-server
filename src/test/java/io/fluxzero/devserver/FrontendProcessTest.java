@@ -54,6 +54,39 @@ class FrontendProcessTest {
     }
 
     @Test
+    void probesConfiguredReadinessPath(@TempDir Path projectDirectory) throws Exception {
+        Path requests = projectDirectory.resolve("requests.log");
+        String command = fixtureCommand("{frontendPort}", requests);
+        FrontendConfig frontendConfig = FrontendConfig.command(command).withReadinessPath("/healthz");
+
+        try (FrontendProcess frontend = FrontendProcess.start(
+                config(projectDirectory, frontendConfig, Duration.ofMillis(250)), ignored -> {
+                }, ignored -> {
+                })) {
+            assertTrue(await(frontend::ready));
+            assertTrue(await(() -> Files.isRegularFile(requests)));
+            assertTrue(Files.readAllLines(requests).stream().allMatch("/healthz"::equals));
+        }
+    }
+
+    @Test
+    void readinessProbeDoesNotFollowRedirects(@TempDir Path projectDirectory) throws Exception {
+        Path requests = projectDirectory.resolve("requests.log");
+        String command = fixtureCommand("{frontendPort}", requests) + " /healthz";
+        FrontendConfig frontendConfig = FrontendConfig.command(command).withReadinessPath("/healthz");
+
+        try (FrontendProcess frontend = FrontendProcess.start(
+                config(projectDirectory, frontendConfig, Duration.ofMillis(250)), ignored -> {
+                }, ignored -> {
+                })) {
+            assertTrue(await(frontend::ready));
+            assertTrue(await(() -> Files.isRegularFile(requests)));
+            Thread.sleep(100);
+            assertTrue(Files.readAllLines(requests).stream().allMatch("/healthz"::equals));
+        }
+    }
+
+    @Test
     void runsSetupInConfiguredDirectoryBeforeFrontend(@TempDir Path projectDirectory) throws Exception {
         Path frontendDirectory = Files.createDirectories(projectDirectory.resolve("ui"));
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
@@ -207,6 +240,12 @@ class FrontendProcessTest {
 
     private static String quote(String value) {
         return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static String fixtureCommand(String port, Path requests) {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        return quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
+               + FrontendFixtureServer.class.getName() + " " + port + " " + quote(requests.toString());
     }
 
     private static DevServerConfig config(Path projectDirectory, String command, Duration startupTimeout) {

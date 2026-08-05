@@ -390,9 +390,11 @@ final class FrontendProcess implements AutoCloseable {
     private boolean probe() {
         HttpURLConnection connection = null;
         try {
-            connection = (HttpURLConnection) URI.create(internalUrl).toURL().openConnection(Proxy.NO_PROXY);
+            URI readinessUri = URI.create(internalUrl).resolve(config.readinessPath());
+            connection = (HttpURLConnection) readinessUri.toURL().openConnection(Proxy.NO_PROXY);
             connection.setConnectTimeout((int) PROBE_TIMEOUT.toMillis());
             connection.setReadTimeout((int) PROBE_TIMEOUT.toMillis());
+            connection.setInstanceFollowRedirects(false);
             connection.setRequestMethod("GET");
             int statusCode = connection.getResponseCode();
             probeFailure = "HTTP " + statusCode;

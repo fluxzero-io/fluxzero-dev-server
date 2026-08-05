@@ -20,11 +20,18 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 
 /** Test child process used to verify dynamic frontend port injection. */
 public class FrontendFixtureServer {
+    private static final Object REQUEST_LOG_LOCK = new Object();
+
     public static void main(String[] args) throws Exception {
         int port = Integer.parseInt(args[0]);
+        Path requestLog = args.length > 1 ? Path.of(args[1]) : null;
+        String redirectPath = args.length > 2 ? args[2] : null;
         try (ServerSocket server = new ServerSocket()) {
             server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
             while (true) {
@@ -33,8 +40,23 @@ public class FrontendFixtureServer {
                     try (socket;
                          BufferedReader reader = new BufferedReader(
                                  new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
-                        while (!reader.readLine().isEmpty()) {
+                        String requestLine = reader.readLine();
+                        String path = requestLine == null ? null : requestLine.split(" ", 3)[1];
+                        String header;
+                        while ((header = reader.readLine()) != null && !header.isEmpty()) {
                             // Consume request headers.
+                        }
+                        if (requestLog != null && path != null) {
+                            synchronized (REQUEST_LOG_LOCK) {
+                                Files.writeString(requestLog, path + System.lineSeparator(),
+                                                  StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                            }
+                        }
+                        if (path != null && path.equals(redirectPath)) {
+                            socket.getOutputStream().write(("HTTP/1.1 302 Found\r\nLocation: /redirect-target\r\n"
+                                                            + "Content-Length: 0\r\nConnection: close\r\n\r\n")
+                                                                   .getBytes(StandardCharsets.UTF_8));
+                            return;
                         }
                         String body = "port=" + port + ";backend=" + System.getenv("FLUXZERO_PROXY_URL");
                         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);

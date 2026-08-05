@@ -164,9 +164,9 @@ record DevProjectConfig(
     }
 
     record Frontend(String command, String url, String directory, String setupCommand, List<String> backendPaths,
-                    String path) {
+                    String path, String readinessPath) {
         Frontend(String command, String url, String directory, String setupCommand, List<String> backendPaths) {
-            this(command, url, directory, setupCommand, backendPaths, null);
+            this(command, url, directory, setupCommand, backendPaths, null, null);
         }
 
         Frontend {
@@ -183,11 +183,15 @@ record DevProjectConfig(
             if (path != null && (command == null || command.isBlank()) && (url == null || url.isBlank())) {
                 throw new IllegalArgumentException("frontend.path requires frontend.command or frontend.url");
             }
+            if (readinessPath != null && !readinessPath.isBlank()
+                && (command == null || command.isBlank()) && (url == null || url.isBlank())) {
+                throw new IllegalArgumentException("frontend.readinessPath requires frontend.command or frontend.url");
+            }
         }
 
         boolean configured() {
             return command != null || url != null || directory != null || setupCommand != null
-                   || !backendPaths.isEmpty() || path != null;
+                   || !backendPaths.isEmpty() || path != null || readinessPath != null;
         }
     }
 
