@@ -21,6 +21,9 @@ import io.fluxzero.idp.client.Pkce;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
@@ -103,6 +106,42 @@ class DevServerLifecycleTest {
     }
 
     @Test
+    void usesConfiguredPublicPortForBackendOnlyEnvironment(@TempDir Path projectDirectory) throws Exception {
+        int port;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            port = socket.getLocalPort();
+        }
+        DevServerConfig config = backendOnlyConfig(projectDirectory, port);
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            DevSession session = devServer.session();
+            assertEquals(port, session.proxy().port());
+            assertEquals("http://localhost:" + port, session.proxy().url());
+            assertEquals("skipped", session.gateway().state());
+            assertEquals(200, healthStatus(session.proxy().url()));
+        }
+    }
+
+    @Test
+    void usesDynamicProxyPortAfterBackendOnlyPortConflict(@TempDir Path projectDirectory) throws Exception {
+        try (ServerSocket occupiedPort = new ServerSocket()) {
+            occupiedPort.setReuseAddress(false);
+            occupiedPort.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), 0));
+            int configuredPort = occupiedPort.getLocalPort();
+
+            try (DevServer devServer = new DevServer(backendOnlyConfig(projectDirectory, configuredPort), ignored -> true)
+                    .start()) {
+                DevSession session = devServer.session();
+                assertNotEquals(configuredPort, session.proxy().port());
+                assertTrue(session.proxy().port() > 0);
+                assertEquals("http://localhost:" + session.proxy().port(), session.proxy().url());
+                assertEquals("skipped", session.gateway().state());
+                assertEquals(200, healthStatus(session.proxy().url()));
+            }
+        }
+    }
+
+    @Test
     void externalIdpModeSkipsManagedIdp(@TempDir Path projectDirectory) {
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, null, "external-idp-app", null,
@@ -118,6 +157,16 @@ class DevServerLifecycleTest {
             assertEquals("external", devServer.session().idp().state());
             assertTrue(devServer.session().idp().detail().contains("application configuration applies"));
         }
+    }
+
+    private static DevServerConfig backendOnlyConfig(Path projectDirectory, int port) {
+        return new DevServerConfig(
+                projectDirectory, null, "fixed-backend-port", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                FrontendConfig.none(), List.of(), false, "local", List.of(), port, IdpMode.EXTERNAL);
     }
 
     @Test

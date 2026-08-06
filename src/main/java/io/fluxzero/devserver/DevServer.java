@@ -195,9 +195,6 @@ public class DevServer implements AutoCloseable {
         if (config.gatewayPort() == 0) {
             return;
         }
-        if (config.frontend().mode() == FrontendConfig.Mode.NONE) {
-            throw new DevServerStartupException("--port requires a frontend command or frontend URL");
-        }
         try {
             DevGateway.requireAvailablePort(config.gatewayPort());
         } catch (DevServerStartupException e) {
@@ -302,6 +299,9 @@ public class DevServer implements AutoCloseable {
         ProxyServerConfig proxyConfig = ProxyServerConfig.forRuntime(runtimeBaseUrl)
                 .withNamespace(config.namespace())
                 .withMetricsEnabled(false);
+        if (config.frontends().isEmpty()) {
+            proxyConfig = proxyConfig.withPort(effectiveGatewayPort);
+        }
         proxyServer = ProxyServer.start(proxyConfig);
         proxyUrl = "http://localhost:" + proxyServer.getPort();
         updateProxyStatus(DevSession.ServiceStatus.running("proxy", proxyUrl, proxyServer.getPort(), null, "embedded"));

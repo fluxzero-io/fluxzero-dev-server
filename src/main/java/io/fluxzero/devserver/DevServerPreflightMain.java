@@ -56,9 +56,6 @@ public final class DevServerPreflightMain {
         if (config.gatewayPort() == 0) {
             return 0;
         }
-        if (config.frontend().mode() == FrontendConfig.Mode.NONE) {
-            throw new DevServerStartupException("--port requires a frontend command or frontend URL");
-        }
         try {
             DevGateway.requireAvailablePort(config.gatewayPort());
             return 0;

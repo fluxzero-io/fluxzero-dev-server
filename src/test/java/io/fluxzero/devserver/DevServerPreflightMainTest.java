@@ -55,6 +55,18 @@ class DevServerPreflightMainTest {
     }
 
     @Test
+    void acceptsAvailableConfiguredPortWithoutFrontend(@TempDir Path project) throws Exception {
+        int port;
+        try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getLoopbackAddress())) {
+            port = socket.getLocalPort();
+        }
+
+        assertEquals(0, DevServerPreflightMain.run(
+                backendConfig(project, port), ignored -> DevServerPreflightMain.PortConflictChoice.cancel(),
+                ignored -> { }));
+    }
+
+    @Test
     void requestsDynamicPortWhenConfiguredPortIsOccupied(@TempDir Path project) throws Exception {
         try (ServerSocket socket = new ServerSocket(0, 1, InetAddress.getByName("127.0.0.1"))) {
             assertEquals(DevServerPreflightMain.USE_DYNAMIC_PORT_EXIT_CODE,
@@ -121,6 +133,18 @@ class DevServerPreflightMainTest {
         return DevServerConfig.fromArgs(new String[]{
                 "--project-dir", project.toString(),
                 "--frontend-command", "frontend --port {port}",
+                "--port", Integer.toString(port)
+        });
+    }
+
+    private static DevServerConfig backendConfig(Path project, int port) {
+        try {
+            Files.writeString(project.resolve("pom.xml"), "<project/>");
+        } catch (Exception e) {
+            throw new IllegalStateException(e);
+        }
+        return DevServerConfig.fromArgs(new String[]{
+                "--project-dir", project.toString(),
                 "--port", Integer.toString(port)
         });
     }

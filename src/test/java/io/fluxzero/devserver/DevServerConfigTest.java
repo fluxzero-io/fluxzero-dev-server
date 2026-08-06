@@ -176,7 +176,7 @@ class DevServerConfigTest {
                 "--no-frontend"
         });
         assertEquals(FrontendConfig.Mode.NONE, backendOnly.frontend().mode());
-        assertEquals(0, backendOnly.gatewayPort());
+        assertEquals(4200, backendOnly.gatewayPort());
     }
 
     @Test

@@ -374,7 +374,7 @@ public record DevServerConfig(
                 environment("FLUXZERO_NAMESPACE"), project.namespace()));
         List<DevBuildProject> projects = configuredProjects(
                 projectDirectory, project, mainClass, applicationName, namespace, fastCompiler, applications);
-        int gatewayPort = noFrontend ? 0 : parsed.integer("port", parsed.integer("gateway-port", environmentInteger(
+        int gatewayPort = parsed.integer("port", parsed.integer("gateway-port", environmentInteger(
                 "FLUXZERO_DEV_PORT", project.port() == null ? 0 : project.port())));
         return new DevServerConfig(
                 projectDirectory,
