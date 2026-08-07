@@ -41,6 +41,7 @@ record DevProjectConfig(
         @JsonAlias("gatewayPort") Integer port,
         String idp,
         Boolean fastCompiler,
+        Boolean frontendOnly,
         List<String> backendPaths,
         Frontend frontend,
         Map<String, Frontend> frontends,
@@ -72,6 +73,8 @@ record DevProjectConfig(
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
         validateCommands(commands, "commands");
+        validateFrontendOnly(frontendOnly, mainClass, applicationName, namespace, apps, applicationConfig,
+                             projects, idp, fastCompiler, backendPaths, frontend, frontends, commands);
         profiles = profiles == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(profiles));
         profiles.forEach((id, profile) -> {
@@ -88,7 +91,8 @@ record DevProjectConfig(
             }
         } else {
             if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
-                                           applicationConfig, projects, port, idp, fastCompiler, backendPaths,
+                                           applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
+                                           backendPaths,
                                            frontend, frontends, services, lifecycle, commandDefaults,
                                            commands)) {
                 throw new IllegalArgumentException(
@@ -122,7 +126,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of());
+                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of());
     }
 
     Selection select(String requestedProfile) {
@@ -321,6 +325,7 @@ record DevProjectConfig(
             @JsonAlias("gatewayPort") Integer port,
             String idp,
             Boolean fastCompiler,
+            Boolean frontendOnly,
             List<String> backendPaths,
             Frontend frontend,
             Map<String, Frontend> frontends,
@@ -349,11 +354,14 @@ record DevProjectConfig(
             commands = commands == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
             validateCommands(commands, "commands");
+            validateFrontendOnly(frontendOnly, mainClass, applicationName, namespace, apps, applicationConfig,
+                                 projects, idp, fastCompiler, backendPaths, frontend, frontends, commands);
         }
 
         private DevProjectConfig toProjectConfig(Integer version) {
             return new DevProjectConfig(version, mainClass, applicationName, namespace, environment, apps,
-                                        applicationConfig, projects, port, idp, fastCompiler, backendPaths,
+                                        applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
+                                        backendPaths,
                                         frontend, frontends, services, lifecycle, commandDefaults, commands,
                                         null, Map.of());
         }
@@ -385,18 +393,43 @@ record DevProjectConfig(
     private static boolean legacyConfigurationPresent(
             String mainClass, String applicationName, String namespace, String environment, List<String> apps,
             Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects,
-            Integer port, String idp, Boolean fastCompiler, List<String> backendPaths,
+            Integer port, String idp, Boolean fastCompiler, Boolean frontendOnly, List<String> backendPaths,
             Frontend frontend, Map<String, Frontend> frontends, Map<String, Service> services, Lifecycle lifecycle,
             CommandDefaults commandDefaults,
             Map<String, DevCommandConfig> commands
     ) {
         return mainClass != null || applicationName != null || namespace != null || environment != null
                || !apps.isEmpty() || !applicationConfig.isEmpty() || port != null || idp != null
-               || !projects.isEmpty() || fastCompiler != null || frontend.configured() || !frontends.isEmpty()
+               || !projects.isEmpty() || fastCompiler != null || frontendOnly != null
+               || frontend.configured() || !frontends.isEmpty()
                || !backendPaths.isEmpty() || !services.isEmpty()
                || lifecycle.idleTimeout() != null
                || commandDefaults != null
                || !commands.isEmpty();
+    }
+
+    private static void validateFrontendOnly(
+            Boolean frontendOnly, String mainClass, String applicationName, String namespace, List<String> apps,
+            Map<String, DevApplicationConfig> applicationConfig, Map<String, Project> projects, String idp,
+            Boolean fastCompiler, List<String> backendPaths, Frontend frontend, Map<String, Frontend> frontends,
+            Map<String, DevCommandConfig> commands
+    ) {
+        if (!Boolean.TRUE.equals(frontendOnly)) {
+            return;
+        }
+        if (!frontend.configured() && frontends.isEmpty()) {
+            throw new IllegalArgumentException("frontendOnly requires frontend or frontends");
+        }
+        if (mainClass != null || applicationName != null || namespace != null || !apps.isEmpty()
+            || !applicationConfig.isEmpty() || !projects.isEmpty() || idp != null || fastCompiler != null
+            || !commands.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "frontendOnly cannot be combined with application, project, IDP, compiler or command settings");
+        }
+        if (!backendPaths.isEmpty() || !frontend.backendPaths().isEmpty()
+            || frontends.values().stream().anyMatch(value -> !value.backendPaths().isEmpty())) {
+            throw new IllegalArgumentException("frontendOnly cannot configure backendPaths");
+        }
     }
 
     private static void validateUser(JsonNode user, String path) {

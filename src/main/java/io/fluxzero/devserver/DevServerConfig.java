@@ -49,6 +49,7 @@ import java.util.Objects;
  * @param frontends               routed frontend configurations, including the root frontend
  * @param projects                independently built projects sharing this environment
  * @param services                managed or external support services shared by the environment
+ * @param backendEnabled          whether the local Fluxzero runtime, proxy and applications are started
  */
 public record DevServerConfig(
         Path projectDirectory,
@@ -73,7 +74,8 @@ public record DevServerConfig(
         String profile,
         List<RoutedFrontend> frontends,
         List<DevBuildProject> projects,
-        Map<String, DevServiceConfig> services
+        Map<String, DevServiceConfig> services,
+        boolean backendEnabled
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -102,13 +104,22 @@ public record DevServerConfig(
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         idleTimeout = validateLifecycleTimeout(idleTimeout, DEFAULT_IDLE_TIMEOUT, "idleTimeout");
         profile = profile == null || profile.isBlank() ? null : profile.strip();
+        if (!backendEnabled) {
+            frontend = frontend.withBackendPaths(List.of());
+        }
         frontends = normalizeFrontends(frontend, frontends);
+        if (!backendEnabled) {
+            frontends = frontends.stream().map(candidate -> new RoutedFrontend(
+                    candidate.id(), candidate.path(), candidate.config().withBackendPaths(List.of()))).toList();
+        }
         if (!frontends.isEmpty()) {
             frontend = frontends.stream().filter(candidate -> "/".equals(candidate.path()))
                     .findFirst().orElseThrow().config();
         }
-        projects = normalizeProjects(projectDirectory, mainClass, applicationName, namespace,
-                                    fastCompilerEnabled, applications, applicationConfig, projects);
+        projects = backendEnabled
+                ? normalizeProjects(projectDirectory, mainClass, applicationName, namespace,
+                                    fastCompilerEnabled, applications, applicationConfig, projects)
+                : List.of();
         services = services == null ? Map.of()
                 : Collections.unmodifiableMap(new java.util.LinkedHashMap<>(services));
         applicationConfig.forEach((id, value) -> {
@@ -120,6 +131,40 @@ public record DevServerConfig(
             }
         });
         Objects.requireNonNull(projectDirectory, "projectDirectory must not be null");
+        if (!backendEnabled && frontends.isEmpty()) {
+            throw new IllegalArgumentException("A frontend-only dev environment requires a frontend");
+        }
+    }
+
+    public DevServerConfig(
+            Path projectDirectory,
+            String mainClass,
+            String applicationName,
+            String namespace,
+            boolean watch,
+            boolean compileOnStart,
+            boolean testsEnabled,
+            Duration startupTimeout,
+            Duration gracefulShutdownTimeout,
+            Duration debounce,
+            FrontendConfig frontend,
+            List<String> appArgs,
+            boolean fastCompilerEnabled,
+            String environment,
+            List<String> applications,
+            int gatewayPort,
+            IdpMode idpMode,
+            Map<String, DevApplicationConfig> applicationConfig,
+            Duration idleTimeout,
+            String profile,
+            List<RoutedFrontend> frontends,
+            List<DevBuildProject> projects,
+            Map<String, DevServiceConfig> services
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
+             environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends,
+             projects, services, true);
     }
 
     public DevServerConfig(
@@ -149,7 +194,7 @@ public record DevServerConfig(
         this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
              startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled,
              environment, applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends,
-             projects, Map.of());
+             projects, Map.of(), true);
     }
 
     public DevServerConfig(
@@ -311,7 +356,11 @@ public record DevServerConfig(
         DevProjectConfig.Selection projectSelection = DevProjectConfig.load(projectDirectory).select(
                 parsed.value("profile", environment("FLUXZERO_DEV_PROFILE")));
         DevProjectConfig project = projectSelection.config();
+        boolean backendEnabled = !Boolean.TRUE.equals(project.frontendOnly());
         boolean noFrontend = parsed.flag("no-frontend");
+        if (!backendEnabled && noFrontend) {
+            throw new DevServerStartupException("frontendOnly cannot be combined with --no-frontend");
+        }
         String frontendCommand = parsed.value("frontend-command");
         String frontendUrl = parsed.value("frontend-url");
         String frontendDirectory = parsed.value("frontend-directory");
@@ -336,8 +385,11 @@ public record DevServerConfig(
         if (!noFrontend && frontend.mode() != FrontendConfig.Mode.NONE) {
             frontend = frontend.withReadinessPath(project.frontend().readinessPath());
         }
-        List<String> backendPaths = backendPaths(project, parsed.values("backend-path"));
-        if (!backendPaths.isEmpty()) {
+        if (!backendEnabled && !parsed.values("backend-path").isEmpty()) {
+            throw new DevServerStartupException("frontendOnly cannot be combined with --backend-path");
+        }
+        List<String> backendPaths = backendEnabled ? backendPaths(project, parsed.values("backend-path")) : List.of();
+        if (!backendEnabled || !backendPaths.isEmpty()) {
             frontend = frontend.withBackendPaths(backendPaths);
         }
         List<RoutedFrontend> frontends = noFrontend ? List.of()
@@ -372,8 +424,15 @@ public record DevServerConfig(
                 environment("FLUXZERO_APPLICATION_NAME"), project.applicationName()));
         String namespace = parsed.value("namespace", firstNonBlank(
                 environment("FLUXZERO_NAMESPACE"), project.namespace()));
-        List<DevBuildProject> projects = configuredProjects(
-                projectDirectory, project, mainClass, applicationName, namespace, fastCompiler, applications);
+        if (!backendEnabled && (mainClass != null || applicationName != null || namespace != null
+                                || !applications.isEmpty())) {
+            throw new DevServerStartupException(
+                    "frontendOnly cannot be combined with application selection or application overrides");
+        }
+        List<DevBuildProject> projects = backendEnabled
+                ? configuredProjects(
+                        projectDirectory, project, mainClass, applicationName, namespace, fastCompiler, applications)
+                : List.of();
         int gatewayPort = parsed.integer("port", parsed.integer("gateway-port", environmentInteger(
                 "FLUXZERO_DEV_PORT", project.port() == null ? 0 : project.port())));
         return new DevServerConfig(
@@ -381,9 +440,9 @@ public record DevServerConfig(
                 mainClass,
                 applicationName,
                 namespace,
-                !parsed.flag("no-watch"),
-                !parsed.flag("no-compile-on-start"),
-                !parsed.flag("no-tests"),
+                backendEnabled && !parsed.flag("no-watch"),
+                backendEnabled && !parsed.flag("no-compile-on-start"),
+                backendEnabled && !parsed.flag("no-tests"),
                 parsed.durationMillis("startup-timeout-ms", DEFAULT_STARTUP_TIMEOUT),
                 parsed.durationMillis("graceful-shutdown-timeout-ms", DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT),
                 parsed.durationMillis("debounce-ms", DEFAULT_DEBOUNCE),
@@ -403,7 +462,8 @@ public record DevServerConfig(
                 projectSelection.profile(),
                 frontends,
                 projects,
-                configuredServices(project.services()));
+                configuredServices(project.services()),
+                backendEnabled);
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -427,7 +487,7 @@ public record DevServerConfig(
                 watch, compileOnStart, testsEnabled, startupTimeout, gracefulShutdownTimeout, debounce,
                 environmentRoot ? frontend : FrontendConfig.none(), appArgs, project.fastCompilerEnabled(),
                 environment, project.applications(), 0, idpMode, project.applicationConfig(), idleTimeout, profile,
-                environmentRoot ? frontends : List.of(), List.of(project), services);
+                environmentRoot ? frontends : List.of(), List.of(project), services, true);
     }
 
     private static List<DevBuildProject> configuredProjects(

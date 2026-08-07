@@ -120,10 +120,10 @@ public class DevServer implements AutoCloseable {
     }
 
     public synchronized DevServer start() {
-        if (runtimeServer != null) {
+        if (config.backendEnabled() ? runtimeServer != null : devGateway != null) {
             return this;
         }
-        if (config.watch() || config.compileOnStart()) {
+        if (config.backendEnabled() && (config.watch() || config.compileOnStart())) {
             config.projects().forEach(project -> DevProjectLayout.requireBuildProject(project.directory()));
         }
         validatePublicPort();
@@ -151,27 +151,35 @@ public class DevServer implements AutoCloseable {
             lifetime.start(scheduler);
             startMcp();
             startServices();
-            registerReadinessMonitor();
-            startRuntime();
-            startProxy();
+            if (config.backendEnabled()) {
+                registerReadinessMonitor();
+                startRuntime();
+                startProxy();
+            } else {
+                skipBackend();
+            }
             startFrontend();
             startGateway();
             launchFrontend();
-            startIdp();
-            commandPipeline = new DevCommandPipeline(config, sessionStore, runtimeBaseUrl, this::updateCommandStatus,
-                                                     this::print, session.sessionId());
-            updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
-            initializeProjects();
+            if (config.backendEnabled()) {
+                startIdp();
+                commandPipeline = new DevCommandPipeline(
+                        config, sessionStore, runtimeBaseUrl, this::updateCommandStatus, this::print,
+                        session.sessionId());
+                updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
+                initializeProjects();
+            }
             updateSession(current -> current.withStatus("running"));
             recordEnvironmentDetails();
-            if (config.compileOnStart()) {
+            if (config.backendEnabled() && config.compileOnStart()) {
                 projects.values().forEach(ProjectRuntime::requestInitialCompile);
-            } else {
+            } else if (config.frontends().isEmpty()) {
                 terminalProgress.stop();
             }
-            if (config.watch()) {
+            if (config.backendEnabled() && config.watch()) {
                 projects.values().forEach(ProjectRuntime::startWatcher);
             }
+            reportStartupOutcome();
             return this;
         } catch (RuntimeException | LinkageError e) {
             close();
@@ -295,6 +303,19 @@ public class DevServer implements AutoCloseable {
         updateRuntimeStatus(DevSession.ServiceStatus.running("runtime", runtimeBaseUrl, port, null, "embedded"));
     }
 
+    private void skipBackend() {
+        String detail = "frontend-only profile";
+        updateRuntimeStatus(DevSession.ServiceStatus.stopped("runtime").withState("skipped", detail));
+        updateProxyStatus(DevSession.ServiceStatus.stopped("proxy").withState("skipped", detail));
+        updateIdpStatus(DevSession.ServiceStatus.stopped("idp").withState("skipped", detail));
+        updateSession(current -> current
+                .withApp(DevSession.ServiceStatus.stopped("app").withState("skipped", detail))
+                .withReload(DevSession.ServiceStatus.stopped("reload").withState("skipped", detail))
+                .withCompile(DevSession.ServiceStatus.stopped("compile").withState("skipped", detail))
+                .withTests(DevSession.ServiceStatus.stopped("tests").withState("skipped", detail))
+                .withCommands(DevSession.ServiceStatus.stopped("commands").withState("skipped", detail)));
+    }
+
     private void startProxy() {
         ProxyServerConfig proxyConfig = ProxyServerConfig.forRuntime(runtimeBaseUrl)
                 .withNamespace(config.namespace())
@@ -372,13 +393,16 @@ public class DevServer implements AutoCloseable {
                     routed.id(), routed.path(), process.internalUrl(), process::ready);
         }).toList();
         devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
-                                      config.frontend().backendPaths(), effectiveGatewayPort, this::activity);
+                                      config.frontend().backendPaths(), effectiveGatewayPort, this::activity,
+                                      config.backendEnabled());
         publicUrl = devGateway.url();
         publicFluxzeroUrl = devGateway.backendUrl();
+        String detail = config.backendEnabled()
+                ? "public dev URL; Fluxzero mounted at " + DevGateway.BACKEND_PREFIX
+                  + " and pass-through paths " + config.frontend().backendPaths()
+                : "public dev URL; all application traffic routed to the frontend";
         updateGatewayStatus(DevSession.ServiceStatus.running(
-                "gateway", publicUrl, devGateway.port(), null,
-                "public dev URL; Fluxzero mounted at " + DevGateway.BACKEND_PREFIX
-                + " and pass-through paths " + config.frontend().backendPaths()));
+                "gateway", publicUrl, devGateway.port(), null, detail));
     }
 
     private void cleanupPreviousSessionIfStale() {
@@ -1078,12 +1102,19 @@ public class DevServer implements AutoCloseable {
 
     private void recordEnvironmentDetails() {
         record("Fluxzero dev environment infrastructure started");
-        record("Runtime: " + runtimeBaseUrl);
-        record("Proxy:   " + proxyUrl + (devGateway == null ? "" : " (internal)"));
+        if (config.backendEnabled()) {
+            record("Runtime: " + runtimeBaseUrl);
+            record("Proxy:   " + proxyUrl + (devGateway == null ? "" : " (internal)"));
+        } else {
+            record("Backend: skipped (frontend-only profile)");
+        }
         if (devGateway != null) {
-            record("Browser: waiting for application and frontend at " + publicUrl);
-            record("Backend: " + publicFluxzeroUrl);
-            record("API:     " + config.frontend().backendPaths());
+            record("Browser: waiting for " + (config.backendEnabled() ? "application and frontend" : "frontend")
+                   + " at " + publicUrl);
+            if (config.backendEnabled()) {
+                record("Backend: " + publicFluxzeroUrl);
+                record("API:     " + config.frontend().backendPaths());
+            }
         }
         if (idpService != null) {
             record("IDP:     " + idpService.issuer());
@@ -1100,7 +1131,8 @@ public class DevServer implements AutoCloseable {
     }
 
     private void reportStartupOutcome() {
-        if (closed.get() || browserReadyAnnounced.get() || currentApps.isEmpty() || publicUrl == null) {
+        if (closed.get() || browserReadyAnnounced.get() || publicUrl == null
+            || config.backendEnabled() && currentApps.isEmpty()) {
             return;
         }
         DevSession current = session;
@@ -1117,13 +1149,15 @@ public class DevServer implements AutoCloseable {
             || current.services().values().stream().anyMatch(status -> !"running".equals(status.state()))) {
             return;
         }
-        if ("failed".equals(current.reload().state()) || "degraded".equals(current.reload().state())) {
-            announceStartupFailure("Application", current.reload().detail());
-            return;
-        }
-        if (!"succeeded".equals(current.reload().state()) || !"running".equals(current.app().state())
-            || projects.values().stream().anyMatch(project -> !project.healthy())) {
-            return;
+        if (config.backendEnabled()) {
+            if ("failed".equals(current.reload().state()) || "degraded".equals(current.reload().state())) {
+                announceStartupFailure("Application", current.reload().detail());
+                return;
+            }
+            if (!"succeeded".equals(current.reload().state()) || !"running".equals(current.app().state())
+                || projects.values().stream().anyMatch(project -> !project.healthy())) {
+                return;
+            }
         }
         if (!config.frontends().isEmpty()) {
             if ("failed".equals(current.frontend().state()) || "exited".equals(current.frontend().state())) {

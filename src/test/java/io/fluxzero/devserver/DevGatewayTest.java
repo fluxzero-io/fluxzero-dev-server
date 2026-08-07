@@ -178,6 +178,22 @@ public class DevGatewayTest {
     }
 
     @Test
+    void routesAllTrafficToFrontendWhenLocalBackendIsDisabled() throws Exception {
+        try (TestUpstream frontend = TestUpstream.start("frontend");
+             DevGateway gateway = DevGateway.start(
+                     null,
+                     List.of(new DevGateway.FrontendRoute("frontend", "/", frontend.url(), () -> true)),
+                     () -> false, List.of("/api"), 0, () -> {
+                     }, false)) {
+            assertEquals(null, gateway.backendUrl());
+            assertEquals("frontend POST /api/query payload",
+                         post(gateway.url() + "/api/query", "payload").body());
+            assertEquals("frontend GET /_fluxzero/proxy/health ",
+                         get(gateway.url() + "/_fluxzero/proxy/health").body());
+        }
+    }
+
+    @Test
     void routesHttpAndWebsocketsToTheLongestMatchingFrontendPath() throws Exception {
         AtomicBoolean auditlogReady = new AtomicBoolean();
         try (TestUpstream backend = TestUpstream.start("backend");
