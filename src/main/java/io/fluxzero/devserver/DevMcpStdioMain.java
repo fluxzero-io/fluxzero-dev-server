@@ -104,7 +104,11 @@ public final class DevMcpStdioMain {
                 StdioServerTransportProvider transport = new StdioServerTransportProvider(jsonMapper, input, output);
                 McpSyncServer server = McpServer.sync(transport)
                         .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
-                        .instructions("Read-only stdio adapter for the active Fluxzero development environment.")
+                        .instructions("Read-only access to the active Fluxzero development environment. The control "
+                                      + "plane may connect while applications are still starting. Call get_status "
+                                      + "immediately. If activeProblems is non-zero, call get_active_problems. Then "
+                                      + "follow the returned cursor with wait_for_change until startup completes or "
+                                      + "reports a concrete failure.")
                         .capabilities(McpSchema.ServerCapabilities.builder()
                                               .tools(false)
                                               .resources(true, false)
