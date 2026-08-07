@@ -23,10 +23,41 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServerControlMainTest {
+
+    @Test
+    void agentControlPlaneBecomesAvailableBeforeApplicationReadiness(@TempDir Path projectDirectory)
+            throws Exception {
+        DevSession base = DevSession.empty(DevServerConfig.defaults(projectDirectory));
+        DevSession session = base.withMcp(DevSession.ServiceStatus.running(
+                        "mcp", "http://127.0.0.1:12345/mcp", 12345, null, "agent control plane"))
+                .withStatus("running");
+        new DevSessionStore(projectDirectory).writeSession(session);
+
+        assertEquals("stopped", session.app().state());
+        assertEquals("stopped", session.compile().state());
+        assertTrue(DevServerControlMain.agentControlPlaneReady(session));
+        assertEquals(0, DevServerControlMain.waitForStartup(
+                projectDirectory, session.pid(), Duration.ofMillis(100), false, true));
+    }
+
+    @Test
+    void agentControlPlaneWaitsForPublishedSessionAndReportsMcpFailure(@TempDir Path projectDirectory)
+            throws Exception {
+        DevSession base = DevSession.empty(DevServerConfig.defaults(projectDirectory));
+        DevSession starting = base.withMcp(DevSession.ServiceStatus.running(
+                "mcp", "http://127.0.0.1:12345/mcp", 12345, null, "agent control plane"));
+        assertFalse(DevServerControlMain.agentControlPlaneReady(starting));
+
+        DevSession failed = starting.withMcp(DevSession.ServiceStatus.failed("mcp", "could not bind MCP endpoint"));
+        new DevSessionStore(projectDirectory).writeSession(failed);
+        assertEquals(1, DevServerControlMain.waitForStartup(
+                projectDirectory, failed.pid(), Duration.ofMillis(100), false, true));
+    }
 
     @Test
     void stopsOwnedProcessWhenCommandLineMetadataDoesNotContainProject(@TempDir Path projectDirectory)

@@ -74,7 +74,11 @@ final class DevMcpServer implements AutoCloseable {
 
             mcpServer = McpServer.sync(transport)
                     .serverInfo("fluxzero-dev", DevServerVersion.current())
-                    .instructions("Read-only access to the active Fluxzero development environment.")
+                    .instructions("Read-only access to the active Fluxzero development environment. The control "
+                                  + "plane is available while applications are still starting. Call get_status "
+                                  + "immediately. If activeProblems is non-zero, call get_active_problems. Then "
+                                  + "follow the returned cursor with wait_for_change until startup either becomes "
+                                  + "ready or reports a concrete failure.")
                     .capabilities(McpSchema.ServerCapabilities.builder()
                                           .tools(false)
                                           .resources(true, false)
@@ -152,7 +156,8 @@ final class DevMcpServer implements AutoCloseable {
     private static List<McpServerFeatures.SyncToolSpecification> tools(AgentQueryService queryService,
                                                                         ObjectMapper objectMapper) {
         return List.of(
-                tool("get_status", "Return compact status for the active Fluxzero dev environment.", Map.of(),
+                tool("get_status", "Return current startup and service status for the Fluxzero dev environment.",
+                     Map.of(),
                      arguments -> queryService.getStatus(), objectMapper),
                 tool("get_active_problems", "Return bounded unresolved problems, optionally filtered per app.",
                      selectorProperties(true), arguments -> queryService.getActiveProblems(
@@ -166,7 +171,8 @@ final class DevMcpServer implements AutoCloseable {
                      objectMapper),
                 tool("get_test_status", "Return background test and startup-command status.", Map.of(),
                      arguments -> queryService.getTestStatus(), objectMapper),
-                tool("wait_for_change", "Wait for a matching event and return a compact structured delta.",
+                tool("wait_for_change", "Wait for a matching startup or development event and return its structured "
+                                        + "delta together with currently active problems.",
                      logProperties(true), arguments -> queryService.waitForChange(
                              cursor(arguments, queryService), selector(arguments),
                              Duration.ofMillis(longValue(arguments, "timeoutMs", 30_000)),

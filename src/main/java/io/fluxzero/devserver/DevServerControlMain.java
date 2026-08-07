@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 
 /** Project-local lifecycle controls and global discovery for Fluxzero dev environments. */
 public final class DevServerControlMain {
+    static final String AGENT_READY_PROPERTY = "fluxzero.dev.control.agentReady";
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
     private DevServerControlMain() {
@@ -246,25 +247,37 @@ public final class DevServerControlMain {
     }
 
     private static int waitForStartup(Arguments arguments) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofMillis(arguments.timeoutMillis()).toNanos();
+        return waitForStartup(arguments.projectDirectory(), arguments.pid(),
+                              Duration.ofMillis(arguments.timeoutMillis()), arguments.allowEmpty(),
+                              arguments.agentReady());
+    }
+
+    static int waitForStartup(Path projectDirectory, long pid, Duration timeout, boolean allowEmpty,
+                              boolean agentReady) throws Exception {
+        long deadline = System.nanoTime() + timeout.toNanos();
         while (System.nanoTime() < deadline) {
-            if (!ProcessUtils.isAlive(arguments.pid())) {
+            if (!ProcessUtils.isAlive(pid)) {
                 System.err.println("Fluxzero dev process exited before startup completed. See "
-                                   + bootstrapLog(arguments));
+                                   + bootstrapLog(projectDirectory));
                 return 2;
             }
-            Optional<DevSession> current = store(arguments).readSession()
-                    .filter(session -> session.pid() == arguments.pid());
+            Optional<DevSession> current = store(projectDirectory).readSession()
+                    .filter(session -> session.pid() == pid);
             if (current.isPresent()) {
                 DevSession session = current.get();
-                if (startupFailed(session)) {
+                if (startupFailed(session) || agentReady && serviceFailed(session.mcp())) {
                     System.err.println("Fluxzero dev is running with problems.");
-                    System.err.println(startupFailure(session));
+                    System.err.println(startupFailure(session, agentReady));
                     System.err.println("Problems: " + session.observability().diagnostics());
                     System.err.println("Logs: fz dev logs --follow");
                     return 1;
                 }
-                if (arguments.allowEmpty() ? infrastructureReady(session) : applicationReady(session)) {
+                boolean ready = agentReady ? agentControlPlaneReady(session)
+                        : allowEmpty ? infrastructureReady(session) : applicationReady(session);
+                if (ready) {
+                    if (agentReady) {
+                        return 0;
+                    }
                     System.out.println("Fluxzero dev started in the background.");
                     publicUrl(session).ifPresent(url -> System.out.println("Open: " + url));
                     System.out.println("PID: " + session.pid());
@@ -299,6 +312,10 @@ public final class DevServerControlMain {
                && servicesReady(session);
     }
 
+    static boolean agentControlPlaneReady(DevSession session) {
+        return "running".equals(session.status()) && "running".equals(session.mcp().state());
+    }
+
     private static boolean applicationReady(DevSession session) {
         boolean frontendReady = "skipped".equals(session.gateway().state())
                                 || "running".equals(session.frontend().state());
@@ -313,7 +330,7 @@ public final class DevServerControlMain {
                        .anyMatch(status -> "failed".equals(status.state()) || "degraded".equals(status.state()));
     }
 
-    private static String startupFailure(DevSession session) {
+    private static String startupFailure(DevSession session, boolean includeMcp) {
         for (DevSession.ServiceStatus status : List.of(session.compile(), session.reload(), session.frontend())) {
             if ("failed".equals(status.state()) || "degraded".equals(status.state())
                 || "exited".equals(status.state())) {
@@ -325,7 +342,15 @@ public final class DevServerControlMain {
                 return "service " + entry.getKey() + ": " + entry.getValue().detail();
             }
         }
+        if (includeMcp && serviceFailed(session.mcp())) {
+            return "mcp: " + session.mcp().detail();
+        }
         return "unknown startup failure";
+    }
+
+    private static boolean serviceFailed(DevSession.ServiceStatus status) {
+        return "failed".equals(status.state()) || "degraded".equals(status.state())
+               || "exited".equals(status.state());
     }
 
     private static boolean servicesReady(DevSession session) {
@@ -356,17 +381,21 @@ public final class DevServerControlMain {
         return environment.applications().isEmpty() ? "-" : String.join(",", environment.applications());
     }
 
-    private static Path bootstrapLog(Arguments arguments) {
-        return arguments.projectDirectory().resolve(DevSessionStore.DEV_DIRECTORY).resolve("bootstrap.log");
+    private static Path bootstrapLog(Path projectDirectory) {
+        return projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("bootstrap.log");
     }
 
     private static DevSessionStore store(Arguments arguments) {
         return new DevSessionStore(arguments.projectDirectory());
     }
 
+    private static DevSessionStore store(Path projectDirectory) {
+        return new DevSessionStore(projectDirectory);
+    }
+
     private record Arguments(String action, Path projectDirectory, boolean json, boolean follow, boolean errors,
                              boolean force, boolean all, boolean allowEmpty, String application, long pid,
-                             long timeoutMillis) {
+                             long timeoutMillis, boolean agentReady) {
         static Arguments parse(String[] args) {
             if (args.length == 0) {
                 throw new IllegalArgumentException(
@@ -383,6 +412,7 @@ public final class DevServerControlMain {
             String application = null;
             long pid = -1;
             long timeoutMillis = 120_000;
+            boolean agentReady = Boolean.getBoolean(AGENT_READY_PROPERTY);
             List<String> values = new ArrayList<>(List.of(args).subList(1, args.length));
             for (int index = 0; index < values.size(); index++) {
                 String value = values.get(index);
@@ -401,7 +431,7 @@ public final class DevServerControlMain {
                 }
             }
             return new Arguments(action, projectDirectory, json, follow, errors, force, all, allowEmpty, application,
-                                 pid, timeoutMillis);
+                                 pid, timeoutMillis, agentReady);
         }
     }
 
