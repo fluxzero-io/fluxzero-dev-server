@@ -584,6 +584,60 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsFrontendOnlyProfileWithoutLocalBackendConfiguration(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                defaultProfile: local
+                profiles:
+                  local:
+                    port: 4242
+                    apps: [app]
+                  production:
+                    port: 4343
+                    frontendOnly: true
+                    frontend:
+                      directory: frontend
+                      command: "npm run serve-production -- --port {frontendPort}"
+                """);
+
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString(), "--profile", "production"
+        });
+
+        assertEquals("production", config.profile());
+        assertEquals(4343, config.gatewayPort());
+        assertFalse(config.backendEnabled());
+        assertFalse(config.watch());
+        assertFalse(config.compileOnStart());
+        assertFalse(config.testsEnabled());
+        assertTrue(config.projects().isEmpty());
+        assertTrue(config.applications().isEmpty());
+        assertTrue(config.frontend().backendPaths().isEmpty());
+        assertEquals("npm run serve-production -- --port {frontendPort}", config.frontend().command());
+    }
+
+    @Test
+    void rejectsBackendSettingsInFrontendOnlyProfile(@TempDir Path projectDirectory) throws Exception {
+        Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(configFile.getParent());
+        Files.writeString(configFile, """
+                version: 1
+                frontendOnly: true
+                apps: [app]
+                frontend:
+                  command: npm start
+                """);
+
+        DevServerStartupException exception = assertThrows(
+                DevServerStartupException.class,
+                () -> DevServerConfig.fromArgs(new String[]{"--project-dir", projectDirectory.toString()}));
+
+        assertTrue(exception.getMessage().contains("frontendOnly cannot be combined"));
+    }
+
+    @Test
     void loadsNamedApplicationConfigurationsWithoutChangingDirectSelection(@TempDir Path projectDirectory)
             throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);

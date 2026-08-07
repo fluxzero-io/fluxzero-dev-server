@@ -111,6 +111,36 @@ class DevServerFrontendGatewayTest {
     }
 
     @Test
+    void startsFrontendOnlyEnvironmentWithoutLocalBackend(@TempDir Path projectDirectory) throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String command = quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
+                         + FrontendFixtureServer.class.getName() + " {frontendPort}";
+        FrontendConfig frontend = FrontendConfig.command(command).withBackendPaths(List.of());
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "frontend-only-test", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                frontend, List.of(), false, "local", List.of(), 0, IdpMode.EXTERNAL, Map.of(),
+                DevServerConfig.DEFAULT_IDLE_TIMEOUT, "production", null, null, Map.of(), false);
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            DevSession session = awaitSession(
+                    devServer, current -> "running".equals(current.frontend().state()));
+
+            assertEquals("skipped", session.runtime().state());
+            assertEquals("skipped", session.proxy().state());
+            assertEquals("skipped", session.idp().state());
+            assertEquals("skipped", session.app().state());
+            assertEquals("running", session.gateway().state());
+            assertTrue(get(session.gateway().url() + "/api/query").body().contains("backend=null"));
+            assertTrue(get(session.gateway().url() + DevGateway.BACKEND_PREFIX + "/proxy/health")
+                               .body().contains("backend=null"));
+        }
+    }
+
+    @Test
     void startsRoutesAndStopsMultipleManagedFrontends(@TempDir Path projectDirectory) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String command = quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "

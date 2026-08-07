@@ -42,6 +42,7 @@ public final class DevProjectConfigMain {
             # port: 4200 # public URL for the complete dev environment; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
+            # frontendOnly: false # true skips the local runtime, proxy, IDP, applications, compilation and tests
 
             # Additional public gateway paths routed unchanged to Fluxzero. /api is always included.
             # backendPaths:
@@ -104,6 +105,8 @@ public final class DevProjectConfigMain {
             # Use command for a managed frontend, url for an externally managed frontend, or omit frontend.
             # directory is the command working directory. {frontendPort} is its private allocated port.
             # The frontend remains publicly available through port, not frontendPort.
+            # With frontendOnly: true, all public traffic (including /api) goes to this frontend. The frontend may
+            # use its own development proxy for a remote backend; backendPaths and backend settings are then invalid.
             frontend:
               directory: frontend
               setupCommand: "npm install --prefer-offline --no-audit --no-fund"

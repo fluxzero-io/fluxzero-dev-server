@@ -153,6 +153,12 @@ to `/`, and readiness probes never follow redirects.
 Profile-level `backendPaths` add pass-through routes to the built-in `/api` route and keep priority over frontends.
 Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
 
+Set `frontendOnly: true` on a profile that should run the managed frontend and public gateway without a local
+Fluxzero runtime, proxy, identity provider, applications, compilation, tests, or startup commands. In this mode all
+public HTTP and WebSocket traffic, including `/api` and `/_fluxzero`, is routed to the frontend so its own development
+proxy can target a remote backend. Backend application settings and `backendPaths` are rejected to prevent a profile
+from appearing to start components that it deliberately skips.
+
 Use `projects` inside a profile when one local environment spans independent Maven or Gradle roots. Every named
 project has its own directory, application selection, optional application configuration, compile pipeline, source
 watcher, rolling replacement, and background tests. The projects share one Fluxzero runtime and gateway, while an

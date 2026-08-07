@@ -428,8 +428,10 @@ final class FrontendProcess implements AutoCloseable {
         Map<String, String> result = new HashMap<>();
         result.put("PORT", Integer.toString(port));
         result.put("FLUXZERO_FRONTEND_PORT", Integer.toString(port));
-        result.put("FLUXZERO_PROXY_URL", DevGateway.BACKEND_PREFIX);
-        result.put("FLUXZERO_DEV_BACKEND_PATH", DevGateway.BACKEND_PREFIX);
+        if (devConfig.backendEnabled()) {
+            result.put("FLUXZERO_PROXY_URL", DevGateway.BACKEND_PREFIX);
+            result.put("FLUXZERO_DEV_BACKEND_PATH", DevGateway.BACKEND_PREFIX);
+        }
         return result;
     }
 
