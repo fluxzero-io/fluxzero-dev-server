@@ -491,7 +491,7 @@ DoD status:
 - Kandidaten starten parallel en worden per app beoordeeld; een mislukte app blokkeert gezonde apps niet en vervangt nooit haar laatst werkende instance.
 - Session metadata en diagnostics publiceren alle actieve app-PIDs/client IDs en afzonderlijke startup failures.
 - De watcher volgt geneste module-sources en negeert module-buildoutput en directory-events.
-- Een frontend command start parallel aan de eerste Maven-build; stabiele frontend-readiness voorkomt dat een tijdelijke tussenbuild als gereed wordt gepubliceerd. Projecten met niet-atomisch gegenereerde frontend-artifacts blijven vervolgwerk voor een expliciete handoff-strategie.
+- Een frontend command start parallel aan de eerste Maven-build; stabiele frontend-readiness voorkomt dat een tijdelijke tussenbuild als gereed wordt gepubliceerd. Frontendbestanden die tijdens een andere dev-pipeline wijzigen worden als één update gecoalesced en leiden na succesvolle publicatie tot één gecontroleerde, readiness-bevestigde frontendrefresh.
 - Maven-, frontend- en applogs blijven volledig in de session logs, terwijl de terminal alleen status, lifecycle en compacte waarschuwingen/fouten toont.
 
 Backlog:
@@ -507,7 +507,7 @@ Backlog:
 - [x] Slice 18.9a: herhaalbare `--app`-selectie op reactor artifact-id/module/main class en configureerbaar `--environment`, met `local` als backwards-compatible projectdefault.
 - [x] Slice 18.9c: expliciete test-appselectie op simple/FQCN of `module:app`, met package-private main launcher, test classes/resources/dependencies, Spring-profiel `main`, legacy embedded-port reuse en test-source rolling reload; test-apps blijven uitgesloten van automatische discovery.
 - [ ] Slice 18.9b: persistente projectconfig voor app include/exclude en per-app environment/properties voor speciale lokale services.
-- [ ] Slice 18.10: frontend/build barrier of atomische generated-artifact handoff voor Maven-plugins die door een draaiende UI-watcher gebruikte files niet-atomisch herschrijven.
+- [x] Slice 18.10: stackneutrale frontend/build-handoff die wijzigingen tijdens een andere publicatiepipeline coalescet, betrokken frontends tijdelijk als degraded rapporteert en na succesvolle stabilisatie eenmaal gecontroleerd herstart.
 
 ## Phase 19: Named App Configurations & Secret-Safe Environments
 

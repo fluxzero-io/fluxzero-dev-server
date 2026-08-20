@@ -44,6 +44,7 @@ final class FrontendProcess implements AutoCloseable {
     private final AtomicBoolean ready = new AtomicBoolean();
     private final AtomicBoolean launchStarted = new AtomicBoolean();
     private final AtomicBoolean recoveryInProgress = new AtomicBoolean();
+    private final AtomicBoolean managedUpdatePending = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Consumer<String> output;
     private volatile boolean setupRunning;
@@ -52,6 +53,7 @@ final class FrontendProcess implements AutoCloseable {
     private volatile String failureDetail;
     private volatile long unavailableSinceNanos = -1;
     private volatile String probeFailure;
+    private long restartGeneration;
 
     private FrontendProcess(DevServerConfig devConfig, FrontendConfig config, String ownershipMarker,
                             Process process, String internalUrl,
@@ -153,6 +155,14 @@ final class FrontendProcess implements AutoCloseable {
         if (failure != null) {
             return DevSession.ServiceStatus.failed("frontend", failure);
         }
+        if (managedUpdatePending.get()) {
+            Process current = process;
+            return withProcessIdentity(DevSession.ServiceStatus.running(
+                    "frontend", internalUrl, port(internalUrl),
+                    current == null ? null : current.pid(), "waiting for managed update to settle")
+                                               .withState("degraded", "waiting for managed update to settle"),
+                                       current);
+        }
         Process setup = setupProcess;
         if (setupRunning) {
             return withProcessIdentity(DevSession.ServiceStatus.running(
@@ -196,9 +206,50 @@ final class FrontendProcess implements AutoCloseable {
         return ready.get();
     }
 
+    void managedUpdateDetected() {
+        if (config.mode() == FrontendConfig.Mode.COMMAND && !closed.get()
+            && managedUpdatePending.compareAndSet(false, true)) {
+            statusConsumer.accept(status());
+        }
+    }
+
+    synchronized boolean refreshAfterManagedUpdate() {
+        if (config.mode() != FrontendConfig.Mode.COMMAND || closed.get()
+            || !managedUpdatePending.compareAndSet(true, false)) {
+            return false;
+        }
+        Process current = process;
+        if (current == null || !current.isAlive()) {
+            statusConsumer.accept(status());
+            return false;
+        }
+        restartGeneration++;
+        process = null;
+        ready.set(false);
+        recoveryUsed = false;
+        recoveryInProgress.set(true);
+        failureDetail = null;
+        unavailableSinceNanos = -1;
+        statusConsumer.accept(status());
+        Consumer<String> sink = output == null ? ignored -> {
+        } : output;
+        sink.accept("[frontend] managed update settled; restarting frontend");
+        ProcessUtils.forceStopTree(current);
+        try {
+            launchProcess(sink);
+            return true;
+        } catch (IOException e) {
+            recoveryInProgress.set(false);
+            failureDetail = "failed to restart frontend after managed update: " + e.getMessage();
+            statusConsumer.accept(status());
+            return false;
+        }
+    }
+
     @Override
-    public void close() {
+    public synchronized void close() {
         closed.set(true);
+        restartGeneration++;
         ready.set(false);
         Process setup = setupProcess;
         setupProcess = null;
@@ -217,12 +268,19 @@ final class FrontendProcess implements AutoCloseable {
         Thread.ofPlatform().daemon(true).name("fluxzero-dev-frontend-readiness").start(() -> {
             StableReadiness stableReadiness = new StableReadiness(
                     READY_STABILITY, UNAVAILABLE_STABILITY, Duration.ZERO);
+            Process monitoredProcess = null;
             int failedProbes = 0;
             while (!closed.get()) {
                 Process current = process;
                 if (config.mode() == FrontendConfig.Mode.COMMAND && (current == null || !current.isAlive())) {
+                    monitoredProcess = null;
                     sleep(100);
                     continue;
+                }
+                if (config.mode() == FrontendConfig.Mode.COMMAND && current != monitoredProcess) {
+                    stableReadiness = new StableReadiness(
+                            READY_STABILITY, UNAVAILABLE_STABILITY, Duration.ZERO);
+                    monitoredProcess = current;
                 }
                 boolean observedReady = probe();
                 if (closed.get()) {
@@ -317,7 +375,7 @@ final class FrontendProcess implements AutoCloseable {
         started.onExit().thenRun(() -> processExited(started));
     }
 
-    private void processExited(Process exited) {
+    private synchronized void processExited(Process exited) {
         if (closed.get() || process != exited) {
             return;
         }
@@ -331,6 +389,7 @@ final class FrontendProcess implements AutoCloseable {
         }
         recoveryUsed = true;
         recoveryInProgress.set(true);
+        long generation = ++restartGeneration;
         statusConsumer.accept(status());
         Consumer<String> sink = output;
         if (sink != null) {
@@ -338,19 +397,24 @@ final class FrontendProcess implements AutoCloseable {
         }
         Thread.ofPlatform().daemon(true).name("fluxzero-dev-frontend-restart").start(() -> {
             sleep(RESTART_DELAY.toMillis());
-            try {
-                launchProcess(sink == null ? ignored -> {
-                } : sink);
-            } catch (IOException e) {
-                recoveryInProgress.set(false);
-                failureDetail = "failed to restart frontend: " + e.getMessage();
-                statusConsumer.accept(status());
+            synchronized (FrontendProcess.this) {
+                if (closed.get() || restartGeneration != generation || process != null) {
+                    return;
+                }
+                try {
+                    launchProcess(sink == null ? ignored -> {
+                    } : sink);
+                } catch (IOException e) {
+                    recoveryInProgress.set(false);
+                    failureDetail = "failed to restart frontend: " + e.getMessage();
+                    statusConsumer.accept(status());
+                }
             }
         });
     }
 
-    private void recoverIfPersistentlyUnavailable(Process observedProcess, boolean observedReady,
-                                                   Consumer<String> output) {
+    private synchronized void recoverIfPersistentlyUnavailable(Process observedProcess, boolean observedReady,
+                                                                Consumer<String> output) {
         if (!observedReady && everReady && !ready.get() && unavailableSinceNanos < 0
             && !recoveryInProgress.get()) {
             unavailableSinceNanos = System.nanoTime();
@@ -372,6 +436,7 @@ final class FrontendProcess implements AutoCloseable {
         }
         recoveryUsed = true;
         recoveryInProgress.set(true);
+        restartGeneration++;
         process = null;
         unavailableSinceNanos = -1;
         statusConsumer.accept(status());
