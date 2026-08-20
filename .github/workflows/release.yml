@@ -71,7 +71,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Build Central release bundle
-        run: ./mvnw -B clean install -Pdeploy -Dgpg.skip -DskipPublishing=true
+        run: ./mvnw -B clean install -Pdeploy -DskipTests -Dgpg.skip -DskipPublishing=true
       - name: Verify standalone manifest
         shell: bash
         run: |
