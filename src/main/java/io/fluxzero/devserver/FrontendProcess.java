@@ -49,7 +49,7 @@ final class FrontendProcess implements AutoCloseable {
     private volatile Consumer<String> output;
     private volatile boolean setupRunning;
     private volatile boolean everReady;
-    private volatile boolean recoveryUsed;
+    private volatile RecoveryReason recoveryReason = RecoveryReason.NONE;
     private volatile String failureDetail;
     private volatile long unavailableSinceNanos = -1;
     private volatile String probeFailure;
@@ -226,7 +226,7 @@ final class FrontendProcess implements AutoCloseable {
         restartGeneration++;
         process = null;
         ready.set(false);
-        recoveryUsed = false;
+        recoveryReason = RecoveryReason.MANAGED_UPDATE;
         recoveryInProgress.set(true);
         failureDetail = null;
         unavailableSinceNanos = -1;
@@ -292,7 +292,7 @@ final class FrontendProcess implements AutoCloseable {
                     failedProbes = 0;
                     if (confirmedReady) {
                         everReady = true;
-                        recoveryUsed = false;
+                        recoveryReason = RecoveryReason.NONE;
                         failureDetail = null;
                         unavailableSinceNanos = -1;
                     } else {
@@ -381,13 +381,13 @@ final class FrontendProcess implements AutoCloseable {
         }
         process = null;
         ready.set(false);
-        if (recoveryUsed) {
+        if (recoveryReason != RecoveryReason.NONE) {
             recoveryInProgress.set(false);
-            failureDetail = "frontend process exited after automatic restart";
+            failureDetail = recoveryFailure("process exited");
             statusConsumer.accept(status());
             return;
         }
-        recoveryUsed = true;
+        recoveryReason = RecoveryReason.AUTOMATIC;
         recoveryInProgress.set(true);
         long generation = ++restartGeneration;
         statusConsumer.accept(status());
@@ -427,14 +427,14 @@ final class FrontendProcess implements AutoCloseable {
         if (unavailableNanos < devConfig.startupTimeout().toNanos()) {
             return;
         }
-        if (recoveryUsed) {
+        if (recoveryReason != RecoveryReason.NONE) {
             if (failureDetail == null) {
-                failureDetail = "frontend remained unavailable after automatic restart";
+                failureDetail = recoveryFailure("remained unavailable");
                 statusConsumer.accept(status());
             }
             return;
         }
-        recoveryUsed = true;
+        recoveryReason = RecoveryReason.AUTOMATIC;
         recoveryInProgress.set(true);
         restartGeneration++;
         process = null;
@@ -515,6 +515,20 @@ final class FrontendProcess implements AutoCloseable {
     private static Integer port(String url) {
         int port = URI.create(url).getPort();
         return port < 0 ? null : port;
+    }
+
+    private String recoveryFailure(String failure) {
+        return "frontend " + failure + switch (recoveryReason) {
+            case MANAGED_UPDATE -> " after managed update restart";
+            case AUTOMATIC -> " after automatic restart";
+            case NONE -> "";
+        };
+    }
+
+    private enum RecoveryReason {
+        NONE,
+        AUTOMATIC,
+        MANAGED_UPDATE
     }
 
 }

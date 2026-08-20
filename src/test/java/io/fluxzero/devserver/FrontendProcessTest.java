@@ -164,12 +164,12 @@ class FrontendProcessTest {
     }
 
     @Test
-    void refreshesOnceAfterManagedFilesSettle(@TempDir Path projectDirectory) throws Exception {
+    void refreshesManagedFilesOnceWhenReplacementStartsSlowly(@TempDir Path projectDirectory) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String server = "exec " + quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
                         + FrontendFixtureServer.class.getName() + " {port}";
         String command = "attempt=$(cat attempts 2>/dev/null || printf 0); attempt=$((attempt + 1)); "
-                         + "printf $attempt > attempts; " + server;
+                         + "printf $attempt > attempts; if [ $attempt -eq 2 ]; then sleep 1; fi; " + server;
         List<DevSession.ServiceStatus> statuses = new CopyOnWriteArrayList<>();
         FrontendConfig frontendConfig = FrontendConfig.command(command)
                 .withLaunchSetup(null, "printf x >> setups");
