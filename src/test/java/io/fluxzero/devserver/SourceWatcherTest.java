@@ -125,6 +125,7 @@ class SourceWatcherTest {
             Files.writeString(source, "after");
             assertTrue(await(() -> batches.stream().flatMap(Set::stream)
                     .anyMatch(source.toAbsolutePath().normalize()::equals)));
+            assertEquals(Set.of("auditlog"), watcher.frontendIds(Set.of(source)));
         } finally {
             scheduler.shutdownNow();
         }

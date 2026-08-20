@@ -221,6 +221,13 @@ final class SourceWatcher implements AutoCloseable {
         return config.frontends().stream().anyMatch(frontend -> frontendPath(path, frontend.config()));
     }
 
+    Set<String> frontendIds(Set<Path> paths) {
+        return config.frontends().stream()
+                .filter(frontend -> paths.stream().anyMatch(path -> frontendPath(path, frontend.config())))
+                .map(RoutedFrontend::id)
+                .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
     private boolean frontendPath(Path path, FrontendConfig frontend) {
         if (frontend.mode() != FrontendConfig.Mode.COMMAND || frontend.directory() == null) {
             return false;

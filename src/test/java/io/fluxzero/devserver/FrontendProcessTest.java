@@ -164,6 +164,35 @@ class FrontendProcessTest {
     }
 
     @Test
+    void refreshesOnceAfterManagedFilesSettle(@TempDir Path projectDirectory) throws Exception {
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String server = "exec " + quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
+                        + FrontendFixtureServer.class.getName() + " {port}";
+        String command = "attempt=$(cat attempts 2>/dev/null || printf 0); attempt=$((attempt + 1)); "
+                         + "printf $attempt > attempts; " + server;
+        List<DevSession.ServiceStatus> statuses = new CopyOnWriteArrayList<>();
+        FrontendConfig frontendConfig = FrontendConfig.command(command)
+                .withLaunchSetup(null, "printf x >> setups");
+
+        try (FrontendProcess frontend = FrontendProcess.start(
+                config(projectDirectory, frontendConfig, Duration.ofMillis(150)), statuses::add, ignored -> {
+                })) {
+            assertTrue(await(frontend::ready));
+
+            frontend.managedUpdateDetected();
+            assertEquals("degraded", frontend.status().state());
+            assertTrue(frontend.ready());
+            assertTrue(frontend.refreshAfterManagedUpdate());
+
+            assertTrue(await(() -> "2".equals(readIfExists(projectDirectory.resolve("attempts")))
+                                   && frontend.ready()));
+            assertEquals("running", frontend.status().state());
+            assertEquals("x", Files.readString(projectDirectory.resolve("setups")));
+            assertTrue(statuses.stream().anyMatch(status -> "degraded".equals(status.state())), statuses.toString());
+        }
+    }
+
+    @Test
     void substitutesDynamicPortAndExposesOnlyRelativeBackendPath(@TempDir Path projectDirectory) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String command = quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "

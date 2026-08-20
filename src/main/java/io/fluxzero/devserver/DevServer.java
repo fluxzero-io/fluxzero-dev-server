@@ -61,6 +61,7 @@ public class DevServer implements AutoCloseable {
     private final TerminalProgress terminalProgress;
     private final DevSessionStore sessionStore;
     private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(2);
+    private final FrontendUpdateCoordinator frontendUpdates;
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile DevLogStore devLogStore;
 
@@ -78,6 +79,7 @@ public class DevServer implements AutoCloseable {
     private volatile DevPlaceholderResolver placeholderResolver;
     private final Map<String, FrontendProcess> frontendProcesses = new ConcurrentHashMap<>();
     private final Map<String, DevSession.ServiceStatus> frontendStatuses = new ConcurrentHashMap<>();
+    private final Set<String> refreshingFrontends = ConcurrentHashMap.newKeySet();
     private volatile DevCommandPipeline commandPipeline;
     private final Map<String, ProjectRuntime> projects = new LinkedHashMap<>();
     private final Map<String, DevSession.ServiceStatus> projectCompileStatuses = new ConcurrentHashMap<>();
@@ -117,6 +119,9 @@ public class DevServer implements AutoCloseable {
         this.sessionStore = new DevSessionStore(config.projectDirectory());
         this.session = DevSession.empty(config);
         this.placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), Map.of());
+        this.frontendUpdates = new FrontendUpdateCoordinator(
+                config.debounce().multipliedBy(2), scheduler,
+                this::markFrontendUpdatesPending, this::refreshFrontends);
     }
 
     public synchronized DevServer start() {
@@ -937,7 +942,12 @@ public class DevServer implements AutoCloseable {
         observeStatus("frontend", "infrastructure", id, null, status);
         if ("running".equals(status.state())) {
             terminalProgress.removeTask("frontend-" + id);
+            if (refreshingFrontends.remove(id) && browserReadyAnnounced.get()) {
+                terminalProgress.printSuccess("Frontend ready", List.of("Frontend: " + id));
+            }
         } else if ("starting".equals(status.state())) {
+            terminalProgress.updateTask("frontend-" + id, "Frontend " + id, status.detail());
+        } else if ("degraded".equals(status.state())) {
             terminalProgress.updateTask("frontend-" + id, "Frontend " + id, status.detail());
         }
         if ("failed".equals(status.state()) || "exited".equals(status.state())) {
@@ -948,6 +958,39 @@ public class DevServer implements AutoCloseable {
         } else {
             reportStartupOutcome();
         }
+    }
+
+    private void markFrontendUpdatesPending(Set<String> frontendIds) {
+        if (closed.get()) {
+            return;
+        }
+        frontendIds.forEach(id -> {
+            FrontendProcess process = frontendProcesses.get(id);
+            if (process != null) {
+                process.managedUpdateDetected();
+            }
+        });
+        if (browserReadyAnnounced.get() && !frontendIds.isEmpty()) {
+            terminalProgress.printActivity("Frontend update detected", List.of(
+                    "Frontends: " + String.join(", ", frontendIds.stream().sorted().toList()),
+                    "Action: waiting for the publishing pipeline to settle"));
+        }
+    }
+
+    private void refreshFrontends(Set<String> frontendIds) {
+        if (closed.get()) {
+            return;
+        }
+        frontendIds.forEach(id -> {
+            FrontendProcess process = frontendProcesses.get(id);
+            if (process == null) {
+                return;
+            }
+            refreshingFrontends.add(id);
+            if (!process.refreshAfterManagedUpdate()) {
+                refreshingFrontends.remove(id);
+            }
+        });
     }
 
     private DevSession.ServiceStatus aggregateFrontendStatus() {
@@ -979,6 +1022,15 @@ public class DevServer implements AutoCloseable {
         if (failed != null) {
             return DevSession.ServiceStatus.failed(
                     "frontend", failed.getKey() + ": " + failed.getValue().detail()).withMetadata(metadata);
+        }
+        Map.Entry<String, DevSession.ServiceStatus> degraded = frontendStatuses.entrySet().stream()
+                .filter(entry -> "degraded".equals(entry.getValue().state()))
+                .findFirst().orElse(null);
+        if (degraded != null) {
+            String detail = degraded.getKey() + ": " + degraded.getValue().detail();
+            return DevSession.ServiceStatus.running(
+                    "frontend", publicUrl, null, rootFrontendPid(), detail)
+                    .withState("degraded", detail).withMetadata(metadata);
         }
         if (frontendsReady()) {
             return DevSession.ServiceStatus.running(
@@ -1307,6 +1359,7 @@ public class DevServer implements AutoCloseable {
         stopSession(shutdownDetail.get());
         closeQuietly(lifetime);
         projects.values().forEach(DevServer::closeQuietly);
+        closeQuietly(frontendUpdates);
         scheduler.shutdownNow();
         closeQuietly(commandPipeline);
         // Stop accepting browser traffic before shutting down the processes and embedded services behind it.
@@ -1591,8 +1644,13 @@ public class DevServer implements AutoCloseable {
                                 "compile", null, null, null, "compiling"));
                     }
                     CompileResult result;
+                    frontendUpdates.buildStarted(id);
                     try {
                         result = compilePipeline.compile(compilePlan, changes);
+                        frontendUpdates.buildCompleted(id, result.success());
+                    } catch (RuntimeException | Error e) {
+                        frontendUpdates.buildCompleted(id, false);
+                        throw e;
                     } finally {
                         activeCompileProgress = null;
                     }
@@ -1699,6 +1757,7 @@ public class DevServer implements AutoCloseable {
             Set<Path> frontendChanges = changes.stream().filter(sourceWatcher::frontendPath)
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
             if (!frontendChanges.isEmpty()) {
+                frontendUpdates.frontendFilesChanged(sourceWatcher.frontendIds(frontendChanges));
                 ChangeSummary summary = ChangeSummary.of(config.projectDirectory(), frontendChanges);
                 record("[frontend] change detected: " + summary.displayPaths());
                 if (browserReadyAnnounced.get()) {

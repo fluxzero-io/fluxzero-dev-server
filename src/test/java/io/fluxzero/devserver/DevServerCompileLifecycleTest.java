@@ -143,6 +143,42 @@ class DevServerCompileLifecycleTest {
                    compileRuns);
     }
 
+    @Test
+    void refreshesManagedFrontendAfterBackendPublishesFrontendFiles(@TempDir Path projectDirectory)
+            throws Exception {
+        installFakeMaven(projectDirectory);
+        Path frontendDirectory = Files.createDirectories(projectDirectory.resolve("frontend/src"));
+        Files.writeString(frontendDirectory.resolve("published.txt"), "before");
+        Files.createFile(projectDirectory.resolve("publish-frontend"));
+        String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
+        String command = "exec " + quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
+                         + FrontendFixtureServer.class.getName() + " {frontendPort}";
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "frontend-publication-test", null,
+                true, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                FrontendConfig.command(command).withLaunchSetup("frontend", null), null);
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            assertTrue(await(() -> "running".equals(devServer.session().frontend().state())));
+            Long initialPid = devServer.session().frontend().pid();
+
+            devServer.requestCompile(Set.of(
+                    projectDirectory.resolve("src/main/java/com/acme/PublishedFrontendDependency.java")));
+
+            assertTrue(await(() -> "running".equals(devServer.session().frontend().state())
+                                   && !initialPid.equals(devServer.session().frontend().pid())));
+            assertEquals("published", Files.readString(frontendDirectory.resolve("published.txt")).strip());
+            assertTrue(Files.walk(projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("logs"))
+                               .filter(path -> path.getFileName().toString().equals(DevLogStore.EVENTS_FILE))
+                               .map(DevServerCompileLifecycleTest::readUnchecked)
+                               .anyMatch(contents -> contents.contains(
+                                       "\"message\":\"degraded: waiting for managed update to settle\"")));
+        }
+    }
+
     private static void installFakeMaven(Path projectDirectory) throws Exception {
         Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
         Path mvnw = projectDirectory.resolve("mvnw");
@@ -166,6 +202,10 @@ class DevServerCompileLifecycleTest {
                 if [ -f "$PWD/fail" ]; then
                   echo "simulated compile failure"
                   exit 7
+                fi
+                if [ -f "$PWD/publish-frontend" ]; then
+                  echo "published" > "$PWD/frontend/src/published.txt"
+                  sleep 0.8
                 fi
                 mkdir -p "$PWD/target/classes" "$PWD/target/fluxzero-dev"
                 for arg in "$@"; do
@@ -232,7 +272,7 @@ class DevServerCompileLifecycleTest {
     }
 
     private static boolean await(CheckedBooleanSupplier condition) throws Exception {
-        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
         while (System.nanoTime() < deadline) {
             if (condition.getAsBoolean()) {
                 return true;
@@ -240,6 +280,18 @@ class DevServerCompileLifecycleTest {
             Thread.sleep(50);
         }
         return false;
+    }
+
+    private static String quote(String value) {
+        return "'" + value.replace("'", "'\\''") + "'";
+    }
+
+    private static String readUnchecked(Path path) {
+        try {
+            return Files.readString(path);
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
     }
 
     @FunctionalInterface

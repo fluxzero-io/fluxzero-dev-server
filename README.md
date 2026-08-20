@@ -150,6 +150,10 @@ a separate private `{frontendPort}` in its command. Existing `frontend` configur
 the root frontend omits `path`, and the gateway uses the longest matching path for HTTP and WebSocket traffic.
 Set `readinessPath` on a frontend when its functional root redirects or is unsuitable as a health probe; it defaults
 to `/`, and readiness probes never follow redirects.
+Files changed inside a managed frontend while another dev pipeline is publishing are treated as one coherent update.
+The frontend remains available but reports `degraded` until publication settles, then restarts once and returns to
+`running` only after its configured HTTP readiness is healthy again. This handoff is based on file ownership, process
+lifecycle, and readiness; it does not depend on a frontend framework, generator, or console message format.
 Profile-level `backendPaths` add pass-through routes to the built-in `/api` route and keep priority over frontends.
 Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
 
