@@ -41,8 +41,10 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
@@ -316,6 +318,44 @@ public class DevGatewayTest {
     }
 
     @Test
+    void bridgesWebsocketDataControlAndCloseFramesInBothDirections() throws Exception {
+        try (TestUpstream backend = TestUpstream.start("backend");
+             TestUpstream frontend = TestUpstream.start("frontend");
+             DevGateway gateway = DevGateway.start(backend.url(), frontend.url(), () -> true)) {
+            FrameListener listener = new FrameListener();
+            WebSocket socket = HTTP_CLIENT.newWebSocketBuilder()
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://") + "/frames"), listener)
+                    .get(5, TimeUnit.SECONDS);
+
+            socket.sendText("text-frame", true).get(5, TimeUnit.SECONDS);
+            assertEquals("frontend:/frames:text-frame", listener.text.get(5, TimeUnit.SECONDS));
+
+            socket.sendBinary(utf8("binary-frame"), true).get(5, TimeUnit.SECONDS);
+            assertEquals("binary-frame", listener.binary.get(5, TimeUnit.SECONDS));
+
+            socket.sendPing(utf8("downstream-ping")).get(5, TimeUnit.SECONDS);
+            assertEquals("downstream-ping", frontend.awaitPing());
+            assertEquals("downstream-ping", listener.pong.get(5, TimeUnit.SECONDS));
+
+            frontend.sendPing("upstream-ping");
+            assertEquals("upstream-ping", listener.ping.get(5, TimeUnit.SECONDS));
+            assertEquals("upstream-ping", frontend.awaitPong());
+
+            socket.sendClose(4000, "downstream-close").get(5, TimeUnit.SECONDS);
+            assertEquals(new CloseFrame(4000, "downstream-close"), frontend.awaitClose());
+
+            FrameListener upstreamClose = new FrameListener();
+            HTTP_CLIENT.newWebSocketBuilder()
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://") + "/upstream-close"),
+                                upstreamClose)
+                    .get(5, TimeUnit.SECONDS);
+            frontend.closeWebsocket(4001, "upstream-close");
+            assertEquals(new CloseFrame(4001, "upstream-close"),
+                         upstreamClose.close.get(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void stopsImmediatelyWhileFrontendWebsocketIsStillOpen() throws Exception {
         try (TestUpstream backend = TestUpstream.start("backend");
              TestUpstream frontend = TestUpstream.start("frontend")) {
@@ -393,6 +433,70 @@ public class DevGatewayTest {
         }
     }
 
+    private static final class FrameListener implements WebSocket.Listener {
+        private final CompletableFuture<String> text = new CompletableFuture<>();
+        private final CompletableFuture<String> binary = new CompletableFuture<>();
+        private final CompletableFuture<String> ping = new CompletableFuture<>();
+        private final CompletableFuture<String> pong = new CompletableFuture<>();
+        private final CompletableFuture<CloseFrame> close = new CompletableFuture<>();
+
+        @Override
+        public void onOpen(WebSocket webSocket) {
+            webSocket.request(1);
+        }
+
+        @Override
+        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
+            text.complete(data.toString());
+            webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<?> onBinary(WebSocket webSocket, ByteBuffer data, boolean last) {
+            binary.complete(string(data));
+            webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<?> onPing(WebSocket webSocket, ByteBuffer message) {
+            ByteBuffer copy = copy(message);
+            ping.complete(string(message));
+            return webSocket.sendPong(copy).whenComplete((ignored, error) -> webSocket.request(1));
+        }
+
+        @Override
+        public CompletionStage<?> onPong(WebSocket webSocket, ByteBuffer message) {
+            pong.complete(string(message));
+            webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+            close.complete(new CloseFrame(statusCode, reason));
+            return CompletableFuture.completedFuture(null);
+        }
+    }
+
+    private record CloseFrame(int statusCode, String reason) {
+    }
+
+    private static ByteBuffer utf8(String value) {
+        return ByteBuffer.wrap(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String string(ByteBuffer value) {
+        return StandardCharsets.UTF_8.decode(value.slice()).toString();
+    }
+
+    private static ByteBuffer copy(ByteBuffer value) {
+        ByteBuffer result = ByteBuffer.allocate(value.remaining());
+        result.put(value.slice()).flip();
+        return result;
+    }
+
     private static final class TestUpstream implements AutoCloseable {
         private final String name;
         private final Server server;
@@ -400,17 +504,29 @@ public class DevGatewayTest {
         private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketOrigin;
         private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketHost;
         private final java.util.concurrent.atomic.AtomicReference<String> lastWebsocketNamespace;
+        private final AtomicReference<Session> activeWebsocket;
+        private final LinkedBlockingQueue<String> websocketPings;
+        private final LinkedBlockingQueue<String> websocketPongs;
+        private final LinkedBlockingQueue<CloseFrame> websocketCloses;
 
         private TestUpstream(String name, Server server, int port,
                              java.util.concurrent.atomic.AtomicReference<String> lastWebsocketOrigin,
                              java.util.concurrent.atomic.AtomicReference<String> lastWebsocketHost,
-                             java.util.concurrent.atomic.AtomicReference<String> lastWebsocketNamespace) {
+                             java.util.concurrent.atomic.AtomicReference<String> lastWebsocketNamespace,
+                             AtomicReference<Session> activeWebsocket,
+                             LinkedBlockingQueue<String> websocketPings,
+                             LinkedBlockingQueue<String> websocketPongs,
+                             LinkedBlockingQueue<CloseFrame> websocketCloses) {
             this.name = name;
             this.server = server;
             this.port = port;
             this.lastWebsocketOrigin = lastWebsocketOrigin;
             this.lastWebsocketHost = lastWebsocketHost;
             this.lastWebsocketNamespace = lastWebsocketNamespace;
+            this.activeWebsocket = activeWebsocket;
+            this.websocketPings = websocketPings;
+            this.websocketPongs = websocketPongs;
+            this.websocketCloses = websocketCloses;
         }
 
         static TestUpstream start(String name) throws Exception {
@@ -421,6 +537,10 @@ public class DevGatewayTest {
                     new java.util.concurrent.atomic.AtomicReference<>();
             java.util.concurrent.atomic.AtomicReference<String> websocketNamespace =
                     new java.util.concurrent.atomic.AtomicReference<>();
+            AtomicReference<Session> activeWebsocket = new AtomicReference<>();
+            LinkedBlockingQueue<String> websocketPings = new LinkedBlockingQueue<>();
+            LinkedBlockingQueue<String> websocketPongs = new LinkedBlockingQueue<>();
+            LinkedBlockingQueue<CloseFrame> websocketCloses = new LinkedBlockingQueue<>();
             ServerConnector connector = new ServerConnector(server);
             connector.setHost("127.0.0.1");
             connector.setPort(0);
@@ -434,7 +554,8 @@ public class DevGatewayTest {
                         if (!request.getSubProtocols().isEmpty()) {
                             response.setAcceptedSubProtocol(request.getSubProtocols().getFirst());
                         }
-                        return new EchoSocket(name, request.getHttpURI().getPath());
+                        return new EchoSocket(name, request.getHttpURI().getPath(), activeWebsocket,
+                                              websocketPings, websocketPongs, websocketCloses);
                     }));
             websocket.setHandler(new Handler.Abstract() {
                 @Override
@@ -466,7 +587,8 @@ public class DevGatewayTest {
             server.setHandler(context);
             server.start();
             return new TestUpstream(name, server, connector.getLocalPort(), websocketOrigin, websocketHost,
-                                    websocketNamespace);
+                                    websocketNamespace, activeWebsocket, websocketPings, websocketPongs,
+                                    websocketCloses);
         }
 
         String url() {
@@ -489,6 +611,44 @@ public class DevGatewayTest {
             return lastWebsocketNamespace.get();
         }
 
+        void sendPing(String message) throws Exception {
+            CompletableFuture<Void> sent = new CompletableFuture<>();
+            activeWebsocket().sendPing(utf8(message), org.eclipse.jetty.websocket.api.Callback.from(
+                    () -> sent.complete(null), sent::completeExceptionally));
+            sent.get(5, TimeUnit.SECONDS);
+        }
+
+        void closeWebsocket(int statusCode, String reason) throws Exception {
+            CompletableFuture<Void> sent = new CompletableFuture<>();
+            activeWebsocket().close(statusCode, reason, org.eclipse.jetty.websocket.api.Callback.from(
+                    () -> sent.complete(null), sent::completeExceptionally));
+            sent.get(5, TimeUnit.SECONDS);
+        }
+
+        String awaitPing() throws Exception {
+            return websocketPings.poll(5, TimeUnit.SECONDS);
+        }
+
+        String awaitPong() throws Exception {
+            return websocketPongs.poll(5, TimeUnit.SECONDS);
+        }
+
+        CloseFrame awaitClose() throws Exception {
+            return websocketCloses.poll(5, TimeUnit.SECONDS);
+        }
+
+        private Session activeWebsocket() throws Exception {
+            long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+            Session result;
+            while ((result = activeWebsocket.get()) == null || !result.isOpen()) {
+                if (System.nanoTime() >= deadline) {
+                    throw new IllegalStateException("Upstream websocket did not become available");
+                }
+                Thread.sleep(10);
+            }
+            return result;
+        }
+
         @Override
         public void close() throws Exception {
             server.stop();
@@ -498,22 +658,59 @@ public class DevGatewayTest {
     public static final class EchoSocket extends Session.Listener.AbstractAutoDemanding {
         private final String name;
         private final String path;
+        private final AtomicReference<Session> activeWebsocket;
+        private final LinkedBlockingQueue<String> websocketPings;
+        private final LinkedBlockingQueue<String> websocketPongs;
+        private final LinkedBlockingQueue<CloseFrame> websocketCloses;
         private volatile Session session;
 
-        private EchoSocket(String name, String path) {
+        private EchoSocket(String name, String path, AtomicReference<Session> activeWebsocket,
+                           LinkedBlockingQueue<String> websocketPings,
+                           LinkedBlockingQueue<String> websocketPongs,
+                           LinkedBlockingQueue<CloseFrame> websocketCloses) {
             this.name = name;
             this.path = path;
+            this.activeWebsocket = activeWebsocket;
+            this.websocketPings = websocketPings;
+            this.websocketPongs = websocketPongs;
+            this.websocketCloses = websocketCloses;
         }
 
         @Override
         public void onWebSocketOpen(Session session) {
             this.session = session;
+            activeWebsocket.set(session);
         }
 
         @Override
         public void onWebSocketText(String message) {
             session.sendText(name + ":" + path + ":" + message,
                              org.eclipse.jetty.websocket.api.Callback.NOOP);
+        }
+
+        @Override
+        public void onWebSocketBinary(ByteBuffer message, org.eclipse.jetty.websocket.api.Callback callback) {
+            session.sendBinary(copy(message), callback);
+        }
+
+        @Override
+        public void onWebSocketPing(ByteBuffer message) {
+            ByteBuffer copy = copy(message);
+            websocketPings.add(string(message));
+            session.sendPong(copy, org.eclipse.jetty.websocket.api.Callback.NOOP);
+        }
+
+        @Override
+        public void onWebSocketPong(ByteBuffer message) {
+            websocketPongs.add(string(message));
+        }
+
+        @Override
+        public void onWebSocketClose(int statusCode, String reason,
+                                     org.eclipse.jetty.websocket.api.Callback callback) {
+            websocketCloses.add(new CloseFrame(statusCode, reason));
+            activeWebsocket.compareAndSet(session, null);
+            callback.succeed();
         }
     }
 }
