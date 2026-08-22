@@ -232,6 +232,9 @@ public final class DevGateway implements AutoCloseable {
 
             ContextHandler context = new ContextHandler("/");
             WebSocketUpgradeHandler websocketHandler = WebSocketUpgradeHandler.from(server, context, container -> {
+                // Upstream applications and frontend tooling own their keepalive policy. A gateway-side timeout can
+                // race a keepalive sent at the same interval and make a healthy proxied socket look disconnected.
+                container.setIdleTimeout(Duration.ZERO);
                 container.setMaxBinaryMessageSize(0);
                 container.setMaxTextMessageSize(0);
                 container.setMaxFrameSize(0);
