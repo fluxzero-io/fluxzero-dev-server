@@ -14,6 +14,12 @@
 
 package io.fluxzero.devserver;
 
+import org.eclipse.jetty.server.Handler;
+import org.eclipse.jetty.server.Server;
+import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.server.handler.ContextHandler;
+import org.eclipse.jetty.websocket.api.Session;
+import org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
@@ -48,6 +54,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -77,7 +84,7 @@ class FrontendFrameworkE2EIT {
                          + " --host 127.0.0.1 --port {port} --strictPort";
 
         exerciseFramework(project, command, source, "vite-phase-14-v1", "vite-phase-14-v2",
-                          "/src/main.js");
+                          "/src/main.js", Duration.ofSeconds(35));
     }
 
     @Test
@@ -89,11 +96,12 @@ class FrontendFrameworkE2EIT {
                          + " serve --host 127.0.0.1 --port {port} --hmr";
 
         exerciseFramework(project, command, source, "angular-phase-14-v1", "angular-phase-14-v2",
-                          "/main.js");
+                          "/main.js", Duration.ZERO);
     }
 
     private static void exerciseFramework(Path project, String command, Path source, String oldMarker,
-                                          String newMarker, String compiledSourcePath) throws Exception {
+                                          String newMarker, String compiledSourcePath,
+                                          Duration quietPeriod) throws Exception {
         DevServerConfig config = new DevServerConfig(
                 project, null, "frontend-e2e-" + UUID.randomUUID(), null,
                 false, false, false,
@@ -119,6 +127,7 @@ class FrontendFrameworkE2EIT {
             try {
                 assertEquals("vite-hmr", socket.getSubprotocol());
                 listener.await(message -> message.contains("\"type\":\"connected\""), "HMR connection");
+                listener.assertRemainsOpen(quietPeriod, "HMR connection during an unchanged build");
 
                 Files.writeString(source, Files.readString(source, UTF_8).replace(oldMarker, newMarker), UTF_8);
 
@@ -129,6 +138,26 @@ class FrontendFrameworkE2EIT {
                              "browser navigation immediately after frontend reload must not see a gateway 503");
                 awaitHttpBody(publicUrl + compiledSourcePath, body -> body.contains(newMarker),
                               "updated frontend source");
+            } finally {
+                if (!socket.isOutputClosed()) {
+                    socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
+                }
+            }
+        }
+    }
+
+    @Test
+    void keepsSilentWebsocketOpenPastJettyDefaultIdleTimeout() throws Exception {
+        try (SilentEchoUpstream upstream = SilentEchoUpstream.start();
+             DevGateway gateway = DevGateway.start(upstream.url(), upstream.url(), () -> true)) {
+            HmrListener listener = new HmrListener();
+            WebSocket socket = HTTP_CLIENT.newWebSocketBuilder()
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://") + "/silent"), listener)
+                    .get(15, TimeUnit.SECONDS);
+            try {
+                listener.assertRemainsOpen(Duration.ofSeconds(35), "silent gateway connection");
+                socket.sendText("still-open", true).get(5, TimeUnit.SECONDS);
+                listener.await("still-open"::equals, "echo after idle period");
             } finally {
                 if (!socket.isOutputClosed()) {
                     socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
@@ -239,6 +268,7 @@ class FrontendFrameworkE2EIT {
     private static final class HmrListener implements WebSocket.Listener {
         private final BlockingQueue<String> messages = new LinkedBlockingQueue<>();
         private final StringBuilder partial = new StringBuilder();
+        private final CompletableFuture<String> terminated = new CompletableFuture<>();
 
         @Override
         public void onOpen(WebSocket webSocket) {
@@ -256,6 +286,42 @@ class FrontendFrameworkE2EIT {
             return CompletableFuture.completedFuture(null);
         }
 
+        @Override
+        public CompletionStage<?> onPing(WebSocket webSocket, java.nio.ByteBuffer message) {
+            java.nio.ByteBuffer copy = java.nio.ByteBuffer.allocate(message.remaining());
+            copy.put(message.slice()).flip();
+            return webSocket.sendPong(copy).whenComplete((ignored, error) -> webSocket.request(1));
+        }
+
+        @Override
+        public CompletionStage<?> onPong(WebSocket webSocket, java.nio.ByteBuffer message) {
+            webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
+            terminated.complete("closed with " + statusCode + " " + reason);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public void onError(WebSocket webSocket, Throwable error) {
+            terminated.complete("failed with " + error);
+        }
+
+        void assertRemainsOpen(Duration duration, String reason) throws Exception {
+            if (duration.isZero()) {
+                return;
+            }
+            try {
+                fail("Unexpectedly terminated " + reason + ": "
+                     + terminated.get(duration.toMillis(), TimeUnit.MILLISECONDS));
+            } catch (TimeoutException expected) {
+                // Remaining connected for the full observation window is the expected result.
+            }
+        }
+
         String await(Predicate<String> predicate, String reason) throws InterruptedException {
             long deadline = System.nanoTime() + WAIT_TIMEOUT.toNanos();
             List<String> seen = new ArrayList<>();
@@ -270,6 +336,66 @@ class FrontendFrameworkE2EIT {
             }
             fail("Timed out waiting for " + reason + ". Messages: " + seen);
             throw new IllegalStateException("unreachable");
+        }
+    }
+
+    private static final class SilentEchoUpstream implements AutoCloseable {
+        private final Server server;
+        private final int port;
+
+        private SilentEchoUpstream(Server server, int port) {
+            this.server = server;
+            this.port = port;
+        }
+
+        static SilentEchoUpstream start() throws Exception {
+            Server server = new Server();
+            ServerConnector connector = new ServerConnector(server);
+            connector.setHost("127.0.0.1");
+            connector.setPort(0);
+            server.addConnector(connector);
+            ContextHandler context = new ContextHandler("/");
+            WebSocketUpgradeHandler websocket = WebSocketUpgradeHandler.from(server, context, container -> {
+                container.setIdleTimeout(Duration.ZERO);
+                container.addMapping("/*", (request, response, callback) -> new SilentEchoSocket());
+            });
+            websocket.setHandler(new Handler.Abstract() {
+                @Override
+                public boolean handle(org.eclipse.jetty.server.Request request,
+                                      org.eclipse.jetty.server.Response response,
+                                      org.eclipse.jetty.util.Callback callback) {
+                    response.setStatus(200);
+                    callback.succeeded();
+                    return true;
+                }
+            });
+            context.setHandler(websocket);
+            server.setHandler(context);
+            server.start();
+            return new SilentEchoUpstream(server, connector.getLocalPort());
+        }
+
+        String url() {
+            return "http://127.0.0.1:" + port;
+        }
+
+        @Override
+        public void close() throws Exception {
+            server.stop();
+        }
+    }
+
+    public static final class SilentEchoSocket extends Session.Listener.AbstractAutoDemanding {
+        private volatile Session session;
+
+        @Override
+        public void onWebSocketOpen(Session session) {
+            this.session = session;
+        }
+
+        @Override
+        public void onWebSocketText(String message) {
+            session.sendText(message, org.eclipse.jetty.websocket.api.Callback.NOOP);
         }
     }
 }
