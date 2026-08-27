@@ -49,6 +49,13 @@ final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
+    static final String INSTRUCTIONS = "Read-only access to the active Fluxzero development environment. Call "
+                                       + "get_status immediately. If session.compile.state is "
+                                       + "waiting-for-project, generate a Maven or Gradle project in the exact "
+                                       + "session.projectDirectory without replacing this MCP session, then call "
+                                       + "wait_for_change with the returned cursor. Otherwise, if activeProblems "
+                                       + "is non-zero, call get_active_problems. Follow the cursor with "
+                                       + "wait_for_change until startup is ready or reports a concrete failure.";
 
     private final Server server;
     private final McpSyncServer mcpServer;
@@ -74,11 +81,7 @@ final class DevMcpServer implements AutoCloseable {
 
             mcpServer = McpServer.sync(transport)
                     .serverInfo("fluxzero-dev", DevServerVersion.current())
-                    .instructions("Read-only access to the active Fluxzero development environment. The control "
-                                  + "plane is available while applications are still starting. Call get_status "
-                                  + "immediately. If activeProblems is non-zero, call get_active_problems. Then "
-                                  + "follow the returned cursor with wait_for_change until startup either becomes "
-                                  + "ready or reports a concrete failure.")
+                    .instructions(INSTRUCTIONS)
                     .capabilities(McpSchema.ServerCapabilities.builder()
                                           .tools(false)
                                           .resources(true, false)

@@ -924,8 +924,10 @@ bewust detached gebruik voorspelbaar en configureerbaar blijft.
 DoD:
 
 - Een niet-lege map zonder Maven- of Gradle-root wordt vóór service-start en watcherregistratie geweigerd. Een
-  werkelijk lege greenfield-root (eventueel met uitsluitend managed `.fluxzero/dev`-state) mag de agent-control-plane
-  en watcher alvast starten; de eerste compile wacht dan op het gegenereerde buildproject.
+  werkelijk lege greenfield-root (eventueel met uitsluitend managed `.fluxzero/dev`-state) start uitsluitend de
+  sessie, agent-control-plane en watcher. Zodra het buildproject in dezelfde root verschijnt, wordt de dan aanwezige
+  projectconfiguratie ingelezen en start de normale runtime-, proxy-, IDP-, applicatie- en testlifecycle binnen
+  dezelfde MCP-sessie.
 - De CLI kan interactief een nieuw project in de huidige map of een submap initialiseren en start daarna dat project.
 - Alleen expliciete detach of background-start draagt ownership over; een verdwenen attached terminal stopt de omgeving.
 - macOS launchd-jobs hebben geen `RunAtLoad` en worden bij expliciete stop opgeruimd.

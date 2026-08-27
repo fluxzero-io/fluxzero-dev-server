@@ -54,6 +54,9 @@ class DevMcpServerTest {
                 tokenFile = server.tokenFile();
                 assertTrue(Files.isRegularFile(tokenFile));
                 client.initialize();
+                assertEquals(DevMcpServer.INSTRUCTIONS, client.getServerInstructions());
+                assertTrue(DevMcpServer.INSTRUCTIONS.length() <= 512,
+                           "critical bootstrap guidance should fit in compact MCP client previews");
 
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
@@ -136,6 +139,7 @@ class DevMcpServerTest {
 
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
                 assertEquals("development", client.getServerInfo().version());
+                assertEquals(DevMcpServer.INSTRUCTIONS, client.getServerInstructions());
                 assertEquals(5, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());

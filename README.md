@@ -9,8 +9,10 @@ The server is normally launched through `fz dev`, the Fluxzero Maven plugin, or 
 repository contains the independently versioned server implementation and its standalone executable JAR.
 
 The agent control plane may start in a completely empty greenfield workspace before project generation. In that
-case the server defers its initial compile, keeps watching the same root, and begins the normal Maven or Gradle
-development cycle when the project is generated in place. Non-empty directories without a build root remain invalid.
+phase only session management, MCP, and a source watcher run; `get_status` reports `waiting-for-project` and directs
+the agent to generate the project in the same root. When a Maven or Gradle build appears, the server reloads the
+new project configuration and starts the normal runtime, proxy, IDP, application, and test lifecycle without
+replacing the MCP session. Non-empty directories without a build root remain invalid.
 
 ## Requirements
 
