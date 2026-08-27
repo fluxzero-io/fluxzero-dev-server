@@ -105,11 +105,15 @@ final class DevLogStore implements AutoCloseable {
     }
 
     synchronized void accept(String line) {
+        accept(line, defaultApplicationName);
+    }
+
+    synchronized void accept(String line, String projectId) {
         if (closed) {
             return;
         }
         ParsedLine parsed = parse(line);
-        ServiceIdentity identity = identity(parsed.source());
+        ServiceIdentity identity = identity(parsed.source(), projectId);
         log(parsed.level(), parsed.source(), identity.serviceType(), identity.serviceId(), null, null,
             parsed.stream(), parsed.message());
     }
@@ -430,13 +434,13 @@ final class DevLogStore implements AutoCloseable {
         return new ParsedLine(source, stream, inferLevel(line), line);
     }
 
-    private ServiceIdentity identity(String source) {
+    private ServiceIdentity identity(String source, String projectId) {
         return switch (source) {
-            case "app" -> new ServiceIdentity("application", defaultApplicationName);
-            case "compile" -> new ServiceIdentity("build", defaultApplicationName);
-            case "test", "tests" -> new ServiceIdentity("test", defaultApplicationName);
-            case "commands" -> new ServiceIdentity("seed", defaultApplicationName);
-            case "reload" -> new ServiceIdentity("deployment", defaultApplicationName);
+            case "app" -> new ServiceIdentity("application", projectId);
+            case "compile" -> new ServiceIdentity("build", projectId);
+            case "test", "tests" -> new ServiceIdentity("test", projectId);
+            case "commands" -> new ServiceIdentity("seed", projectId);
+            case "reload" -> new ServiceIdentity("deployment", projectId);
             case "runtime", "proxy", "gateway", "idp", "frontend" ->
                     new ServiceIdentity("infrastructure", source);
             default -> new ServiceIdentity("supervisor", "dev-server");

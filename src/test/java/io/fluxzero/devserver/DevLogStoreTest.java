@@ -137,6 +137,20 @@ class DevLogStoreTest {
     }
 
     @Test
+    void resolvesProjectScopedOutputWhenApplicationNameDiffers(@TempDir Path projectDirectory) {
+        try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "application-name")) {
+            store.accept("[test] [ERROR] CatalogTest expected success", "project");
+            store.observeStatus("test", "test", "project", null, "failed", "exit code 1");
+            assertEquals(2, store.diagnostics().activeCount());
+
+            store.observeStatus("test", "test", "project", null, "passed", "42 tests passed");
+
+            assertEquals(0, store.diagnostics().activeCount());
+            assertTrue(read(store.problemsFile()).contains("\"reason\":\"passed\""));
+        }
+    }
+
+    @Test
     void keepsApplicationsAndInstancesSeparateAndResolvesOnlyReplacedInstance(@TempDir Path projectDirectory) {
         try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "orders")) {
             store.process("app", "application", "orders", "orders-1", "stdout",

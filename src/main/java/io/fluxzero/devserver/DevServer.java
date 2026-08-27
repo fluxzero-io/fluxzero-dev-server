@@ -1931,12 +1931,18 @@ public class DevServer implements AutoCloseable {
     }
 
     private void printProjectOutput(String projectId, String message) {
-        if (projects.size() == 1) {
-            print(message);
+        if (closed.get()) {
             return;
         }
-        print(message.replaceFirst("^\\[([^]]+)]", "[$1 "
-                + java.util.regex.Matcher.quoteReplacement(projectId) + "]"));
+        DevLogStore logStore = devLogStore;
+        if (logStore != null) {
+            logStore.accept(message, projectId);
+        }
+        String displayMessage = projects.size() == 1 ? message : message.replaceFirst(
+                "^\\[([^]]+)]", "[$1 " + java.util.regex.Matcher.quoteReplacement(projectId) + "]");
+        if (browserReadyAnnounced.get() && terminalVisible(displayMessage)) {
+            terminalProgress.println(terminalProgress.currentTime() + "  " + terminalMessage(displayMessage));
+        }
     }
 
     private record PendingReadiness(String clientId, CompletableFuture<Void> ready,
