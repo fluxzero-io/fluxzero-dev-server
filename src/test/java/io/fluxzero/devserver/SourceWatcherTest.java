@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +32,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SourceWatcherTest {
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pom.xml", "build.gradle.kts"})
+    void detectsBuildProjectCreatedAfterGreenfieldWatcherStarts(String buildFile, @TempDir Path project)
+            throws Exception {
+        List<Set<Path>> batches = new CopyOnWriteArrayList<>();
+        var scheduler = Executors.newSingleThreadScheduledExecutor();
+        DevServerConfig config = new DevServerConfig(
+                project, null, "test", null, true, true, true,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                Duration.ofMillis(50), FrontendConfig.none(), List.of());
+
+        Path created = project.resolve(buildFile).toAbsolutePath().normalize();
+        try (SourceWatcher watcher = new SourceWatcher(config, scheduler, batches::add)) {
+            watcher.start();
+            Files.writeString(created, "generated build");
+            assertTrue(await(() -> batches.stream().flatMap(Set::stream).anyMatch(created::equals)));
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
 
     @Test
     void detectsManagedFrontendInputsWithoutIncludingGeneratedFrontendOutput(@TempDir Path project)

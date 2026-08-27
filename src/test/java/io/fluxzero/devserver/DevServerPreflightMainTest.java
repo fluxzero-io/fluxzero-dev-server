@@ -31,7 +31,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class DevServerPreflightMainTest {
 
     @Test
-    void rejectsDirectoryWithoutBuildProjectBeforeStartingServices(@TempDir Path project) {
+    void acceptsEmptyGreenfieldWorkspace(@TempDir Path project) {
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString()});
+
+        assertEquals(0, DevServerPreflightMain.run(
+                config, ignored -> DevServerPreflightMain.PortConflictChoice.cancel(), ignored -> { }));
+    }
+
+    @Test
+    void acceptsGreenfieldWorkspaceWithOnlyManagedDevState(@TempDir Path project) throws Exception {
+        Files.createDirectories(project.resolve(".fluxzero/dev"));
+        Files.writeString(project.resolve(".fluxzero/dev/session.json"), "{}");
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString()});
+
+        assertEquals(0, DevServerPreflightMain.run(
+                config, ignored -> DevServerPreflightMain.PortConflictChoice.cancel(), ignored -> { }));
+    }
+
+    @Test
+    void rejectsNonEmptyDirectoryWithoutBuildProjectBeforeStartingServices(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("notes.txt"), "not a Fluxzero project");
         DevServerConfig config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString()});
 
         DevServerStartupException failure = assertThrows(

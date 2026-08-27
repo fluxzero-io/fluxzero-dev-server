@@ -52,7 +52,7 @@ public final class DevServerPreflightMain {
 
     static int run(DevServerConfig config, IntFunction<PortConflictChoice> conflictChoice,
                    Consumer<PortListenerProcess> processStopper) {
-        DevProjectLayout.requireBuildProject(config.projectDirectory());
+        DevProjectLayout.requireBuildProjectOrGreenfieldWorkspace(config);
         if (config.gatewayPort() == 0) {
             return 0;
         }

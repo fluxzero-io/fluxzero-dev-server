@@ -129,7 +129,7 @@ public class DevServer implements AutoCloseable {
             return this;
         }
         if (config.backendEnabled() && (config.watch() || config.compileOnStart())) {
-            config.projects().forEach(project -> DevProjectLayout.requireBuildProject(project.directory()));
+            DevProjectLayout.requireBuildProjectOrGreenfieldWorkspace(config);
         }
         validatePublicPort();
         sessionLock = sessionStore.acquireLock();
@@ -176,9 +176,11 @@ public class DevServer implements AutoCloseable {
             }
             updateSession(current -> current.withStatus("running"));
             recordEnvironmentDetails();
-            if (config.backendEnabled() && config.compileOnStart()) {
-                projects.values().forEach(ProjectRuntime::requestInitialCompile);
-            } else if (config.frontends().isEmpty()) {
+            List<ProjectRuntime> initialCompileProjects = config.backendEnabled() && config.compileOnStart()
+                    ? projects.values().stream().filter(ProjectRuntime::hasBuildProject).toList()
+                    : List.of();
+            initialCompileProjects.forEach(ProjectRuntime::requestInitialCompile);
+            if (initialCompileProjects.isEmpty() && config.frontends().isEmpty()) {
                 terminalProgress.stop();
             }
             if (config.backendEnabled() && config.watch()) {
@@ -1563,6 +1565,10 @@ public class DevServer implements AutoCloseable {
 
         private boolean hasApps() {
             return currentApps.keySet().stream().anyMatch(launchId -> launchId.startsWith(launchPrefix()));
+        }
+
+        private boolean hasBuildProject() {
+            return DevProjectLayout.isBuildProject(config.projectDirectory());
         }
 
         private boolean healthy() {

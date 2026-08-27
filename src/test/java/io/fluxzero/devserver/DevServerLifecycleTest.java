@@ -48,6 +48,23 @@ class DevServerLifecycleTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void startsAgentControlPlaneAndDefersCompilationInEmptyGreenfieldWorkspace(@TempDir Path projectDirectory)
+            throws Exception {
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString(), "--idp", "external"});
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            DevSession session = devServer.session();
+            assertEquals("running", session.status());
+            assertEquals("running", session.mcp().state());
+            assertEquals("stopped", session.compile().state());
+            assertEquals(projectDirectory.toAbsolutePath().normalize().toString(), session.projectDirectory());
+            assertTrue(Files.isRegularFile(projectDirectory.resolve(".fluxzero/dev/session.json")));
+            assertFalse(DevProjectLayout.isBuildProject(projectDirectory));
+        }
+    }
+
+    @Test
     void startsEmbeddedRuntimeAndProxyOnDynamicPorts(@TempDir Path projectDirectory) throws Exception {
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, null, "dev-test-app", null,

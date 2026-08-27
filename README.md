@@ -8,6 +8,10 @@ URL.
 The server is normally launched through `fz dev`, the Fluxzero Maven plugin, or the Fluxzero Gradle plugin. This
 repository contains the independently versioned server implementation and its standalone executable JAR.
 
+The agent control plane may start in a completely empty greenfield workspace before project generation. In that
+case the server defers its initial compile, keeps watching the same root, and begins the normal Maven or Gradle
+development cycle when the project is generated in place. Non-empty directories without a build root remain invalid.
+
 ## Requirements
 
 - JDK 21 or newer
