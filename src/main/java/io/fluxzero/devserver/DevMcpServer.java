@@ -104,8 +104,10 @@ final class DevMcpServer implements AutoCloseable {
             server.start();
 
             McpSyncServer startedMcpServer = mcpServer;
-            AutoCloseable registration = logStore.onDiagnosticsChanged(() -> startedMcpServer.notifyResourcesUpdated(
-                    new McpSchema.ResourcesUpdatedNotification(DIAGNOSTICS_RESOURCE)));
+            AutoCloseable registration = logStore.onDiagnosticsChanged(() -> startedMcpServer.getAsyncServer()
+                    .notifyResourcesUpdated(new McpSchema.ResourcesUpdatedNotification(DIAGNOSTICS_RESOURCE))
+                    .onErrorComplete()
+                    .subscribe());
             return new DevMcpServer(server, mcpServer, registration, tokenFile, token);
         } catch (Exception e) {
             stopAfterFailedStart(server, mcpServer, tokenFile);

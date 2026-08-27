@@ -34,7 +34,10 @@ import java.time.Duration;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -146,6 +149,73 @@ class DevMcpServerTest {
                 McpSchema.CallToolResult result = client.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
                 assertTrue(String.valueOf(result.structuredContent()).contains(devServer.session().sessionId()));
+            }
+        }
+    }
+
+    @Test
+    void stdioLauncherKeepsForwardingToolsWhileDiagnosticsChange(@TempDir Path projectDirectory) throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "dev-test-app", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                FrontendConfig.none(), null);
+        AtomicReference<DevSession> session = new AtomicReference<>(DevSession.empty(config));
+        DevSessionStore sessionStore = new DevSessionStore(projectDirectory);
+
+        try (DevLogStore store = new DevLogStore(projectDirectory, session.get().sessionId(), "dev-test-app");
+             DevMcpServer server = DevMcpServer.start(
+                     projectDirectory, new AgentQueryService(session::get, store), store)) {
+            session.set(session.get().withStatus("running").withMcp(DevSession.ServiceStatus.running(
+                    "mcp", server.url(), server.port(), null, "read-only agent control plane")
+                                                                       .withMetadata(Map.of(
+                                                                               "tokenFile",
+                                                                               server.tokenFile().toString()))));
+            sessionStore.writeSession(session.get());
+
+            ServerParameters parameters = ServerParameters.builder(javaExecutable())
+                    .args("-cp", System.getProperty("java.class.path"), DevMcpStdioMain.class.getName(),
+                          "--project-dir", projectDirectory.toString())
+                    .build();
+            StdioClientTransport transport = new StdioClientTransport(
+                    parameters, new JacksonMcpJsonMapper(new com.fasterxml.jackson.databind.ObjectMapper()));
+            try (McpSyncClient client = McpClient.sync(transport)
+                    .requestTimeout(Duration.ofSeconds(5))
+                    .initializationTimeout(Duration.ofSeconds(5))
+                    .build();
+                 ExecutorService executor = Executors.newFixedThreadPool(3)) {
+                client.initialize();
+
+                var diagnosticUpdates = executor.submit(() -> {
+                    for (int index = 0; index < 200; index++) {
+                        store.process("test", "test", "dev-test-app", null, "stderr",
+                                      "ERROR test failed " + index);
+                    }
+                });
+                var statuses = executor.submit(() -> {
+                    for (int index = 0; index < 20; index++) {
+                        McpSchema.CallToolResult status = client.callTool(
+                                McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
+                        assertFalse(Boolean.TRUE.equals(status.isError()));
+                    }
+                });
+                var testStatuses = executor.submit(() -> {
+                    for (int index = 0; index < 20; index++) {
+                        McpSchema.CallToolResult status = client.callTool(
+                                McpSchema.CallToolRequest.builder("get_test_status").arguments(Map.of()).build());
+                        assertFalse(Boolean.TRUE.equals(status.isError()));
+                    }
+                });
+
+                diagnosticUpdates.get(10, TimeUnit.SECONDS);
+                statuses.get(10, TimeUnit.SECONDS);
+                testStatuses.get(10, TimeUnit.SECONDS);
+
+                McpSchema.CallToolResult status = client.callTool(
+                        McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
+                assertTrue(String.valueOf(status.structuredContent()).contains("activeProblems=200"));
             }
         }
     }
