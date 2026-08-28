@@ -149,7 +149,6 @@ class DevServerCompileLifecycleTest {
         installFakeMaven(projectDirectory);
         Path frontendDirectory = Files.createDirectories(projectDirectory.resolve("frontend/src"));
         Files.writeString(frontendDirectory.resolve("published.txt"), "before");
-        Files.createFile(projectDirectory.resolve("publish-frontend"));
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String command = "exec " + quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "
                          + FrontendFixtureServer.class.getName() + " {frontendPort}";
@@ -163,11 +162,17 @@ class DevServerCompileLifecycleTest {
 
         try (DevServer devServer = new DevServer(config).start()) {
             assertTrue(await(() -> "running".equals(devServer.session().frontend().state())));
+            Files.createFile(projectDirectory.resolve("publish-frontend"));
+            Files.createFile(projectDirectory.resolve("wait-for-frontend-observation"));
             Long initialPid = devServer.session().frontend().pid();
 
             devServer.requestCompile(Set.of(
                     projectDirectory.resolve("src/main/java/com/acme/PublishedFrontendDependency.java")));
 
+            assertTrue(await(() -> "degraded".equals(devServer.session().frontend().state())
+                                   && devServer.session().frontend().detail().endsWith(
+                                           "waiting for managed update to settle")));
+            Files.createFile(projectDirectory.resolve("release-frontend-publication"));
             assertTrue(await(() -> "running".equals(devServer.session().frontend().state())
                                    && !initialPid.equals(devServer.session().frontend().pid())));
             assertEquals("published", Files.readString(frontendDirectory.resolve("published.txt")).strip());
@@ -202,7 +207,13 @@ class DevServerCompileLifecycleTest {
                 fi
                 if [ -f "$PWD/publish-frontend" ]; then
                   echo "published" > "$PWD/frontend/src/published.txt"
-                  sleep 0.8
+                  if [ -f "$PWD/wait-for-frontend-observation" ]; then
+                    while [ ! -f "$PWD/release-frontend-publication" ]; do
+                      sleep 0.05
+                    done
+                  else
+                    sleep 0.8
+                  fi
                 fi
                 mkdir -p "$PWD/target/classes" "$PWD/target/fluxzero-dev"
                 for arg in "$@"; do
