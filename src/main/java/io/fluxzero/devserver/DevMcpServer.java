@@ -49,13 +49,14 @@ final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
-    static final String INSTRUCTIONS = "Read-only access to the active Fluxzero development environment. Call "
-                                       + "get_status immediately. If session.compile.state is "
-                                       + "waiting-for-project, generate a Maven or Gradle project in the exact "
-                                       + "session.projectDirectory without replacing this MCP session, then call "
-                                       + "wait_for_change with the returned cursor. Otherwise, if activeProblems "
-                                       + "is non-zero, call get_active_problems. Follow the cursor with "
-                                       + "wait_for_change until startup is ready or reports a concrete failure.";
+    static final String INSTRUCTIONS = "Read-only control of the active Fluxzero dev environment. Call get_status "
+                                       + "immediately; retain cursor.sessionId and cursor.sequence. After every "
+                                       + "edit, call wait_for_change with those values as sessionId and "
+                                       + "afterSequence. Never omit them. Drain every hasMore page from the returned "
+                                       + "cursor, continuing until relevant compile, startup, and tests are "
+                                       + "terminal. If compile is waiting-for-project, generate in "
+                                       + "session.projectDirectory without replacing this MCP session. For "
+                                       + "activeProblems, call get_active_problems.";
 
     private final Server server;
     private final McpSyncServer mcpServer;
@@ -177,7 +178,9 @@ final class DevMcpServer implements AutoCloseable {
                 tool("get_test_status", "Return background test and startup-command status.", Map.of(),
                      arguments -> queryService.getTestStatus(), objectMapper),
                 tool("wait_for_change", "Wait for a matching startup or development event and return its structured "
-                                        + "delta together with currently active problems.",
+                                        + "delta together with currently active problems. After an edit, pass "
+                                        + "sessionId and afterSequence from the prior cursor. If hasMore is true, "
+                                        + "call again immediately with the returned cursor.",
                      logProperties(true), arguments -> queryService.waitForChange(
                              cursor(arguments, queryService), selector(arguments),
                              Duration.ofMillis(longValue(arguments, "timeoutMs", 30_000)),

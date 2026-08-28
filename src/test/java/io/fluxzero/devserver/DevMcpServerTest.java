@@ -62,6 +62,9 @@ class DevMcpServerTest {
                 assertEquals(DevMcpServer.INSTRUCTIONS, client.getServerInstructions());
                 assertTrue(DevMcpServer.INSTRUCTIONS.length() <= 512,
                            "critical bootstrap guidance should fit in compact MCP client previews");
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("sessionId"));
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("afterSequence"));
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("hasMore"));
 
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
