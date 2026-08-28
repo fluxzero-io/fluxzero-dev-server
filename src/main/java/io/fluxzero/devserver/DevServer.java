@@ -1892,10 +1892,16 @@ public class DevServer implements AutoCloseable {
 
         private void startWatcher() {
             try {
-                sourceWatcher = new SourceWatcher(config, scheduler, this::handleChanges);
+                sourceWatcher = new SourceWatcher(config, scheduler, this::observeChange, this::handleChanges);
                 sourceWatcher.start();
             } catch (Exception e) {
                 printProjectOutput(id, "[watch] failed: " + e.getMessage());
+            }
+        }
+
+        private void observeChange(Path change) {
+            if (sourceWatcher.frontendPath(change)) {
+                frontendUpdates.frontendFilesChanged(sourceWatcher.frontendIds(Set.of(change)));
             }
         }
 
@@ -1904,7 +1910,6 @@ public class DevServer implements AutoCloseable {
             Set<Path> frontendChanges = changes.stream().filter(sourceWatcher::frontendPath)
                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
             if (!frontendChanges.isEmpty()) {
-                frontendUpdates.frontendFilesChanged(sourceWatcher.frontendIds(frontendChanges));
                 ChangeSummary summary = ChangeSummary.of(config.projectDirectory(), frontendChanges);
                 record("[frontend] change detected: " + summary.displayPaths());
                 if (browserReadyAnnounced.get()) {

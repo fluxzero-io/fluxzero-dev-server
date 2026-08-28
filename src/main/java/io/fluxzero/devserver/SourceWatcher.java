@@ -37,6 +37,7 @@ import java.util.function.Consumer;
 final class SourceWatcher implements AutoCloseable {
     private final DevServerConfig config;
     private final ScheduledExecutorService scheduler;
+    private final Consumer<Path> observationConsumer;
     private final Consumer<Set<Path>> changesConsumer;
     private final WatchService watchService;
     private final Map<WatchKey, Path> directories = new HashMap<>();
@@ -46,8 +47,15 @@ final class SourceWatcher implements AutoCloseable {
 
     SourceWatcher(DevServerConfig config, ScheduledExecutorService scheduler, Consumer<Set<Path>> changesConsumer)
             throws IOException {
+        this(config, scheduler, ignored -> {
+        }, changesConsumer);
+    }
+
+    SourceWatcher(DevServerConfig config, ScheduledExecutorService scheduler, Consumer<Path> observationConsumer,
+                  Consumer<Set<Path>> changesConsumer) throws IOException {
         this.config = config;
         this.scheduler = scheduler;
+        this.observationConsumer = observationConsumer;
         this.changesConsumer = changesConsumer;
         this.watchService = config.projectDirectory().getFileSystem().newWatchService();
     }
@@ -137,12 +145,15 @@ final class SourceWatcher implements AutoCloseable {
         }
     }
 
-    private synchronized void enqueue(Path changed) {
-        pendingChanges.add(changed);
-        if (debounce != null) {
-            debounce.cancel(false);
+    private void enqueue(Path changed) {
+        observationConsumer.accept(changed);
+        synchronized (this) {
+            pendingChanges.add(changed);
+            if (debounce != null) {
+                debounce.cancel(false);
+            }
+            debounce = scheduler.schedule(this::flush, config.debounce().toMillis(), TimeUnit.MILLISECONDS);
         }
-        debounce = scheduler.schedule(this::flush, config.debounce().toMillis(), TimeUnit.MILLISECONDS);
     }
 
     private synchronized void flush() {

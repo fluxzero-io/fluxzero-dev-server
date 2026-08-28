@@ -98,6 +98,32 @@ class SourceWatcherTest {
     }
 
     @Test
+    void reportsObservedFrontendChangeBeforeDebouncedBatch(@TempDir Path project) throws Exception {
+        Path frontendSource = project.resolve("frontend/src/app/app.component.ts");
+        Files.createDirectories(frontendSource.getParent());
+        Files.writeString(frontendSource, "before");
+        List<Path> observations = new CopyOnWriteArrayList<>();
+        List<Set<Path>> batches = new CopyOnWriteArrayList<>();
+        var scheduler = Executors.newSingleThreadScheduledExecutor();
+        DevServerConfig config = new DevServerConfig(
+                project, null, "test", null, true, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                Duration.ofSeconds(1),
+                FrontendConfig.command("npm run dev").withLaunchSetup("frontend", null), List.of());
+
+        Path changed = frontendSource.toAbsolutePath().normalize();
+        try (SourceWatcher watcher = new SourceWatcher(config, scheduler, observations::add, batches::add)) {
+            watcher.start();
+            Files.writeString(frontendSource, "after");
+            assertTrue(await(() -> observations.contains(changed)));
+            assertTrue(batches.isEmpty());
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
     void detectsSourcesAlreadyPresentInNewDirectory(@TempDir Path project) throws Exception {
         Path sourceRoot = project.resolve("app/src/main/java/com/acme");
         Path stagedDirectory = project.resolve("app/target/new-feature");
