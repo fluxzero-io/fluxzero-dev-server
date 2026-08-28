@@ -135,6 +135,15 @@ final class DevLogStore implements AutoCloseable {
         log(level, source, serviceType, serviceId, null, null, "embedded", message);
     }
 
+    /** Records component telemetry without treating its log severity as service health. */
+    synchronized void embeddedTelemetry(String source, String serviceType, String serviceId,
+                                        DevLogEvent.Level level, String message) {
+        if (closed) {
+            return;
+        }
+        writeEvent(level, source, serviceType, serviceId, null, null, "embedded", message);
+    }
+
     synchronized void observeStatus(String source, String serviceType, String serviceId, String instanceId,
                                     String state, String detail) {
         if (closed) {

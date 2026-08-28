@@ -383,7 +383,8 @@ public class DevServer implements AutoCloseable {
     private void startMcp() {
         agentQueryService = new AgentQueryService(() -> session, devLogStore);
         try {
-            mcpServer = DevMcpServer.start(config.projectDirectory(), agentQueryService, devLogStore);
+            mcpServer = DevMcpServer.start(config.projectDirectory(), agentQueryService, devLogStore,
+                                           this::mcpFailedUnexpectedly);
             updateMcpStatus(DevSession.ServiceStatus.running("mcp", mcpServer.url(), mcpServer.port(), null,
                                                              "read-only agent control plane")
                                     .withMetadata(java.util.Map.of(
@@ -393,6 +394,13 @@ public class DevServer implements AutoCloseable {
             updateMcpStatus(DevSession.ServiceStatus.failed("mcp", e.getMessage()));
             print("[mcp] failed to start: " + e.getMessage());
         }
+    }
+
+    private void mcpFailedUnexpectedly(Throwable failure) {
+        String detail = failure.getMessage() == null || failure.getMessage().isBlank()
+                ? failure.getClass().getSimpleName() : failure.getMessage();
+        updateMcpStatus(DevSession.ServiceStatus.failed("mcp", detail));
+        print("[mcp] failed while running: " + detail);
     }
 
     private void startServices() {
