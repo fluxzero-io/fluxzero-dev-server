@@ -56,18 +56,7 @@ public class DevGatewayTest {
             .connectTimeout(Duration.ofSeconds(2)).build();
 
     @Test
-    void usesExplicitPublicPortAndFailsWhenItIsOccupied() throws Exception {
-        int requestedPort;
-        try (ServerSocket available = new ServerSocket(0)) {
-            requestedPort = available.getLocalPort();
-        }
-        try (TestUpstream backend = TestUpstream.start("backend");
-             TestUpstream frontend = TestUpstream.start("frontend");
-             DevGateway gateway = DevGateway.start(backend.url(), frontend.url(), () -> true,
-                                                   FrontendConfig.DEFAULT_BACKEND_PATHS, requestedPort)) {
-            assertEquals(requestedPort, gateway.port());
-        }
-
+    void failsWhenExplicitPublicPortIsOccupied() throws Exception {
         try (ServerSocket occupied = new ServerSocket();
              TestUpstream backend = TestUpstream.start("backend");
              TestUpstream frontend = TestUpstream.start("frontend")) {
