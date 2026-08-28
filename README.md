@@ -203,6 +203,12 @@ in-memory runtime; changed or failed commands are retried without re-running unc
 conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
 configured commands in normalized path order.
 
+The embedded dev runtime starts consumers without a stored position ten seconds before the current end of their log,
+instead of the regular one-second look-back. Startup commands published shortly before a new application consumer is
+registered therefore remain visible during a normal cold start. Existing stored consumer positions are unaffected and
+the mechanism has no dependency on an application framework or framework lifecycle. Command results use the regular
+one-minute gateway timeout.
+
 Every startup command receives `$user: "$system"` metadata by default. `commandDefaults.userMetadataKey` changes the
 profile-wide key and `commandDefaults.systemUser` may be either an id or a complete JSON/YAML user object. A command or
 file reference can override the identity with `user`; ids use the SDK's user-id metadata support, while complete user

@@ -64,7 +64,7 @@ import java.util.stream.Stream;
 @Slf4j
 final class DevCommandPipeline implements AutoCloseable {
     static final Path COMMAND_DIRECTORY = Path.of("src", "test", "resources", "fluxzero", "dev", "commands");
-    private static final Duration COMMAND_TIMEOUT = Duration.ofSeconds(5);
+    private static final Duration COMMAND_TIMEOUT = Duration.ofMinutes(1);
 
     private final DevServerConfig config;
     private final DevSessionStore sessionStore;

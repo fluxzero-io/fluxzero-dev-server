@@ -111,6 +111,33 @@ class DevServerWholeAppE2EIT {
     }
 
     @Test
+    void deliversStartupCommandToConsumerRegisteredLaterWithinReplayWindow(@TempDir Path tempDirectory)
+            throws Exception {
+        Path project = copyFixture(tempDirectory);
+        Files.writeString(project.resolve("src/main/java/com/example/app/package-info.java"), """
+                @io.fluxzero.common.serialization.RegisterType
+                package com.example.app;
+                """, UTF_8);
+        Path command = project.resolve("src/test/resources/fluxzero/dev/commands/cold-start.json");
+        Files.createDirectories(command.getParent());
+        Files.writeString(command, """
+                {
+                  "@class": "CreateGreeting",
+                  "name": "Cold start"
+                }
+                """, UTF_8);
+        delayHandlerRegistration(project, Duration.ofSeconds(7));
+
+        try (DevServer ignored = new DevServer(config(project)).start();
+             RawFluxzeroClient rawClient = new RawFluxzeroClient(
+                     "ws://localhost:" + waitForRuntimePort(project))) {
+            DevCommandStatus.Entry entry = waitForCommand(project, "cold-start.json", "succeeded");
+            assertTrue(entry.detail().contains("processed by app"), entry.detail());
+            waitForGreeting(rawClient, "base:Cold start:v1");
+        }
+    }
+
+    @Test
     void appErrorRemainsActiveUntilItsInstanceIsReplaced(@TempDir Path tempDirectory) throws Exception {
         Path project = copyFixture(tempDirectory);
         writeRuntimeError(project, true);
@@ -1051,6 +1078,18 @@ class DevServerWholeAppE2EIT {
 
     private static void writeVersion(Path projectDirectory, String version, boolean failOnStart) throws IOException {
         writeVersion(projectDirectory, version, failOnStart, true);
+    }
+
+    private static void delayHandlerRegistration(Path projectDirectory, Duration delay) throws IOException {
+        Path source = projectDirectory.resolve("src/main/java/com/example/app/App.java");
+        String current = Files.readString(source);
+        String registration = "        fluxzero.registerHandlers(new GreetingHandlers";
+        if (!current.contains(registration)) {
+            throw new IllegalStateException("Could not locate fixture handler registration");
+        }
+        Files.writeString(source, current.replace(
+                registration,
+                "        Thread.sleep(" + delay.toMillis() + ");\n" + registration), UTF_8);
     }
 
     private static void writeVersion(Path projectDirectory, String version, boolean failOnStart,
