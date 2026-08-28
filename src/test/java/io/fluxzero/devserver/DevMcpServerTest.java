@@ -161,6 +161,17 @@ class DevMcpServerTest {
 
             try (McpSyncClient replacement = client(server, new CountDownLatch(1))) {
                 replacement.initialize();
+                McpSchema.CallToolResult logs = replacement.callTool(
+                        McpSchema.CallToolRequest.builder("get_logs")
+                                .arguments(Map.of("sessionId", session.sessionId(),
+                                                  "afterSequence", disconnectCursor,
+                                                  "sources", List.of("mcp"),
+                                                  "minimumLevel", "ERROR"))
+                                .build());
+                assertFalse(Boolean.TRUE.equals(logs.isError()));
+                assertTrue(String.valueOf(logs.structuredContent()).contains("Client disconnected"),
+                           "a replacement agent connection should be able to retrieve transport telemetry");
+
                 McpSchema.CallToolResult status = replacement.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
                 assertFalse(Boolean.TRUE.equals(status.isError()));
