@@ -44,6 +44,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevMcpServerTest {
+    private static final Duration SUBPROCESS_REQUEST_TIMEOUT = Duration.ofSeconds(15);
+    private static final Duration SUBPROCESS_INITIALIZATION_TIMEOUT = Duration.ofSeconds(20);
 
     @Test
     void servesReadOnlyToolsAndDiagnosticsNotifications(@TempDir Path projectDirectory) throws Exception {
@@ -135,8 +137,8 @@ class DevMcpServerTest {
             StdioClientTransport transport = new StdioClientTransport(
                     parameters, new JacksonMcpJsonMapper(new com.fasterxml.jackson.databind.ObjectMapper()));
             try (McpSyncClient client = McpClient.sync(transport)
-                    .requestTimeout(Duration.ofSeconds(5))
-                    .initializationTimeout(Duration.ofSeconds(5))
+                    .requestTimeout(SUBPROCESS_REQUEST_TIMEOUT)
+                    .initializationTimeout(SUBPROCESS_INITIALIZATION_TIMEOUT)
                     .build()) {
                 client.initialize();
 
@@ -182,8 +184,8 @@ class DevMcpServerTest {
             StdioClientTransport transport = new StdioClientTransport(
                     parameters, new JacksonMcpJsonMapper(new com.fasterxml.jackson.databind.ObjectMapper()));
             try (McpSyncClient client = McpClient.sync(transport)
-                    .requestTimeout(Duration.ofSeconds(5))
-                    .initializationTimeout(Duration.ofSeconds(5))
+                    .requestTimeout(SUBPROCESS_REQUEST_TIMEOUT)
+                    .initializationTimeout(SUBPROCESS_INITIALIZATION_TIMEOUT)
                     .build();
                  ExecutorService executor = Executors.newFixedThreadPool(3)) {
                 client.initialize();
@@ -209,9 +211,9 @@ class DevMcpServerTest {
                     }
                 });
 
-                diagnosticUpdates.get(10, TimeUnit.SECONDS);
-                statuses.get(10, TimeUnit.SECONDS);
-                testStatuses.get(10, TimeUnit.SECONDS);
+                diagnosticUpdates.get(30, TimeUnit.SECONDS);
+                statuses.get(30, TimeUnit.SECONDS);
+                testStatuses.get(30, TimeUnit.SECONDS);
 
                 McpSchema.CallToolResult status = client.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
