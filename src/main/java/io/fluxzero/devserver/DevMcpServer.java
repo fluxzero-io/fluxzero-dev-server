@@ -27,6 +27,7 @@ import org.eclipse.jetty.ee11.servlet.ServletContextHandler;
 import org.eclipse.jetty.ee11.servlet.ServletHolder;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
+import org.eclipse.jetty.util.component.LifeCycle;
 
 import java.io.IOException;
 import java.net.URI;
@@ -43,30 +44,41 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 
 /** Embedded read-only MCP endpoint for one Fluxzero dev environment. */
 final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
-    static final String INSTRUCTIONS = "Read-only access to the active Fluxzero development environment. Call "
-                                       + "get_status immediately. If session.compile.state is "
-                                       + "waiting-for-project, generate a Maven or Gradle project in the exact "
-                                       + "session.projectDirectory without replacing this MCP session, then call "
-                                       + "wait_for_change with the returned cursor. Otherwise, if activeProblems "
-                                       + "is non-zero, call get_active_problems. Follow the cursor with "
-                                       + "wait_for_change until startup is ready or reports a concrete failure.";
+    static final String INSTRUCTIONS = "Read-only control of the active Fluxzero dev environment. Call get_status "
+                                       + "immediately; retain cursor.sessionId and cursor.sequence. After every "
+                                       + "edit, call wait_for_change with those values as sessionId and "
+                                       + "afterSequence. Never omit them. Drain every hasMore page from the returned "
+                                       + "cursor, continuing until relevant compile, startup, and tests are "
+                                       + "terminal. If compile is waiting-for-project, generate in "
+                                       + "session.projectDirectory without replacing this MCP session. For "
+                                       + "activeProblems, call get_active_problems.";
 
     private final Server server;
     private final McpSyncServer mcpServer;
     private final AutoCloseable diagnosticsRegistration;
     private final Path tokenFile;
     private final String token;
+    private final HttpLifecycle httpLifecycle;
 
     static DevMcpServer start(Path projectDirectory, AgentQueryService queryService, DevLogStore logStore) {
+        return start(projectDirectory, queryService, logStore, ignored -> {
+        });
+    }
+
+    static DevMcpServer start(Path projectDirectory, AgentQueryService queryService, DevLogStore logStore,
+                              Consumer<Throwable> unexpectedFailure) {
         Path tokenFile = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve(TOKEN_FILE);
         McpSyncServer mcpServer = null;
         Server server = null;
+        HttpLifecycle httpLifecycle = new HttpLifecycle(unexpectedFailure);
         try {
             String token = createToken(tokenFile);
             ObjectMapper objectMapper = new ObjectMapper();
@@ -93,6 +105,7 @@ final class DevMcpServer implements AutoCloseable {
             server = new Server();
             server.setStopAtShutdown(false);
             server.setStopTimeout(0);
+            server.addEventListener(httpLifecycle);
             ServerConnector connector = new ServerConnector(server);
             connector.setHost("127.0.0.1");
             connector.setPort(0);
@@ -108,8 +121,9 @@ final class DevMcpServer implements AutoCloseable {
                     .notifyResourcesUpdated(new McpSchema.ResourcesUpdatedNotification(DIAGNOSTICS_RESOURCE))
                     .onErrorComplete()
                     .subscribe());
-            return new DevMcpServer(server, mcpServer, registration, tokenFile, token);
+            return new DevMcpServer(server, mcpServer, registration, tokenFile, token, httpLifecycle);
         } catch (Exception e) {
+            httpLifecycle.beginManagedShutdown();
             stopAfterFailedStart(server, mcpServer, tokenFile);
             throw new IllegalStateException("Failed to start embedded MCP server", e);
         }
@@ -134,12 +148,13 @@ final class DevMcpServer implements AutoCloseable {
     }
 
     private DevMcpServer(Server server, McpSyncServer mcpServer, AutoCloseable diagnosticsRegistration,
-                         Path tokenFile, String token) {
+                         Path tokenFile, String token, HttpLifecycle httpLifecycle) {
         this.server = server;
         this.mcpServer = mcpServer;
         this.diagnosticsRegistration = diagnosticsRegistration;
         this.tokenFile = tokenFile;
         this.token = token;
+        this.httpLifecycle = httpLifecycle;
     }
 
     String url() {
@@ -177,7 +192,9 @@ final class DevMcpServer implements AutoCloseable {
                 tool("get_test_status", "Return background test and startup-command status.", Map.of(),
                      arguments -> queryService.getTestStatus(), objectMapper),
                 tool("wait_for_change", "Wait for a matching startup or development event and return its structured "
-                                        + "delta together with currently active problems.",
+                                        + "delta together with currently active problems. After an edit, pass "
+                                        + "sessionId and afterSequence from the prior cursor. If hasMore is true, "
+                                        + "call again immediately with the returned cursor.",
                      logProperties(true), arguments -> queryService.waitForChange(
                              cursor(arguments, queryService), selector(arguments),
                              Duration.ofMillis(longValue(arguments, "timeoutMs", 30_000)),
@@ -374,6 +391,7 @@ final class DevMcpServer implements AutoCloseable {
 
     @Override
     public void close() {
+        httpLifecycle.beginManagedShutdown();
         try {
             diagnosticsRegistration.close();
         } catch (Exception ignored) {
@@ -389,6 +407,42 @@ final class DevMcpServer implements AutoCloseable {
                 Files.deleteIfExists(tokenFile);
             } catch (IOException ignored) {
                 // A stale token is harmless because the next session replaces it.
+            }
+        }
+    }
+
+    static final class HttpLifecycle implements LifeCycle.Listener {
+        private final Consumer<Throwable> unexpectedFailure;
+        private final AtomicBoolean started = new AtomicBoolean();
+        private final AtomicBoolean managedShutdown = new AtomicBoolean();
+        private final AtomicBoolean failureReported = new AtomicBoolean();
+
+        HttpLifecycle(Consumer<Throwable> unexpectedFailure) {
+            this.unexpectedFailure = java.util.Objects.requireNonNull(unexpectedFailure);
+        }
+
+        @Override
+        public void lifeCycleStarted(LifeCycle event) {
+            started.set(true);
+        }
+
+        @Override
+        public void lifeCycleFailure(LifeCycle event, Throwable cause) {
+            report(cause);
+        }
+
+        @Override
+        public void lifeCycleStopped(LifeCycle event) {
+            report(new IllegalStateException("Embedded MCP HTTP server stopped unexpectedly"));
+        }
+
+        void beginManagedShutdown() {
+            managedShutdown.set(true);
+        }
+
+        private void report(Throwable failure) {
+            if (started.get() && !managedShutdown.get() && failureReported.compareAndSet(false, true)) {
+                unexpectedFailure.accept(failure);
             }
         }
     }

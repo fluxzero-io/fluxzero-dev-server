@@ -25,6 +25,7 @@ import java.nio.file.Path;
 import java.util.List;
 
 import static io.fluxzero.devserver.DevLogEvent.Level.ERROR;
+import static io.fluxzero.devserver.DevLogEvent.Level.INFO;
 import static io.fluxzero.devserver.DevLogEvent.Level.WARN;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -220,6 +221,27 @@ class DevLogStoreTest {
             assertFalse(events.isEmpty(), "embedded warning was not captured");
             assertEquals("runtime", events.getLast().source());
             assertEquals("infrastructure", events.getLast().serviceType());
+        }
+    }
+
+    @Test
+    void keepsMcpLibraryLogsAsTelemetryWhileOwnedFailuresRemainActionable(@TempDir Path projectDirectory) {
+        String loggerName = "io.modelcontextprotocol.server.transport.FutureTransport";
+        try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "orders");
+             EmbeddedLogCapture ignored = EmbeddedLogCapture.start(store)) {
+            org.slf4j.Logger transport = org.slf4j.LoggerFactory.getLogger(loggerName);
+            transport.error("arbitrary library failure whose wording may change");
+
+            List<DevLogEvent> transportEvents = awaitEvents(store, "mcp", ERROR);
+            assertEquals(List.of(ERROR), transportEvents.stream().map(DevLogEvent::level).toList());
+            assertEquals("mcp", transportEvents.getFirst().source());
+            assertEquals("infrastructure", transportEvents.getFirst().serviceType());
+            assertEquals(0, store.diagnostics().activeCount());
+
+            org.slf4j.LoggerFactory.getLogger("io.fluxzero.devserver.McpHealthProbe")
+                    .error("MCP service stopped unexpectedly");
+
+            assertEquals(1, store.diagnostics().activeCount());
         }
     }
 

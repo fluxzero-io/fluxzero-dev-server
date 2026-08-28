@@ -24,6 +24,8 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,8 +33,10 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -41,6 +45,8 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevMcpServerTest {
@@ -62,6 +68,9 @@ class DevMcpServerTest {
                 assertEquals(DevMcpServer.INSTRUCTIONS, client.getServerInstructions());
                 assertTrue(DevMcpServer.INSTRUCTIONS.length() <= 512,
                            "critical bootstrap guidance should fit in compact MCP client previews");
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("sessionId"));
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("afterSequence"));
+                assertTrue(DevMcpServer.INSTRUCTIONS.contains("hasMore"));
 
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
@@ -117,6 +126,82 @@ class DevMcpServerTest {
             assertEquals(401, httpClient.send(missingToken, HttpResponse.BodyHandlers.discarding()).statusCode());
             assertEquals(403, httpClient.send(foreignOrigin, HttpResponse.BodyHandlers.discarding()).statusCode());
         }
+    }
+
+    @Test
+    void abandonedClientSessionIsTelemetryAndDoesNotPoisonMcpHealth(@TempDir Path projectDirectory)
+            throws Exception {
+        DevSession session = DevSession.empty(DevServerConfig.defaults(projectDirectory));
+        try (DevLogStore store = new DevLogStore(projectDirectory, session.sessionId(), "orders");
+             EmbeddedLogCapture ignored = EmbeddedLogCapture.start(store);
+             DevMcpServer server = DevMcpServer.start(
+                     projectDirectory, new AgentQueryService(() -> session, store), store)) {
+            HttpClient httpClient = HttpClient.newHttpClient();
+            String sessionId = initializeRawSession(httpClient, server);
+            CompletableFuture<HttpResponse<InputStream>> streamFuture = httpClient.sendAsync(
+                    HttpRequest.newBuilder(URI.create(server.url()))
+                            .header("Authorization", "Bearer " + server.token())
+                            .header("Accept", "text/event-stream")
+                            .header("Mcp-Session-Id", sessionId)
+                            .header("MCP-Protocol-Version", "2025-11-25")
+                            .GET().build(), HttpResponse.BodyHandlers.ofInputStream());
+
+            HttpResponse<InputStream> stream = awaitSseStream(store, streamFuture);
+            assertEquals(200, stream.statusCode());
+            assertTrue(stream.body().read() >= 0, "diagnostics notification should commit the SSE response");
+            long disconnectCursor = store.lastSequence();
+            stream.body().close();
+
+            List<DevLogEvent> transportEvents = awaitMcpTransportEvent(store, disconnectCursor);
+            store.observeStatus("probe", "infrastructure", "probe", null, "running", "recovered");
+
+            assertFalse(transportEvents.isEmpty(), "the abandoned server-side transport should remain observable");
+            assertEquals(0, store.diagnostics().activeCount(),
+                         "a disconnected client session must not become an environment problem");
+
+            try (McpSyncClient replacement = client(server, new CountDownLatch(1))) {
+                replacement.initialize();
+                McpSchema.CallToolResult logs = replacement.callTool(
+                        McpSchema.CallToolRequest.builder("get_logs")
+                                .arguments(Map.of("sessionId", session.sessionId(),
+                                                  "afterSequence", disconnectCursor,
+                                                  "sources", List.of("mcp"),
+                                                  "minimumLevel", "ERROR"))
+                                .build());
+                assertFalse(Boolean.TRUE.equals(logs.isError()));
+                assertTrue(String.valueOf(logs.structuredContent()).contains("Client disconnected"),
+                           "a replacement agent connection should be able to retrieve transport telemetry");
+
+                McpSchema.CallToolResult status = replacement.callTool(
+                        McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
+                assertFalse(Boolean.TRUE.equals(status.isError()));
+                assertTrue(String.valueOf(status.structuredContent()).contains(session.sessionId()));
+            }
+        }
+    }
+
+    @Test
+    void distinguishesStartupManagedShutdownAndUnexpectedHttpFailure() {
+        AtomicReference<Throwable> reported = new AtomicReference<>();
+        DevMcpServer.HttpLifecycle lifecycle = new DevMcpServer.HttpLifecycle(reported::set);
+        IOException startupFailure = new IOException("bind failed");
+
+        lifecycle.lifeCycleFailure(null, startupFailure);
+        assertNull(reported.get(), "startup failures are reported synchronously by DevMcpServer.start");
+
+        lifecycle.lifeCycleStarted(null);
+        IOException runtimeFailure = new IOException("acceptor failed");
+        lifecycle.lifeCycleFailure(null, runtimeFailure);
+        lifecycle.lifeCycleStopped(null);
+        assertSame(runtimeFailure, reported.get(), "one runtime failure should be reported exactly once");
+
+        AtomicReference<Throwable> managedReport = new AtomicReference<>();
+        DevMcpServer.HttpLifecycle managed = new DevMcpServer.HttpLifecycle(managedReport::set);
+        managed.lifeCycleStarted(null);
+        managed.beginManagedShutdown();
+        managed.lifeCycleFailure(null, new IOException("socket closed during shutdown"));
+        managed.lifeCycleStopped(null);
+        assertNull(managedReport.get(), "managed shutdown is not a service failure");
     }
 
     @Test
@@ -230,6 +315,76 @@ class DevMcpServerTest {
                 .initializationTimeout(Duration.ofSeconds(3))
                 .resourcesUpdateConsumer(contents -> update.countDown())
                 .build();
+    }
+
+    private static String initializeRawSession(HttpClient client, DevMcpServer server) throws Exception {
+        String initialize = """
+                {"jsonrpc":"2.0","id":1,"method":"initialize","params":{
+                  "protocolVersion":"2025-11-25","capabilities":{},
+                  "clientInfo":{"name":"abandoned-test-client","version":"1"}}}
+                """;
+        HttpResponse<String> response = client.send(
+                HttpRequest.newBuilder(URI.create(server.url()))
+                        .header("Authorization", "Bearer " + server.token())
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(initialize)).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, response.statusCode());
+        String sessionId = response.headers().firstValue("Mcp-Session-Id").orElseThrow();
+        HttpResponse<Void> initialized = client.send(
+                HttpRequest.newBuilder(URI.create(server.url()))
+                        .header("Authorization", "Bearer " + server.token())
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Content-Type", "application/json")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-11-25")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\",\"params\":{}}"))
+                        .build(), HttpResponse.BodyHandlers.discarding());
+        assertEquals(202, initialized.statusCode());
+        HttpResponse<String> subscribed = client.send(
+                HttpRequest.newBuilder(URI.create(server.url()))
+                        .header("Authorization", "Bearer " + server.token())
+                        .header("Accept", "application/json, text/event-stream")
+                        .header("Content-Type", "application/json")
+                        .header("Mcp-Session-Id", sessionId)
+                        .header("MCP-Protocol-Version", "2025-11-25")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"resources/subscribe\","
+                                + "\"params\":{\"uri\":\"" + DevMcpServer.DIAGNOSTICS_RESOURCE + "\"}}"))
+                        .build(), HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, subscribed.statusCode());
+        return sessionId;
+    }
+
+    private static HttpResponse<InputStream> awaitSseStream(
+            DevLogStore store, CompletableFuture<HttpResponse<InputStream>> streamFuture) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        int attempt = 0;
+        while (!streamFuture.isDone() && System.nanoTime() < deadline) {
+            String state = attempt++ % 2 == 0 ? "failed" : "running";
+            store.observeStatus("probe", "infrastructure", "probe", null, state, "open SSE stream");
+            Thread.sleep(20);
+        }
+        return streamFuture.get(100, TimeUnit.MILLISECONDS);
+    }
+
+    private static List<DevLogEvent> awaitMcpTransportEvent(DevLogStore store, long afterSequence)
+            throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(3).toNanos();
+        int attempt = 0;
+        while (System.nanoTime() < deadline) {
+            String state = attempt++ % 2 == 0 ? "running" : "failed";
+            store.observeStatus("probe", "infrastructure", "probe", null, state, "disconnect probe");
+            List<DevLogEvent> events = store.readEvents(afterSequence, 100,
+                    event -> "mcp".equals(event.source()) && "mcp".equals(event.serviceId()));
+            if (!events.isEmpty()) {
+                return events;
+            }
+            Thread.sleep(20);
+        }
+        return List.of();
     }
 
     private static String javaExecutable() {

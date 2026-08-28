@@ -64,6 +64,7 @@ final class EmbeddedLogCapture implements AutoCloseable {
     }
 
     private static final class CaptureAppender extends AppenderBase<ILoggingEvent> {
+        private static final String MCP_LOGGER_PREFIX = "io.modelcontextprotocol.";
         private final DevLogStore store;
 
         private CaptureAppender(DevLogStore store) {
@@ -77,11 +78,24 @@ final class EmbeddedLogCapture implements AutoCloseable {
             if (event.getThrowableProxy() != null) {
                 message += System.lineSeparator() + ThrowableProxyUtil.asString(event.getThrowableProxy());
             }
-            store.embedded(identity.source(), identity.serviceType(), identity.serviceId(), level(event.getLevel()),
-                           message);
+            DevLogEvent.Level level = level(event.getLevel());
+            if (mcpLibraryLogger(event.getLoggerName())) {
+                // The SDK logs per-client transport failures. DevMcpServer owns global MCP lifecycle health.
+                store.embeddedTelemetry(identity.source(), identity.serviceType(), identity.serviceId(), level,
+                                        message);
+            } else {
+                store.embedded(identity.source(), identity.serviceType(), identity.serviceId(), level, message);
+            }
+        }
+
+        private static boolean mcpLibraryLogger(String loggerName) {
+            return loggerName != null && loggerName.startsWith(MCP_LOGGER_PREFIX);
         }
 
         private static ServiceIdentity identity(String loggerName) {
+            if (mcpLibraryLogger(loggerName)) {
+                return new ServiceIdentity("mcp", "infrastructure", "mcp");
+            }
             if (loggerName != null && loggerName.startsWith("io.fluxzero.testserver")) {
                 return new ServiceIdentity("runtime", "infrastructure", "runtime");
             }
