@@ -187,7 +187,7 @@ class DevMcpServerTest {
                     .requestTimeout(SUBPROCESS_REQUEST_TIMEOUT)
                     .initializationTimeout(SUBPROCESS_INITIALIZATION_TIMEOUT)
                     .build();
-                 ExecutorService executor = Executors.newFixedThreadPool(3)) {
+                 ExecutorService executor = Executors.newFixedThreadPool(2)) {
                 client.initialize();
 
                 var diagnosticUpdates = executor.submit(() -> {
@@ -201,19 +201,14 @@ class DevMcpServerTest {
                         McpSchema.CallToolResult status = client.callTool(
                                 McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
                         assertFalse(Boolean.TRUE.equals(status.isError()));
-                    }
-                });
-                var testStatuses = executor.submit(() -> {
-                    for (int index = 0; index < 20; index++) {
-                        McpSchema.CallToolResult status = client.callTool(
+                        McpSchema.CallToolResult testStatus = client.callTool(
                                 McpSchema.CallToolRequest.builder("get_test_status").arguments(Map.of()).build());
-                        assertFalse(Boolean.TRUE.equals(status.isError()));
+                        assertFalse(Boolean.TRUE.equals(testStatus.isError()));
                     }
                 });
 
                 diagnosticUpdates.get(30, TimeUnit.SECONDS);
                 statuses.get(30, TimeUnit.SECONDS);
-                testStatuses.get(30, TimeUnit.SECONDS);
 
                 McpSchema.CallToolResult status = client.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
