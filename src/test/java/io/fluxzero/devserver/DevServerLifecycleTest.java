@@ -36,6 +36,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
@@ -124,6 +125,8 @@ class DevServerLifecycleTest {
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start"
         };
         DevServerConfig initial = DevServerConfig.fromArgs(initialArguments);
+        AgentSelector projectProblems = new AgentSelector(
+                Set.of("project"), Set.of(), Set.of("project"), null);
 
         try (DevServer devServer = new DevServer(
                 initial, () -> DevServerConfig.fromArgs(reloadedArguments)).start()) {
@@ -138,7 +141,7 @@ class DevServerLifecycleTest {
             assertEquals("running", devServer.session().status());
             assertEquals("running", devServer.session().mcp().state());
             assertEquals("waiting-for-project", devServer.session().runtime().state());
-            assertTrue(devServer.agentQueryService().getStatus().activeProblems() > 0);
+            assertFalse(devServer.agentQueryService().getActiveProblems(projectProblems, 20).problems().isEmpty());
 
             Files.writeString(projectConfig, "version: 1\nidp: external\n");
 
@@ -147,9 +150,10 @@ class DevServerLifecycleTest {
                        () -> "Corrected generated config did not activate: " + devServer.session());
             assertEquals(sessionId, devServer.session().sessionId());
             assertEquals("external", devServer.session().idp().state());
-            assertTrue(await(() -> devServer.agentQueryService().getStatus().activeProblems() == 0),
+            assertTrue(await(() -> devServer.agentQueryService()
+                                       .getActiveProblems(projectProblems, 20).problems().isEmpty()),
                          () -> "Problems remained after recovery: "
-                               + devServer.agentQueryService().getActiveProblems(AgentSelector.all(), 20));
+                               + devServer.agentQueryService().getActiveProblems(projectProblems, 20));
         }
     }
 

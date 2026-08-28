@@ -171,11 +171,8 @@ class DevServerCompileLifecycleTest {
             assertTrue(await(() -> "running".equals(devServer.session().frontend().state())
                                    && !initialPid.equals(devServer.session().frontend().pid())));
             assertEquals("published", Files.readString(frontendDirectory.resolve("published.txt")).strip());
-            assertTrue(Files.walk(projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("logs"))
-                               .filter(path -> path.getFileName().toString().equals(DevLogStore.EVENTS_FILE))
-                               .map(DevServerCompileLifecycleTest::readUnchecked)
-                               .anyMatch(contents -> contents.contains(
-                                       "\"message\":\"degraded: waiting for managed update to settle\"")));
+            assertTrue(await(() -> logsContain(
+                    projectDirectory, "managed update settled; restarting frontend")));
         }
     }
 
@@ -291,6 +288,18 @@ class DevServerCompileLifecycleTest {
             return Files.readString(path);
         } catch (java.io.IOException e) {
             throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    private static boolean logsContain(Path projectDirectory, String fragment) throws Exception {
+        Path logs = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("logs");
+        if (!Files.isDirectory(logs)) {
+            return false;
+        }
+        try (var paths = Files.walk(logs)) {
+            return paths.filter(path -> path.getFileName().toString().equals(DevLogStore.EVENTS_FILE))
+                    .map(DevServerCompileLifecycleTest::readUnchecked)
+                    .anyMatch(contents -> contents.contains(fragment));
         }
     }
 
