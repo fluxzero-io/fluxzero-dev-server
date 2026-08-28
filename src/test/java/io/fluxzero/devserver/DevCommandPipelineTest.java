@@ -38,6 +38,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
+import static io.fluxzero.common.MessageType.COMMAND;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -95,6 +96,64 @@ class DevCommandPipelineTest {
             assertTrue(json.path("commands").get(0).path("detail").asText().contains("processed by app"));
             assertTrue(output.stream().anyMatch(line -> line.contains("executing")));
         } finally {
+            runtime.stop();
+        }
+    }
+
+    @Test
+    void lateConsumerProcessesCommandFromConfiguredReplayWindow(@TempDir Path projectDirectory) throws Exception {
+        Path commandDirectory = projectDirectory.resolve(DevCommandPipeline.COMMAND_DIRECTORY);
+        Files.createDirectories(commandDirectory);
+        writeCreateUserCommand(commandDirectory.resolve("create-user.json"), "Ada");
+        Server runtime = TestServer.startServer(0, Duration.ofSeconds(10));
+        AtomicReference<DevCommandStatus> status = new AtomicReference<>();
+        AtomicBoolean handled = new AtomicBoolean();
+        WebSocketClient inspector = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
+                .runtimeBaseUrl("ws://localhost:" + localPort(runtime))
+                .name("command-inspector")
+                .id("command-inspector")
+                .build());
+        try (DevCommandPipeline pipeline = new DevCommandPipeline(
+                new DevServerConfig(
+                        projectDirectory, null, "dev-test-app", null,
+                        false, false, false,
+                        DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                        DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                        DevServerConfig.DEFAULT_DEBOUNCE,
+                        FrontendConfig.none(), null),
+                new DevSessionStore(projectDirectory),
+                "ws://localhost:" + localPort(runtime), status::set, ignored -> {
+                })) {
+            pipeline.requestRun();
+            assertTrue(awaitCommand(inspector));
+
+            Thread.sleep(1_500L);
+            WebSocketClient appClient = WebSocketClient.newInstance(WebSocketClient.ClientConfig.builder()
+                    .runtimeBaseUrl("ws://localhost:" + localPort(runtime))
+                    .name("dev-test-app")
+                    .id("dev-test-app")
+                    .build());
+            Fluxzero fluxzero = DefaultFluxzero.builder()
+                    .disableShutdownHook()
+                    .disableKeepalive()
+                    .disableTrackingMetrics()
+                    .disableCacheEvictionMetrics()
+                    .build(appClient);
+            Registration registration = fluxzero.registerHandlers(new Object() {
+                @HandleCommand
+                void handle(CreateUser ignored) {
+                    handled.set(true);
+                }
+            });
+            try {
+                assertTrue(awaitStatus(status, "succeeded"), () -> String.valueOf(status.get()));
+                assertTrue(handled.get());
+            } finally {
+                registration.cancel();
+                fluxzero.close();
+            }
+        } finally {
+            inspector.shutDown();
             runtime.stop();
         }
     }
@@ -646,6 +705,17 @@ class DevCommandPipelineTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
         while (System.nanoTime() < deadline) {
             if (processedNames.size() >= expectedSize && expectedName.equals(processedNames.getLast())) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return false;
+    }
+
+    private static boolean awaitCommand(WebSocketClient client) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!client.getTrackingClient(COMMAND).readFromIndex(0, 10).isEmpty()) {
                 return true;
             }
             Thread.sleep(50);

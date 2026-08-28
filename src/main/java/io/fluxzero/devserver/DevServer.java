@@ -54,6 +54,7 @@ import java.util.function.UnaryOperator;
  * Supervises a local Fluxzero development session.
  */
 public class DevServer implements AutoCloseable {
+    private static final Duration DEV_INITIAL_POSITION_LAG = Duration.ofSeconds(10);
     private static final Logger log = LoggerFactory.getLogger(DevServer.class);
     private static final int MAX_DISPLAYED_TEST_SELECTORS = 4;
     private static final int MAX_TEST_SCOPE_LENGTH = 96;
@@ -444,7 +445,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void startRuntime() {
-        runtimeServer = TestServer.startServer(0);
+        runtimeServer = TestServer.startServer(0, DEV_INITIAL_POSITION_LAG);
         int port = localPort(runtimeServer);
         runtimeBaseUrl = "ws://localhost:" + port;
         updateRuntimeStatus(DevSession.ServiceStatus.running("runtime", runtimeBaseUrl, port, null, "embedded"));
