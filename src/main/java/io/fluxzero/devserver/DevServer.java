@@ -1421,8 +1421,7 @@ public class DevServer implements AutoCloseable {
 
     private void printCompileOutput(ProjectRuntime project, String message) {
         activity();
-        print(projects.size() == 1 ? message : message.replaceFirst(
-                "^\\[compile]", "[compile " + java.util.regex.Matcher.quoteReplacement(project.id) + "]"));
+        printProjectOutput(project.id, message);
         CompileProgress progress = project.activeCompileProgress;
         if (progress != null) {
             progress.update(message).ifPresent(value -> terminalProgress.updateTask(

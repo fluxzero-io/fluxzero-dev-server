@@ -144,6 +144,28 @@ class DevServerCompileLifecycleTest {
     }
 
     @Test
+    void successfulCompileResolvesProjectScopedOutputWarnings(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.createFile(projectDirectory.resolve("warn"));
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "application-name", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                FrontendConfig.none(), null);
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            devServer.requestCompile(Set.of(projectDirectory.resolve("pom.xml")));
+            assertTrue(awaitRunCount(projectDirectory, 1));
+            assertTrue(awaitCompileDetailStartingWith(devServer, "build 1 ready"));
+            assertTrue(await(() -> logsContain(projectDirectory, "transient compile warning")));
+            assertFalse(hasCompileProblem(projectDirectory));
+            assertTrue(logsContain(projectDirectory, "\"serviceId\":\"project\""));
+        }
+    }
+
+    @Test
     void refreshesManagedFrontendAfterBackendPublishesFrontendFiles(@TempDir Path projectDirectory)
             throws Exception {
         installFakeMaven(projectDirectory);
@@ -204,6 +226,9 @@ class DevServerCompileLifecycleTest {
                 if [ -f "$PWD/fail" ]; then
                   echo "simulated compile failure"
                   exit 7
+                fi
+                if [ -f "$PWD/warn" ]; then
+                  echo "[WARNING] transient compile warning" >&2
                 fi
                 if [ -f "$PWD/publish-frontend" ]; then
                   echo "published" > "$PWD/frontend/src/published.txt"
@@ -266,17 +291,19 @@ class DevServerCompileLifecycleTest {
     }
 
     private static boolean awaitCompileProblem(Path projectDirectory, boolean expected) throws Exception {
-        ObjectMapper objectMapper = new ObjectMapper();
-        Path diagnostics = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY)
+        return await(() -> Files.isRegularFile(diagnosticsFile(projectDirectory))
+                           && hasCompileProblem(projectDirectory) == expected);
+    }
+
+    private static boolean hasCompileProblem(Path projectDirectory) throws Exception {
+        DevDiagnostics status = new ObjectMapper().readValue(
+                diagnosticsFile(projectDirectory).toFile(), DevDiagnostics.class);
+        return status.problems().stream().anyMatch(problem -> "compile".equals(problem.source()));
+    }
+
+    private static Path diagnosticsFile(Path projectDirectory) {
+        return projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY)
                 .resolve(DevLogStore.DIAGNOSTICS_FILE);
-        return await(() -> {
-            if (!Files.isRegularFile(diagnostics)) {
-                return false;
-            }
-            DevDiagnostics status = objectMapper.readValue(diagnostics.toFile(), DevDiagnostics.class);
-            boolean present = status.problems().stream().anyMatch(problem -> "compile".equals(problem.source()));
-            return present == expected;
-        });
     }
 
     private static boolean await(CheckedBooleanSupplier condition) throws Exception {
