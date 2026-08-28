@@ -15,8 +15,10 @@
 package io.fluxzero.devserver;
 
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.stream.Stream;
 
 final class DevProjectLayout {
     private static final List<String> BUILD_FILES = List.of(
@@ -30,6 +32,57 @@ final class DevProjectLayout {
             throw new DevServerStartupException(
                     "No Maven or Gradle project found in '" + projectDirectory.toAbsolutePath().normalize()
                     + "'. Run fz dev from a project root or initialize a new project first.");
+        }
+    }
+
+    static void requireBuildProjectOrGreenfieldWorkspace(DevServerConfig config) {
+        if (config.projects().stream().allMatch(project -> isBuildProject(project.directory()))
+            || isGreenfieldWorkspace(config)) {
+            return;
+        }
+        Path invalidProject = config.projects().stream()
+                .map(DevBuildProject::directory)
+                .filter(project -> !isBuildProject(project))
+                .findFirst().orElse(config.projectDirectory());
+        requireBuildProject(invalidProject);
+    }
+
+    static boolean isGreenfieldWorkspace(DevServerConfig config) {
+        if (config.projects().size() != 1
+            || !config.projects().getFirst().directory().equals(config.projectDirectory())
+            || isBuildProject(config.projectDirectory())) {
+            return false;
+        }
+        return containsOnlyManagedDevState(config.projectDirectory());
+    }
+
+    static boolean containsOnlyManagedDevState(Path projectDirectory) {
+        if (!Files.isDirectory(projectDirectory, LinkOption.NOFOLLOW_LINKS)
+            || Files.isSymbolicLink(projectDirectory)) {
+            return false;
+        }
+        try (Stream<Path> entries = Files.list(projectDirectory)) {
+            return entries.allMatch(DevProjectLayout::isManagedDevState);
+        } catch (Exception e) {
+            throw new DevServerStartupException(
+                    "Could not inspect project directory '" + projectDirectory.toAbsolutePath().normalize() + "'", e);
+        }
+    }
+
+    private static boolean isManagedDevState(Path path) {
+        if (!".fluxzero".equals(path.getFileName().toString())
+            || Files.isSymbolicLink(path)
+            || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            return false;
+        }
+        try (Stream<Path> entries = Files.list(path)) {
+            List<Path> children = entries.toList();
+            return children.size() == 1 && children.getFirst().getFileName().toString().equals("dev")
+                   && !Files.isSymbolicLink(children.getFirst())
+                   && Files.isDirectory(children.getFirst(), LinkOption.NOFOLLOW_LINKS);
+        } catch (Exception e) {
+            throw new DevServerStartupException(
+                    "Could not inspect managed Fluxzero state in '" + path.toAbsolutePath().normalize() + "'", e);
         }
     }
 

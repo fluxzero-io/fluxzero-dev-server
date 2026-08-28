@@ -36,16 +36,122 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServerLifecycleTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void startsAgentControlPlaneAndDefersCompilationInEmptyGreenfieldWorkspace(@TempDir Path projectDirectory)
+            throws Exception {
+        DevServerConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", projectDirectory.toString(), "--idp", "external"});
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            DevSession session = devServer.session();
+            assertEquals("running", session.status());
+            assertEquals("running", session.mcp().state());
+            assertEquals("waiting-for-project", session.runtime().state());
+            assertEquals("waiting-for-project", session.proxy().state());
+            assertEquals("waiting-for-project", session.idp().state());
+            assertEquals("waiting-for-project", session.compile().state());
+            assertTrue(session.compile().detail().contains("create the project in that exact root"));
+            assertNull(session.runtime().url());
+            assertNull(session.proxy().url());
+            assertEquals(projectDirectory.toAbsolutePath().normalize().toString(), session.projectDirectory());
+            assertTrue(Files.isRegularFile(projectDirectory.resolve(".fluxzero/dev/session.json")));
+            assertFalse(DevProjectLayout.isBuildProject(projectDirectory));
+        }
+    }
+
+    @Test
+    void activatesGeneratedProjectWithReloadedConfigurationAndPreservesAgentSession(@TempDir Path projectDirectory)
+            throws Exception {
+        String[] initialArguments = {"--project-dir", projectDirectory.toString(), "--idp", "managed"};
+        String[] reloadedArguments = {
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start"
+        };
+        AtomicInteger reloads = new AtomicInteger();
+        DevServerConfig initial = DevServerConfig.fromArgs(initialArguments);
+
+        try (DevServer devServer = new DevServer(initial, () -> {
+            reloads.incrementAndGet();
+            return DevServerConfig.fromArgs(reloadedArguments);
+        }).start()) {
+            DevSession bootstrap = devServer.session();
+            AgentCursor cursor = devServer.agentQueryService().getStatus().cursor();
+
+            Path projectConfig = projectDirectory.resolve(DevProjectConfig.FILE);
+            Files.createDirectories(projectConfig.getParent());
+            Files.writeString(projectConfig, "version: 1\nidp: external\n");
+            Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
+
+            assertTrue(await(() -> "running".equals(devServer.session().runtime().state())
+                                   && "external".equals(devServer.session().idp().state())),
+                       () -> "Generated project did not activate: " + devServer.session());
+            DevSession activated = devServer.session();
+            assertEquals(1, reloads.get());
+            assertEquals(bootstrap.sessionId(), activated.sessionId());
+            assertEquals(bootstrap.mcp().url(), activated.mcp().url());
+            assertEquals(cursor.sessionId(), devServer.agentQueryService().getStatus().cursor().sessionId());
+            assertEquals("running", activated.runtime().state());
+            assertEquals("running", activated.proxy().state());
+            assertEquals("external", activated.idp().state());
+            assertEquals("stopped", activated.compile().state());
+            assertEquals(200, healthStatus(activated.proxy().url()));
+            AgentChange activation = devServer.agentQueryService()
+                    .waitForChange(cursor, AgentSelector.all(), Duration.ZERO, 200);
+            assertFalse(activation.sessionChanged());
+            assertTrue(activation.events().stream().anyMatch(event ->
+                    event.message().contains("build project detected")));
+        }
+    }
+
+    @Test
+    void keepsMcpAvailableAndRetriesAfterGeneratedConfigurationIsCorrected(@TempDir Path projectDirectory)
+            throws Exception {
+        String[] initialArguments = {"--project-dir", projectDirectory.toString()};
+        String[] reloadedArguments = {
+                "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start"
+        };
+        DevServerConfig initial = DevServerConfig.fromArgs(initialArguments);
+
+        try (DevServer devServer = new DevServer(
+                initial, () -> DevServerConfig.fromArgs(reloadedArguments)).start()) {
+            String sessionId = devServer.session().sessionId();
+            Path projectConfig = projectDirectory.resolve(DevProjectConfig.FILE);
+            Files.createDirectories(projectConfig.getParent());
+            Files.writeString(projectConfig, "version: 99\n");
+            Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
+
+            assertTrue(await(() -> "failed".equals(devServer.session().compile().state())),
+                       () -> "Invalid generated config was not reported: " + devServer.session());
+            assertEquals("running", devServer.session().status());
+            assertEquals("running", devServer.session().mcp().state());
+            assertEquals("waiting-for-project", devServer.session().runtime().state());
+            assertTrue(devServer.agentQueryService().getStatus().activeProblems() > 0);
+
+            Files.writeString(projectConfig, "version: 1\nidp: external\n");
+
+            assertTrue(await(() -> "running".equals(devServer.session().runtime().state())
+                                   && "external".equals(devServer.session().idp().state())),
+                       () -> "Corrected generated config did not activate: " + devServer.session());
+            assertEquals(sessionId, devServer.session().sessionId());
+            assertEquals("external", devServer.session().idp().state());
+            assertTrue(await(() -> devServer.agentQueryService().getStatus().activeProblems() == 0),
+                         () -> "Problems remained after recovery: "
+                               + devServer.agentQueryService().getActiveProblems(AgentSelector.all(), 20));
+        }
+    }
 
     @Test
     void startsEmbeddedRuntimeAndProxyOnDynamicPorts(@TempDir Path projectDirectory) throws Exception {
@@ -354,6 +460,17 @@ class DevServerLifecycleTest {
             Thread.sleep(50);
         }
         return !process.isAlive();
+    }
+
+    private static boolean await(BooleanSupplier condition) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return true;
+            }
+            Thread.sleep(25);
+        }
+        return condition.getAsBoolean();
     }
 
     private static String javaExecutable() {

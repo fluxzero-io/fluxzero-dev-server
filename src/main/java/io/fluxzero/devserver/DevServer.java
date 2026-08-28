@@ -32,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -46,6 +47,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.IntPredicate;
+import java.util.function.Supplier;
 import java.util.function.UnaryOperator;
 
 /**
@@ -56,13 +58,16 @@ public class DevServer implements AutoCloseable {
     private static final int MAX_DISPLAYED_TEST_SELECTORS = 4;
     private static final int MAX_TEST_SCOPE_LENGTH = 96;
 
-    private final DevServerConfig config;
+    private volatile DevServerConfig config;
+    private final Supplier<DevServerConfig> configReloader;
     private final IntPredicate dynamicPortConfirmation;
     private final TerminalProgress terminalProgress;
     private final DevSessionStore sessionStore;
     private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(2);
     private final FrontendUpdateCoordinator frontendUpdates;
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean projectActivationStarted = new AtomicBoolean();
     private volatile DevLogStore devLogStore;
 
     private volatile DevSession session;
@@ -93,6 +98,7 @@ public class DevServer implements AutoCloseable {
     private volatile EmbeddedLogCapture embeddedLogCapture;
     private volatile AgentQueryService agentQueryService;
     private volatile DevMcpServer mcpServer;
+    private volatile SourceWatcher greenfieldWatcher;
     private volatile String runtimeBaseUrl;
     private volatile String proxyUrl;
     private volatile String publicUrl;
@@ -104,15 +110,25 @@ public class DevServer implements AutoCloseable {
     private volatile long startupStartedNanos;
 
     public DevServer(DevServerConfig config) {
-        this(config, DevServer::confirmDynamicPort);
+        this(config, () -> config, DevServer::confirmDynamicPort, TerminalProgress.system());
     }
 
     DevServer(DevServerConfig config, IntPredicate dynamicPortConfirmation) {
-        this(config, dynamicPortConfirmation, TerminalProgress.system());
+        this(config, () -> config, dynamicPortConfirmation, TerminalProgress.system());
     }
 
     DevServer(DevServerConfig config, IntPredicate dynamicPortConfirmation, TerminalProgress terminalProgress) {
-        this.config = config;
+        this(config, () -> config, dynamicPortConfirmation, terminalProgress);
+    }
+
+    DevServer(DevServerConfig config, Supplier<DevServerConfig> configReloader) {
+        this(config, configReloader, DevServer::confirmDynamicPort, TerminalProgress.system());
+    }
+
+    DevServer(DevServerConfig config, Supplier<DevServerConfig> configReloader,
+              IntPredicate dynamicPortConfirmation, TerminalProgress terminalProgress) {
+        this.config = Objects.requireNonNull(config, "config");
+        this.configReloader = Objects.requireNonNull(configReloader, "configReloader");
         this.dynamicPortConfirmation = dynamicPortConfirmation;
         this.terminalProgress = terminalProgress;
         this.effectiveGatewayPort = config.gatewayPort();
@@ -125,13 +141,16 @@ public class DevServer implements AutoCloseable {
     }
 
     public synchronized DevServer start() {
-        if (config.backendEnabled() ? runtimeServer != null : devGateway != null) {
+        if (!started.compareAndSet(false, true)) {
             return this;
         }
+        boolean greenfield = greenfieldBootstrap(config);
         if (config.backendEnabled() && (config.watch() || config.compileOnStart())) {
-            config.projects().forEach(project -> DevProjectLayout.requireBuildProject(project.directory()));
+            DevProjectLayout.requireBuildProjectOrGreenfieldWorkspace(config);
         }
-        validatePublicPort();
+        if (!greenfield) {
+            validatePublicPort();
+        }
         sessionLock = sessionStore.acquireLock();
         OnePasswordEnvironment.cleanupReferenceFiles(config.projectDirectory());
         try {
@@ -155,41 +174,160 @@ public class DevServer implements AutoCloseable {
             lifetime = new DevServerLifetime(config, this::requestShutdown);
             lifetime.start(scheduler);
             startMcp();
-            startServices();
-            if (config.backendEnabled()) {
-                registerReadinessMonitor();
-                startRuntime();
-                startProxy();
+            if (greenfield) {
+                startGreenfieldBootstrap();
             } else {
-                skipBackend();
+                startProjectInfrastructure();
+                finishProjectInfrastructureStartup();
             }
-            startFrontend();
-            startGateway();
-            launchFrontend();
-            if (config.backendEnabled()) {
-                startIdp();
-                commandPipeline = new DevCommandPipeline(
-                        config, sessionStore, runtimeBaseUrl, this::updateCommandStatus, this::print,
-                        session.sessionId());
-                updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
-                initializeProjects();
-            }
-            updateSession(current -> current.withStatus("running"));
-            recordEnvironmentDetails();
-            if (config.backendEnabled() && config.compileOnStart()) {
-                projects.values().forEach(ProjectRuntime::requestInitialCompile);
-            } else if (config.frontends().isEmpty()) {
-                terminalProgress.stop();
-            }
-            if (config.backendEnabled() && config.watch()) {
-                projects.values().forEach(ProjectRuntime::startWatcher);
-            }
-            reportStartupOutcome();
             return this;
         } catch (RuntimeException | LinkageError e) {
             close();
             throw e;
         }
+    }
+
+    private static boolean greenfieldBootstrap(DevServerConfig config) {
+        return config.backendEnabled() && (config.watch() || config.compileOnStart())
+               && DevProjectLayout.isGreenfieldWorkspace(config);
+    }
+
+    private void startGreenfieldBootstrap() {
+        String detail = "waiting for a Maven or Gradle project to be generated in "
+                        + config.projectDirectory() + "; keep this session and create the project in that exact root";
+        updateSession(current -> current
+                .withRuntime(waitingForProject("runtime", detail))
+                .withProxy(waitingForProject("proxy", detail))
+                .withIdp(waitingForProject("idp", detail))
+                .withApp(waitingForProject("app", detail))
+                .withReload(waitingForProject("reload", detail))
+                .withCompile(waitingForProject("compile", detail))
+                .withTests(waitingForProject("tests", detail))
+                .withCommands(waitingForProject("commands", detail))
+                .withStatus("running"));
+        try {
+            greenfieldWatcher = new SourceWatcher(config, scheduler, this::activateGeneratedProject);
+            greenfieldWatcher.start();
+        } catch (Exception e) {
+            throw new DevServerStartupException("Could not watch the greenfield workspace", e);
+        }
+        record("[project] " + detail);
+        recordBootstrapDetails();
+        terminalProgress.stop();
+    }
+
+    private static DevSession.ServiceStatus waitingForProject(String name, String detail) {
+        return DevSession.ServiceStatus.stopped(name).withState("waiting-for-project", detail);
+    }
+
+    private void activateGeneratedProject(Set<Path> ignoredChanges) {
+        activity();
+        if (closed.get() || !DevProjectLayout.isBuildProject(config.projectDirectory())
+            || !projectActivationStarted.compareAndSet(false, true)) {
+            return;
+        }
+        DevServerConfig refreshed;
+        try {
+            refreshed = configReloader.get();
+            if (!refreshed.projectDirectory().equals(config.projectDirectory())) {
+                throw new DevServerStartupException("Reloaded dev configuration changed the project root");
+            }
+            DevProjectLayout.requireBuildProjectOrGreenfieldWorkspace(refreshed);
+            effectiveGatewayPort = refreshed.gatewayPort();
+            validatePublicPort(refreshed);
+        } catch (RuntimeException e) {
+            String detail = summarize(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            try {
+                devLogStore.observeStatus("project", "infrastructure", "project", null, "failed", detail);
+                updateSession(current -> current.withCompile(
+                        DevSession.ServiceStatus.failed("compile", "project activation deferred: " + detail)));
+                print("[project] activation deferred: " + detail);
+            } finally {
+                projectActivationStarted.set(false);
+            }
+            return;
+        }
+
+        try {
+            config = refreshed;
+            restartLifetime();
+            updateSession(current -> current
+                    .withApp(DevSession.ServiceStatus.stopped("app"))
+                    .withReload(DevSession.ServiceStatus.stopped("reload"))
+                    .withCompile(DevSession.ServiceStatus.stopped("compile"))
+                    .withTests(DevSession.ServiceStatus.stopped("tests"))
+                    .withCommands(DevSession.ServiceStatus.stopped("commands"))
+                    .withStatus("starting"));
+            devLogStore.observeStatus("project", "infrastructure", "project", null, "starting",
+                                      "Maven or Gradle project detected");
+            record("[project] build project detected; starting the Fluxzero development environment");
+            startProjectInfrastructure();
+            closeQuietly(greenfieldWatcher);
+            greenfieldWatcher = null;
+            finishProjectInfrastructureStartup();
+            devLogStore.observeStatus("project", "infrastructure", "project", null, "running",
+                                      "project infrastructure started");
+        } catch (RuntimeException | LinkageError e) {
+            String detail = summarize(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            devLogStore.observeStatus("project", "infrastructure", "project", null, "failed", detail);
+            updateSession(current -> current.withStatus("failed"));
+            print("[project] infrastructure failed: " + detail);
+            requestShutdown("project infrastructure failed: " + detail);
+        }
+    }
+
+    private void restartLifetime() {
+        closeQuietly(lifetime);
+        lifetime = new DevServerLifetime(config, this::requestShutdown);
+        lifetime.start(scheduler);
+    }
+
+    private void startProjectInfrastructure() {
+        startServices();
+        if (config.backendEnabled()) {
+            registerReadinessMonitor();
+            startRuntime();
+            startProxy();
+        } else {
+            skipBackend();
+        }
+        startFrontend();
+        startGateway();
+        launchFrontend();
+        if (config.backendEnabled()) {
+            startIdp();
+            commandPipeline = new DevCommandPipeline(
+                    config, sessionStore, runtimeBaseUrl, this::updateCommandStatus, this::print,
+                    session.sessionId());
+            updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
+            initializeProjects();
+        }
+    }
+
+    private void finishProjectInfrastructureStartup() {
+        updateSession(current -> current.withStatus("running"));
+        recordEnvironmentDetails();
+        List<ProjectRuntime> initialCompileProjects = config.backendEnabled() && config.compileOnStart()
+                ? projects.values().stream().filter(ProjectRuntime::hasBuildProject).toList()
+                : List.of();
+        initialCompileProjects.forEach(ProjectRuntime::requestInitialCompile);
+        if (initialCompileProjects.isEmpty() && config.frontends().isEmpty()) {
+            terminalProgress.stop();
+        }
+        if (config.backendEnabled() && config.watch()) {
+            projects.values().forEach(ProjectRuntime::startWatcher);
+        }
+        reportStartupOutcome();
+    }
+
+    private void recordBootstrapDetails() {
+        if (mcpServer != null) {
+            record("MCP:     " + mcpServer.url());
+        }
+        record("Session: " + sessionStore.directory().resolve(DevSessionStore.SESSION_FILE));
+        record("Log:     " + devLogStore.combinedLog());
+        record("Events:  " + devLogStore.eventsFile());
+        record("Problems: " + devLogStore.diagnosticsFile());
     }
 
     private void initializeProjects() {
@@ -205,13 +343,17 @@ public class DevServer implements AutoCloseable {
     }
 
     private void validatePublicPort() {
-        if (config.gatewayPort() == 0) {
+        validatePublicPort(config);
+    }
+
+    private void validatePublicPort(DevServerConfig candidate) {
+        if (candidate.gatewayPort() == 0) {
             return;
         }
         try {
-            DevGateway.requireAvailablePort(config.gatewayPort());
+            DevGateway.requireAvailablePort(candidate.gatewayPort());
         } catch (DevServerStartupException e) {
-            if (!dynamicPortConfirmation.test(config.gatewayPort())) {
+            if (!dynamicPortConfirmation.test(candidate.gatewayPort())) {
                 throw e;
             }
             effectiveGatewayPort = 0;
@@ -1354,6 +1496,7 @@ public class DevServer implements AutoCloseable {
         if (heartbeatTask != null) {
             heartbeatTask.cancel(true);
         }
+        closeQuietly(greenfieldWatcher);
         sessionStore.invalidateCommandStatus(
                 session.sessionId(), "runtime session stopped; command will run again in the next session");
         stopSession(shutdownDetail.get());
@@ -1563,6 +1706,10 @@ public class DevServer implements AutoCloseable {
 
         private boolean hasApps() {
             return currentApps.keySet().stream().anyMatch(launchId -> launchId.startsWith(launchPrefix()));
+        }
+
+        private boolean hasBuildProject() {
+            return DevProjectLayout.isBuildProject(config.projectDirectory());
         }
 
         private boolean healthy() {
@@ -1784,12 +1931,18 @@ public class DevServer implements AutoCloseable {
     }
 
     private void printProjectOutput(String projectId, String message) {
-        if (projects.size() == 1) {
-            print(message);
+        if (closed.get()) {
             return;
         }
-        print(message.replaceFirst("^\\[([^]]+)]", "[$1 "
-                + java.util.regex.Matcher.quoteReplacement(projectId) + "]"));
+        DevLogStore logStore = devLogStore;
+        if (logStore != null) {
+            logStore.accept(message, projectId);
+        }
+        String displayMessage = projects.size() == 1 ? message : message.replaceFirst(
+                "^\\[([^]]+)]", "[$1 " + java.util.regex.Matcher.quoteReplacement(projectId) + "]");
+        if (browserReadyAnnounced.get() && terminalVisible(displayMessage)) {
+            terminalProgress.println(terminalProgress.currentTime() + "  " + terminalMessage(displayMessage));
+        }
     }
 
     private record PendingReadiness(String clientId, CompletableFuture<Void> ready,

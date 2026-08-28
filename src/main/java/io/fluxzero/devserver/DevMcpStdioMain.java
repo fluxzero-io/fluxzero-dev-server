@@ -92,23 +92,19 @@ public final class DevMcpStdioMain {
                 remoteClient.initialize();
                 List<McpServerFeatures.SyncToolSpecification> tools = remoteClient.listTools().tools().stream()
                         .map(tool -> new McpServerFeatures.SyncToolSpecification(
-                                tool, (exchange, request) -> remoteClient.callTool(request)))
+                                tool, (exchange, request) -> forwardTool(remoteClient, request)))
                         .toList();
                 List<McpServerFeatures.SyncResourceSpecification> resources = remoteClient.listResources()
                         .resources().stream()
                         .map(resource -> new McpServerFeatures.SyncResourceSpecification(
-                                resource, (exchange, request) -> remoteClient.readResource(request)))
+                                resource, (exchange, request) -> forwardResource(remoteClient, request)))
                         .toList();
 
                 JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(new ObjectMapper());
                 StdioServerTransportProvider transport = new StdioServerTransportProvider(jsonMapper, input, output);
                 McpSyncServer server = McpServer.sync(transport)
                         .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
-                        .instructions("Read-only access to the active Fluxzero development environment. The control "
-                                      + "plane may connect while applications are still starting. Call get_status "
-                                      + "immediately. If activeProblems is non-zero, call get_active_problems. Then "
-                                      + "follow the returned cursor with wait_for_change until startup completes or "
-                                      + "reports a concrete failure.")
+                        .instructions(DevMcpServer.INSTRUCTIONS)
                         .capabilities(McpSchema.ServerCapabilities.builder()
                                               .tools(false)
                                               .resources(true, false)
@@ -142,11 +138,29 @@ public final class DevMcpStdioMain {
                         McpSyncServer server = localServer.get();
                         if (server != null) {
                             contents.stream().map(McpSchema.ResourceContents::uri).distinct()
-                                    .forEach(uri -> server.notifyResourcesUpdated(
-                                            new McpSchema.ResourcesUpdatedNotification(uri)));
+                                    .forEach(uri -> server.getAsyncServer().notifyResourcesUpdated(
+                                                    new McpSchema.ResourcesUpdatedNotification(uri))
+                                            .onErrorComplete()
+                                            .subscribe());
                         }
                     })
                     .build();
+        }
+
+        private static McpSchema.CallToolResult forwardTool(
+                McpSyncClient remoteClient, McpSchema.CallToolRequest request
+        ) {
+            synchronized (remoteClient) {
+                return remoteClient.callTool(request);
+            }
+        }
+
+        private static McpSchema.ReadResourceResult forwardResource(
+                McpSyncClient remoteClient, McpSchema.ReadResourceRequest request
+        ) {
+            synchronized (remoteClient) {
+                return remoteClient.readResource(request);
+            }
         }
 
         private static Path tokenFile(Path projectDirectory, DevSession session) {

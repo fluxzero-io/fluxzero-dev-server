@@ -38,7 +38,9 @@ public final class DevServerMain {
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
         DevServer server;
         try {
-            server = new DevServer(DevServerConfig.fromArgs(args));
+            String[] launchArguments = args.clone();
+            server = new DevServer(DevServerConfig.fromArgs(launchArguments),
+                                   () -> DevServerConfig.fromArgs(launchArguments));
         } catch (IllegalArgumentException | LinkageError e) {
             reportStartupFailure(e);
             return;
