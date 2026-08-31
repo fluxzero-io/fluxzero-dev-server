@@ -14,12 +14,23 @@
 
 package io.fluxzero.devserver;
 
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonValue;
 
-/** Bounded snapshot of currently active problems. */
-public record AgentProblemPage(AgentCursor cursor, List<DevProblem> problems, int activeProblemCount,
-                               boolean truncated) {
-    public AgentProblemPage {
-        problems = List.copyOf(problems);
+/** A cursor-ordered transition in the selected active problem set. */
+public record AgentProblemChange(
+        long sequence,
+        Type type,
+        AgentProblemSummary problem,
+        String reason
+) {
+    public enum Type {
+        ADDED,
+        CHANGED,
+        RESOLVED;
+
+        @JsonValue
+        public String value() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
     }
 }

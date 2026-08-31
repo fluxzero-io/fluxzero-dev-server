@@ -52,14 +52,14 @@ final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
-    static final String INSTRUCTIONS = "Read-only control of the active Fluxzero dev environment. Call get_status "
-                                       + "immediately; retain cursor.sessionId and cursor.sequence. After every "
-                                       + "edit, call wait_for_change with those values as sessionId and "
-                                       + "afterSequence. Never omit them. Drain every hasMore page from the returned "
-                                       + "cursor, continuing until relevant compile, startup, and tests are "
-                                       + "terminal. If compile is waiting-for-project, generate in "
-                                       + "session.projectDirectory without replacing this MCP session. For "
-                                       + "activeProblems, call get_active_problems.";
+    static final String INSTRUCTIONS = "Read-only Fluxzero dev control. Call get_status immediately and retain its "
+                                       + "cursor. After each edit, call wait_for_change with sessionId and "
+                                       + "afterSequence from that cursor; drain all hasMore pages. Apply "
+                                       + "problemChanges by id. activeProblemCount is the selected total. After "
+                                       + "drainage, call get_active_problems on a count mismatch, sessionChanged, or "
+                                       + "lost state. Continue until relevant work is terminal. If compile is "
+                                       + "waiting-for-project, generate in session.projectDirectory without "
+                                       + "replacing this MCP session.";
 
     private final Server server;
     private final McpSyncServer mcpServer;
@@ -191,8 +191,10 @@ final class DevMcpServer implements AutoCloseable {
                      objectMapper),
                 tool("get_test_status", "Return background test and startup-command status.", Map.of(),
                      arguments -> queryService.getTestStatus(), objectMapper),
-                tool("wait_for_change", "Wait for a matching startup or development event and return its structured "
-                                        + "delta together with currently active problems. After an edit, pass "
+                tool("wait_for_change", "Wait for matching events or active-problem transitions after a cursor. "
+                                        + "problemChanges contains compact added, changed, or resolved summaries; "
+                                        + "use get_active_problems for full details. activeProblemCount is the "
+                                        + "current selected total. After an edit, pass "
                                         + "sessionId and afterSequence from the prior cursor. If hasMore is true, "
                                         + "call again immediately with the returned cursor.",
                      logProperties(true), arguments -> queryService.waitForChange(

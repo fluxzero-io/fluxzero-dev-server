@@ -106,6 +106,25 @@ The global index under `~/.fluxzero/dev/environments/` contains only project pat
 Current status, URLs, and application names are read from each project's `.fluxzero/dev/session.json`; MCP tokens,
 resolved environment variables, and other secrets are never copied into the index.
 
+### Agent Problem Deltas
+
+The MCP `wait_for_change` tool is a cursor delta. Its `problemChanges` field contains only selected problems that were
+`added`, `changed`, or `resolved` after the supplied cursor; it never repeats the complete active problem snapshot.
+Each transition carries a compact problem summary and service identity, but no potentially large `detail` field.
+Every response also includes `activeProblemCount`, the current number of active problems matching the same selector.
+An empty `problemChanges` list therefore does not mean that the environment is healthy; only a zero count means that
+the selected active set is empty.
+
+Clients apply added and changed records by problem id and remove resolved records. They must drain every `hasMore`
+page before comparing their local map with `activeProblemCount`. A count mismatch, lost client state, or
+`sessionChanged: true` requires a fresh `get_active_problems` baseline. That explicit snapshot tool continues to return
+full `DevProblem` records, including details, together with its cursor, total `activeProblemCount`, and `truncated`
+marker. Selectors apply identically to transitions and snapshots, including resolutions whose causal lifecycle event
+has a lower log level than the resolved problem.
+
+Problem transitions are ordered by the shared event cursor. All events and transitions with the same causal sequence
+are returned as one indivisible page group, so retrying a request from the same cursor remains safe.
+
 Launchers resolve the latest compatible stable `1.x` release from Maven Central. A specific development or
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.

@@ -36,19 +36,20 @@ public final class AgentQueryService {
 
     public AgentStatus getStatus() {
         DevDiagnostics diagnostics = logStore.diagnostics();
-        return new AgentStatus(currentCursor(), sessionSupplier.get(), diagnostics.activeCount(),
+        return new AgentStatus(cursor(diagnostics), sessionSupplier.get(), diagnostics.activeCount(),
                                diagnostics.errors(), diagnostics.warnings());
     }
 
     public AgentProblemPage getActiveProblems(AgentSelector selector, int requestedLimit) {
         AgentSelector effectiveSelector = selector == null ? AgentSelector.all() : selector;
         int limit = limit(requestedLimit);
-        List<DevProblem> matching = logStore.diagnostics().problems().stream()
+        DevDiagnostics diagnostics = logStore.diagnostics();
+        List<DevProblem> matching = diagnostics.problems().stream()
                 .filter(effectiveSelector::matches)
-                .limit(limit + 1L)
                 .toList();
         boolean truncated = matching.size() > limit;
-        return new AgentProblemPage(currentCursor(), truncated ? matching.subList(0, limit) : matching, truncated);
+        return new AgentProblemPage(cursor(diagnostics), truncated ? matching.subList(0, limit) : matching,
+                                    matching.size(), truncated);
     }
 
     public AgentLogPage getLogs(AgentCursor cursor, AgentSelector selector, int requestedLimit) {
@@ -69,24 +70,34 @@ public final class AgentQueryService {
                                      int requestedLimit) {
         AgentCursor current = currentCursor();
         if (cursor != null && !current.sessionId().equals(cursor.sessionId())) {
-            return new AgentChange(current, true, false, List.of(), activeProblems(selector, requestedLimit), false);
+            AgentProblemPage problems = getActiveProblems(selector, requestedLimit);
+            return new AgentChange(problems.cursor(), true, false, List.of(), List.of(),
+                                   problems.activeProblemCount(), false);
         }
         Duration timeout = boundedTimeout(requestedTimeout);
         long deadline = System.nanoTime() + timeout.toNanos();
         long scanSequence = cursor == null ? current.sequence() : cursor.sequence();
+        AgentSelector effectiveSelector = selector == null ? AgentSelector.all() : selector;
         while (true) {
-            AgentLogPage page = logPage(scanSequence, selector, requestedLimit, false);
-            if (!page.events().isEmpty()) {
-                return new AgentChange(page.cursor(), false, false, page.events(),
-                                       activeProblems(selector, requestedLimit), page.hasMore());
+            DevLogStore.AgentChangeSlice page = logStore.readAgentChanges(
+                    scanSequence, limit(requestedLimit), effectiveSelector::matches, effectiveSelector::matches);
+            if (!page.events().isEmpty() || !page.problemChanges().isEmpty()) {
+                return change(page, false);
             }
-            scanSequence = Math.max(scanSequence, logStore.lastSequence());
+            scanSequence = Math.max(scanSequence, page.cursorSequence());
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0 || !logStore.awaitEventAfter(scanSequence, Duration.ofNanos(remaining))) {
-                return new AgentChange(new AgentCursor(current.sessionId(), logStore.lastSequence()), false, true,
-                                       List.of(), activeProblems(selector, requestedLimit), false);
+                DevLogStore.AgentChangeSlice finalPage = logStore.readAgentChanges(
+                        scanSequence, limit(requestedLimit), effectiveSelector::matches,
+                        effectiveSelector::matches);
+                return change(finalPage, finalPage.events().isEmpty() && finalPage.problemChanges().isEmpty());
             }
         }
+    }
+
+    private AgentChange change(DevLogStore.AgentChangeSlice page, boolean timedOut) {
+        return new AgentChange(new AgentCursor(logStore.sessionId(), page.cursorSequence()), false, timedOut,
+                               page.events(), page.problemChanges(), page.activeProblemCount(), page.hasMore());
     }
 
     private AgentLogPage logPage(long afterSequence, AgentSelector selector, int requestedLimit,
@@ -100,12 +111,12 @@ public final class AgentQueryService {
         return new AgentLogPage(new AgentCursor(logStore.sessionId(), nextSequence), events, sessionChanged, hasMore);
     }
 
-    private List<DevProblem> activeProblems(AgentSelector selector, int requestedLimit) {
-        return getActiveProblems(selector, requestedLimit).problems();
-    }
-
     private AgentCursor currentCursor() {
         return new AgentCursor(logStore.sessionId(), logStore.lastSequence());
+    }
+
+    private static AgentCursor cursor(DevDiagnostics diagnostics) {
+        return new AgentCursor(diagnostics.sessionId(), diagnostics.lastEventSequence());
     }
 
     private static int limit(int requestedLimit) {

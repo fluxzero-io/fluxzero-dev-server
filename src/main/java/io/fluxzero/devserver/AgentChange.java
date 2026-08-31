@@ -22,11 +22,12 @@ public record AgentChange(
         boolean sessionChanged,
         boolean timedOut,
         List<DevLogEvent> events,
-        List<DevProblem> activeProblems,
+        List<AgentProblemChange> problemChanges,
+        int activeProblemCount,
         boolean hasMore
 ) {
     public AgentChange {
         events = List.copyOf(events);
-        activeProblems = List.copyOf(activeProblems);
+        problemChanges = List.copyOf(problemChanges);
     }
 }

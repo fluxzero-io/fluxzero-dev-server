@@ -31,6 +31,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Predicate;
@@ -173,8 +174,14 @@ final class DevLogStore implements AutoCloseable {
         if (closed || instanceId == null) {
             return;
         }
-        resolveProblems(problem -> Objects.equals(serviceId, problem.serviceId())
-                                   && Objects.equals(instanceId, problem.instanceId()), reason);
+        Predicate<DevProblem> matchingInstance = problem -> Objects.equals(serviceId, problem.serviceId())
+                                                          && Objects.equals(instanceId, problem.instanceId());
+        if (activeProblems.values().stream().noneMatch(matchingInstance)) {
+            return;
+        }
+        writeEvent(INFO, "app", "application", serviceId, instanceId, null, "lifecycle",
+                   "resolved" + formatDetail(reason));
+        resolveProblems(matchingInstance, reason);
     }
 
     synchronized List<DevLogEvent> readEvents(long afterSequence, int requestedLimit, String serviceId,
@@ -207,6 +214,46 @@ final class DevLogStore implements AutoCloseable {
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read Fluxzero dev events from " + eventsFile, e);
         }
+    }
+
+    synchronized List<AgentProblemChange> readProblemChanges(long afterSequence, int requestedLimit,
+                                                              Predicate<DevProblem> predicate) {
+        int limit = Math.max(1, Math.min(requestedLimit, 500));
+        return readProblemBatch(afterSequence, limit, predicate).records();
+    }
+
+    synchronized AgentChangeSlice readAgentChanges(long afterSequence, int requestedLimit,
+                                                    Predicate<DevLogEvent> eventPredicate,
+                                                    Predicate<DevProblem> problemPredicate) {
+        int limit = Math.max(1, Math.min(requestedLimit, 500));
+        HistoryBatch<DevLogEvent> eventBatch = readEventBatch(afterSequence, limit, eventPredicate);
+        HistoryBatch<AgentProblemChange> problemBatch = readProblemBatch(afterSequence, limit, problemPredicate);
+        Map<Long, SequenceGroup> groups = new TreeMap<>();
+        eventBatch.records().forEach(event -> groups.computeIfAbsent(event.sequence(), ignored -> new SequenceGroup())
+                .events().add(event));
+        problemBatch.records().forEach(change -> groups.computeIfAbsent(change.sequence(),
+                                                                         ignored -> new SequenceGroup())
+                .problemChanges().add(change));
+
+        List<DevLogEvent> events = new ArrayList<>();
+        List<AgentProblemChange> problemChanges = new ArrayList<>();
+        long cursorSequence = sequence.get();
+        int resultCount = 0;
+        boolean omittedLoadedGroup = false;
+        for (Map.Entry<Long, SequenceGroup> entry : groups.entrySet()) {
+            if (resultCount >= limit) {
+                omittedLoadedGroup = true;
+                break;
+            }
+            SequenceGroup group = entry.getValue();
+            events.addAll(group.events());
+            problemChanges.addAll(group.problemChanges());
+            resultCount += group.events().size() + group.problemChanges().size();
+            cursorSequence = entry.getKey();
+        }
+        boolean hasMore = omittedLoadedGroup || eventBatch.hasMore() || problemBatch.hasMore();
+        int activeProblemCount = Math.toIntExact(activeProblems.values().stream().filter(problemPredicate).count());
+        return new AgentChangeSlice(cursorSequence, events, problemChanges, activeProblemCount, hasMore);
     }
 
     synchronized DevDiagnostics diagnostics() {
@@ -397,17 +444,79 @@ final class DevLogStore implements AutoCloseable {
     }
 
     private List<Path> eventFiles() {
+        return historyFiles(eventsFile);
+    }
+
+    private List<Path> problemFiles() {
+        return historyFiles(problemsFile);
+    }
+
+    private List<Path> historyFiles(Path currentFile) {
         List<Path> files = new ArrayList<>();
         for (int index = maxArchives; index >= 1; index--) {
-            Path archive = eventsFile.resolveSibling(eventsFile.getFileName() + "." + index);
+            Path archive = currentFile.resolveSibling(currentFile.getFileName() + "." + index);
             if (Files.isRegularFile(archive)) {
                 files.add(archive);
             }
         }
-        if (Files.isRegularFile(eventsFile)) {
-            files.add(eventsFile);
+        if (Files.isRegularFile(currentFile)) {
+            files.add(currentFile);
         }
         return files;
+    }
+
+    private HistoryBatch<DevLogEvent> readEventBatch(long afterSequence, int limit,
+                                                      Predicate<DevLogEvent> predicate) {
+        try {
+            List<DevLogEvent> matching = new ArrayList<>();
+            long lastSequence = -1;
+            for (Path file : eventFiles()) {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    DevLogEvent event = lineMapper.readValue(line, DevLogEvent.class);
+                    if (event.sequence() <= afterSequence || !predicate.test(event)) {
+                        continue;
+                    }
+                    if (matching.size() >= limit && event.sequence() != lastSequence) {
+                        return new HistoryBatch<>(matching, true);
+                    }
+                    matching.add(event);
+                    lastSequence = event.sequence();
+                }
+            }
+            return new HistoryBatch<>(matching, false);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read Fluxzero dev events from " + eventsFile, e);
+        }
+    }
+
+    private HistoryBatch<AgentProblemChange> readProblemBatch(long afterSequence, int limit,
+                                                               Predicate<DevProblem> predicate) {
+        try {
+            List<AgentProblemChange> matching = new ArrayList<>();
+            long lastSequence = -1;
+            for (Path file : problemFiles()) {
+                for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
+                    if (line.isBlank()) {
+                        continue;
+                    }
+                    ProblemHistoryRecord record = lineMapper.readValue(line, ProblemHistoryRecord.class);
+                    if (record.sequence() <= afterSequence || !predicate.test(record.problem())) {
+                        continue;
+                    }
+                    if (matching.size() >= limit && record.sequence() != lastSequence) {
+                        return new HistoryBatch<>(matching, true);
+                    }
+                    matching.add(record.toAgentChange());
+                    lastSequence = record.sequence();
+                }
+            }
+            return new HistoryBatch<>(matching, false);
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read Fluxzero dev problem history from " + problemsFile, e);
+        }
     }
 
     private static void retainRecentSessions(Path logsDirectory, Path current) throws IOException {
@@ -598,5 +707,38 @@ final class DevLogStore implements AutoCloseable {
     }
 
     record LogPosition(Path file, long line) {
+    }
+
+    record AgentChangeSlice(long cursorSequence, List<DevLogEvent> events,
+                            List<AgentProblemChange> problemChanges, int activeProblemCount, boolean hasMore) {
+        AgentChangeSlice {
+            events = List.copyOf(events);
+            problemChanges = List.copyOf(problemChanges);
+        }
+    }
+
+    private record HistoryBatch<T>(List<T> records, boolean hasMore) {
+        private HistoryBatch {
+            records = List.copyOf(records);
+        }
+    }
+
+    private record SequenceGroup(List<DevLogEvent> events, List<AgentProblemChange> problemChanges) {
+        private SequenceGroup() {
+            this(new ArrayList<>(), new ArrayList<>());
+        }
+    }
+
+    private record ProblemHistoryRecord(long timestamp, long sequence, String state, String reason,
+                                        DevProblem problem) {
+        private AgentProblemChange toAgentChange() {
+            AgentProblemChange.Type type = switch (state) {
+                case "observed" -> problem.occurrences() == 1
+                        ? AgentProblemChange.Type.ADDED : AgentProblemChange.Type.CHANGED;
+                case "resolved" -> AgentProblemChange.Type.RESOLVED;
+                default -> throw new IllegalStateException("Unsupported problem history state: " + state);
+            };
+            return new AgentProblemChange(sequence, type, AgentProblemSummary.from(problem), reason);
+        }
     }
 }
