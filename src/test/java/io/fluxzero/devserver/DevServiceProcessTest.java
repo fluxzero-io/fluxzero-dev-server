@@ -119,8 +119,10 @@ class DevServiceProcessTest {
     }
 
     private static String javaCommand() {
+        Path testClasses = Path.of(URI.create(DevServiceFixtureServer.class.getProtectionDomain()
+                                                       .getCodeSource().getLocation().toExternalForm()));
         return quote(Path.of(System.getProperty("java.home"), "bin", executable("java")).toString())
-               + " -cp " + quote(System.getProperty("java.class.path"));
+               + " -cp " + quote(testClasses.toString());
     }
 
     private static String executable(String name) {
