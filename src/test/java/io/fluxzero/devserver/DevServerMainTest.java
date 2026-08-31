@@ -144,12 +144,15 @@ class DevServerMainTest {
         assertTrue(awaitRunningSession(sessionFile(projectDirectory)), "dev server did not become ready");
         DevSessionStore store = new DevSessionStore(projectDirectory);
         DevSession running = store.readSession().orElseThrow();
+        long runtimePid = running.runtime().pid();
         store.writeCommandStatus(new DevCommandStatus(
                 "succeeded", running.sessionId(), 1, 1, 0, 0, 0,
                 List.of(new DevCommandStatus.Entry("command.json", "hash", "Command", "succeeded", null, 1)), 1));
 
         process.destroyForcibly();
         assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+        assertTrue(awaitStopped(runtimePid),
+                   "version-aligned runtime survived its supervisor");
         ProcessResult status = runControl(projectDirectory, "status");
 
         assertEquals(1, status.exitCode());
@@ -307,6 +310,17 @@ class DevServerMainTest {
             Thread.sleep(50);
         }
         return false;
+    }
+
+    private static boolean awaitStopped(long pid) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (!ProcessUtils.isAlive(pid)) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return !ProcessUtils.isAlive(pid);
     }
 
     private static boolean awaitRegistrySize(Path registryDirectory, int expected) throws Exception {

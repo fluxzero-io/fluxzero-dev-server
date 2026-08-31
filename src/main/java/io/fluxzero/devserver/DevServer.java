@@ -14,14 +14,6 @@
 
 package io.fluxzero.devserver;
 
-import io.fluxzero.common.Registration;
-import io.fluxzero.common.api.ConnectEvent;
-import io.fluxzero.proxy.ProxyServer;
-import io.fluxzero.proxy.ProxyServerConfig;
-import io.fluxzero.testserver.TestServer;
-import io.fluxzero.testserver.metrics.TestServerMetricsMonitor;
-import org.eclipse.jetty.server.Server;
-import org.eclipse.jetty.server.ServerConnector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,7 +46,6 @@ import java.util.function.UnaryOperator;
  * Supervises a local Fluxzero development session.
  */
 public class DevServer implements AutoCloseable {
-    private static final Duration DEV_INITIAL_POSITION_LAG = Duration.ofSeconds(10);
     private static final Logger log = LoggerFactory.getLogger(DevServer.class);
     private static final int MAX_DISPLAYED_TEST_SELECTORS = 4;
     private static final int MAX_TEST_SCOPE_LENGTH = 96;
@@ -75,8 +66,7 @@ public class DevServer implements AutoCloseable {
     private volatile DevSessionStore.DevSessionLock sessionLock;
     private volatile ScheduledFuture<?> heartbeatTask;
     private volatile DevServerLifetime lifetime;
-    private volatile Server runtimeServer;
-    private volatile ProxyServer proxyServer;
+    private volatile VersionAlignedDevRuntime devRuntime;
     private volatile DevGateway devGateway;
     private volatile int effectiveGatewayPort;
     private volatile ManagedIdpService idpService;
@@ -95,7 +85,6 @@ public class DevServer implements AutoCloseable {
     private final Map<String, PendingReadiness> appReadiness = new ConcurrentHashMap<>();
     private final AppTerminalFilter appTerminalFilter = new AppTerminalFilter();
     private final FrontendTerminalFilter frontendTerminalFilter = new FrontendTerminalFilter();
-    private volatile Registration metricsRegistration = Registration.noOp();
     private volatile EmbeddedLogCapture embeddedLogCapture;
     private volatile AgentQueryService agentQueryService;
     private volatile DevMcpServer mcpServer;
@@ -286,9 +275,7 @@ public class DevServer implements AutoCloseable {
     private void startProjectInfrastructure() {
         startServices();
         if (config.backendEnabled()) {
-            registerReadinessMonitor();
-            startRuntime();
-            startProxy();
+            startRuntimeInfrastructure();
         } else {
             skipBackend();
         }
@@ -452,11 +439,49 @@ public class DevServer implements AutoCloseable {
         routed.forEach(ProjectRuntime::requestCompile);
     }
 
-    private void startRuntime() {
-        runtimeServer = TestServer.startServer(0, DEV_INITIAL_POSITION_LAG);
-        int port = localPort(runtimeServer);
-        runtimeBaseUrl = "ws://localhost:" + port;
-        updateRuntimeStatus(DevSession.ServiceStatus.running("runtime", runtimeBaseUrl, port, null, "embedded"));
+    private void startRuntimeInfrastructure() {
+        FluxzeroSdkVersionDetector.Selection selection = FluxzeroSdkVersionDetector.detect(config);
+        if (!selection.fallbackProjects().isEmpty()) {
+            record("[runtime] Fluxzero SDK version could not be determined for "
+                   + String.join(", ", selection.fallbackProjects()) + "; using dev-server default "
+                   + selection.version() + ". Set " + FluxzeroSdkVersionDetector.VERSION_OVERRIDE_ENV
+                   + " for a custom build model.");
+        }
+        terminalProgress.updateTask("runtime", "Runtime", "resolving Fluxzero SDK " + selection.version());
+        try {
+            int requestedProxyPort = config.frontends().isEmpty() ? effectiveGatewayPort : 0;
+            devRuntime = VersionAlignedDevRuntime.start(
+                    config, session.sessionId(), selection, requestedProxyPort,
+                    this::applicationRegistered, this::printRuntimeOutput, this::runtimeFailedUnexpectedly);
+            VersionAlignedDevRuntime.Ready ready = devRuntime.awaitReady(config.startupTimeout());
+            runtimeBaseUrl = "ws://localhost:" + ready.runtimePort();
+            proxyUrl = "http://localhost:" + ready.proxyPort();
+
+            Map<String, String> metadata = new LinkedHashMap<>(devRuntime.metadata());
+            selection.projectVersions().forEach((project, version) ->
+                    metadata.put("project." + project + ".sdkVersion", version));
+            if (!selection.fallbackProjects().isEmpty()) {
+                metadata.put("versionDetection", "fallback");
+                metadata.put("fallbackProjects", String.join(",", selection.fallbackProjects()));
+            } else {
+                metadata.put("versionDetection", selection.overridden() ? "override" : "build");
+            }
+            String detail = "Fluxzero SDK " + ready.version() + " runtime";
+            updateRuntimeStatus(DevSession.ServiceStatus.running(
+                    "runtime", runtimeBaseUrl, ready.runtimePort(), devRuntime.pid(), detail)
+                                        .withMetadata(metadata));
+            updateProxyStatus(DevSession.ServiceStatus.running(
+                    "proxy", proxyUrl, ready.proxyPort(), devRuntime.pid(), detail)
+                                      .withMetadata(metadata));
+            record("Runtime SDK: " + ready.version() + " (artifacts "
+                   + (devRuntime.cached() ? "cached" : "resolved") + ")");
+        } catch (RuntimeException e) {
+            updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", oneLine(e.getMessage())));
+            updateProxyStatus(DevSession.ServiceStatus.failed("proxy", oneLine(e.getMessage())));
+            throw e;
+        } finally {
+            terminalProgress.removeTask("runtime");
+        }
     }
 
     private void skipBackend() {
@@ -470,18 +495,6 @@ public class DevServer implements AutoCloseable {
                 .withCompile(DevSession.ServiceStatus.stopped("compile").withState("skipped", detail))
                 .withTests(DevSession.ServiceStatus.stopped("tests").withState("skipped", detail))
                 .withCommands(DevSession.ServiceStatus.stopped("commands").withState("skipped", detail)));
-    }
-
-    private void startProxy() {
-        ProxyServerConfig proxyConfig = ProxyServerConfig.forRuntime(runtimeBaseUrl)
-                .withNamespace(config.namespace())
-                .withMetricsEnabled(false);
-        if (config.frontends().isEmpty()) {
-            proxyConfig = proxyConfig.withPort(effectiveGatewayPort);
-        }
-        proxyServer = ProxyServer.start(proxyConfig);
-        proxyUrl = "http://localhost:" + proxyServer.getPort();
-        updateProxyStatus(DevSession.ServiceStatus.running("proxy", proxyUrl, proxyServer.getPort(), null, "embedded"));
     }
 
     private void startIdp() {
@@ -851,20 +864,16 @@ public class DevServer implements AutoCloseable {
         throw new TimeoutException("app " + candidate.clientId() + " did not register before readiness timeout");
     }
 
-    private void registerReadinessMonitor() {
-        metricsRegistration = TestServerMetricsMonitor.monitor((event, metadata) -> {
-            activity();
-            if (event instanceof ConnectEvent connectEvent) {
-                PendingReadiness pending = appReadiness.get(connectEvent.getClientId());
-                if (pending != null && matchesReadinessClient(pending.clientId(), connectEvent)) {
-                    pending.ready().complete(null);
-                }
-            }
-        });
+    private void applicationRegistered(String clientId) {
+        activity();
+        PendingReadiness pending = appReadiness.get(clientId);
+        if (pending != null && matchesReadinessClient(pending.clientId(), clientId)) {
+            pending.ready().complete(null);
+        }
     }
 
-    static boolean matchesReadinessClient(String expectedClientId, ConnectEvent event) {
-        return expectedClientId.equals(event.getClientId());
+    static boolean matchesReadinessClient(String expectedClientId, String connectedClientId) {
+        return expectedClientId.equals(connectedClientId);
     }
 
     private void updateRuntimeStatus(DevSession.ServiceStatus status) {
@@ -1488,11 +1497,21 @@ public class DevServer implements AutoCloseable {
         }
     }
 
-    private static int localPort(Server server) {
-        if (server.getConnectors().length == 0 || !(server.getConnectors()[0] instanceof ServerConnector connector)) {
-            throw new IllegalStateException("Test server has no TCP connector");
+    private void printRuntimeOutput(ProcessUtils.ProcessOutput output) {
+        if (closed.get()) {
+            return;
         }
-        return connector.getLocalPort();
+        DevLogStore logStore = devLogStore;
+        if (logStore != null) {
+            logStore.process("runtime", "infrastructure", "runtime", null, output.stream(), output.line());
+        }
+    }
+
+    private void runtimeFailedUnexpectedly(String detail) {
+        String summary = "Fluxzero runtime stopped unexpectedly: " + oneLine(detail);
+        updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", summary));
+        updateProxyStatus(DevSession.ServiceStatus.failed("proxy", summary));
+        requestShutdown(summary);
     }
 
     @Override
@@ -1527,15 +1546,7 @@ public class DevServer implements AutoCloseable {
         serviceProcesses.values().forEach(DevServer::closeQuietly);
         serviceProcesses.clear();
         closeQuietly(idpService);
-        cancelQuietly(metricsRegistration);
-        cancelQuietly(proxyServer);
-        if (runtimeServer != null) {
-            try {
-                runtimeServer.stop();
-            } catch (Exception e) {
-                log.debug("Ignored failure while stopping embedded test server", e);
-            }
-        }
+        closeQuietly(devRuntime);
         closeQuietly(sessionLock);
         closeQuietly(embeddedLogCapture);
         closeQuietly(devLogStore);
@@ -1579,17 +1590,6 @@ public class DevServer implements AutoCloseable {
             closeable.close();
         } catch (Exception e) {
             log.debug("Ignored failure while closing dev server resource", e);
-        }
-    }
-
-    private static void cancelQuietly(Registration registration) {
-        if (registration == null) {
-            return;
-        }
-        try {
-            registration.cancel();
-        } catch (Exception e) {
-            log.warn("Failed to cancel dev server registration", e);
         }
     }
 

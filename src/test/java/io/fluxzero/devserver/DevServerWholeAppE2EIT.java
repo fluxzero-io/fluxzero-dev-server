@@ -71,8 +71,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerWholeAppE2EIT {
     private static final String MAIN_CLASS = "com.example.app.App";
     private static final String APP_NAME = "plain-e2e-app";
+    private static final String COMPATIBILITY_SDK_VERSION =
+            System.getProperty("fluxzero.devserver.compatibility.version", "2.0.0-RC1");
     private static final Duration WAIT_TIMEOUT = Duration.ofSeconds(120);
     private static final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void alignsRuntimeAndProxyWithTheApplicationsFluxzeroSdk(@TempDir Path tempDirectory) throws Exception {
+        Path project = copyFixture(tempDirectory, "version-aligned-app", COMPATIBILITY_SDK_VERSION);
+
+        try (DevServer ignored = new DevServer(config(project)).start()) {
+            DevSession session = waitForSession(project, candidate -> "running".equals(candidate.app().state()),
+                                                "version-aligned application ready");
+            assertEquals(COMPATIBILITY_SDK_VERSION, session.runtime().metadata().get("sdkVersion"));
+            assertEquals(COMPATIBILITY_SDK_VERSION, session.proxy().metadata().get("sdkVersion"));
+            assertEquals("isolated", session.runtime().metadata().get("mode"));
+            assertEquals(session.runtime().pid(), session.proxy().pid());
+            assertNotEquals(ProcessHandle.current().pid(), session.runtime().pid());
+            assertTrue(session.app().pid() != null && ProcessUtils.isAlive(session.app().pid()));
+
+            DevDiagnostics diagnostics = objectMapper.readValue(
+                    Path.of(session.observability().diagnostics()).toFile(), DevDiagnostics.class);
+            assertEquals(0, diagnostics.errors(), diagnostics.problems().toString());
+        }
+    }
 
     @Test
     void retriesSeedCommandAfterHandlerIsAdded(@TempDir Path tempDirectory) throws Exception {
@@ -784,6 +806,11 @@ class DevServerWholeAppE2EIT {
     }
 
     private static Path copyFixture(Path tempDirectory, String name) throws IOException, URISyntaxException {
+        return copyFixture(tempDirectory, name, System.getProperty("fluxzero.project.version", "0-SNAPSHOT"));
+    }
+
+    private static Path copyFixture(Path tempDirectory, String name, String version)
+            throws IOException, URISyntaxException {
         URL resource = DevServerWholeAppE2EIT.class.getResource("/e2e-fixtures/plain-app");
         if (resource == null) {
             throw new IllegalStateException("Missing plain-app E2E fixture");
@@ -793,7 +820,6 @@ class DevServerWholeAppE2EIT {
         copyTree(source, target);
         copyMavenWrapper(devServerRepositoryRoot(), target);
         Path pom = target.resolve("pom.xml");
-        String version = System.getProperty("fluxzero.project.version", "0-SNAPSHOT");
         Files.writeString(pom, Files.readString(pom)
                 .replace("@FLUXZERO_VERSION@", version), UTF_8);
         return target;

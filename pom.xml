@@ -39,6 +39,7 @@
         <logback.version>1.5.37</logback.version>
         <lombok.version>1.18.46</lombok.version>
         <mcp.version>2.0.0</mcp.version>
+        <maven.resolver.version>2.0.22</maven.resolver.version>
         <skipPublishing>false</skipPublishing>
     </properties>
 
@@ -116,10 +117,7 @@
         <dependency>
             <groupId>io.fluxzero</groupId>
             <artifactId>test-server</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.fluxzero</groupId>
-            <artifactId>proxy</artifactId>
+            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>io.fluxzero.idp</groupId>
@@ -169,6 +167,11 @@
             <artifactId>lombok</artifactId>
             <scope>provided</scope>
         </dependency>
+        <dependency>
+            <groupId>org.apache.maven.resolver</groupId>
+            <artifactId>maven-resolver-supplier-mvn3</artifactId>
+            <version>${maven.resolver.version}</version>
+        </dependency>
 
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -178,7 +181,25 @@
     </dependencies>
 
     <build>
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+            <resource>
+                <directory>src/main/version</directory>
+                <filtering>true</filtering>
+            </resource>
+        </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.4.0</version>
+                <configuration>
+                    <propertiesEncoding>${project.build.sourceEncoding}</propertiesEncoding>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>

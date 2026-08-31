@@ -37,12 +37,14 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -158,7 +160,7 @@ class DevServerLifecycleTest {
     }
 
     @Test
-    void startsEmbeddedRuntimeAndProxyOnDynamicPorts(@TempDir Path projectDirectory) throws Exception {
+    void startsVersionAlignedRuntimeAndProxyOnDynamicPorts(@TempDir Path projectDirectory) throws Exception {
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, null, "dev-test-app", null,
                 false, false, false,
@@ -183,6 +185,14 @@ class DevServerLifecycleTest {
             assertEquals("running", session.mcp().state());
             assertTrue(session.runtime().port() > 0);
             assertTrue(session.proxy().port() > 0);
+            assertNotNull(session.runtime().pid());
+            assertEquals(session.runtime().pid(), session.proxy().pid());
+            assertNotEquals(ProcessHandle.current().pid(), session.runtime().pid());
+            assertEquals(DevServerVersion.sdkVersion(), session.runtime().metadata().get("sdkVersion"));
+            assertEquals("isolated", session.runtime().metadata().get("mode"));
+            assertTrue(Set.of("hit", "miss").contains(session.runtime().metadata().get("artifactCache")));
+            assertEquals("fallback", session.runtime().metadata().get("versionDetection"));
+            assertEquals("project", session.runtime().metadata().get("fallbackProjects"));
             assertTrue(session.mcp().port() > 0);
             assertNotEquals(session.runtime().port(), session.mcp().port());
             assertNotEquals(session.proxy().port(), session.mcp().port());
@@ -213,6 +223,28 @@ class DevServerLifecycleTest {
         assertEquals("dev server stopped", stoppedJson.path("runtime").path("detail").asText());
         assertEquals(session.runtime().port(), stoppedJson.path("runtime").path("port").asInt());
         assertFalse(Files.exists(mcpTokenFile));
+    }
+
+    @Test
+    void requestsEnvironmentShutdownWhenVersionAlignedRuntimeExits(@TempDir Path projectDirectory) throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "runtime-exit-app", null,
+                false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE,
+                FrontendConfig.none(), List.of(), false, "local", List.of(), 0, IdpMode.EXTERNAL);
+
+        try (DevServer devServer = new DevServer(config).start()) {
+            long runtimePid = devServer.session().runtime().pid();
+            assertNotEquals(ProcessHandle.current().pid(), runtimePid);
+            assertTrue(ProcessHandle.of(runtimePid).orElseThrow().destroyForcibly());
+
+            String reason = devServer.shutdownRequested().get(5, TimeUnit.SECONDS);
+            assertTrue(reason.contains("runtime stopped unexpectedly"), reason);
+            assertTrue(await(() -> "failed".equals(devServer.session().runtime().state())));
+            assertEquals("failed", devServer.session().proxy().state());
+        }
     }
 
     @Test

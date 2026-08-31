@@ -14,6 +14,10 @@
 
 package io.fluxzero.devserver;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.Properties;
+
 final class DevServerVersion {
     private DevServerVersion() {
     }
@@ -21,5 +25,30 @@ final class DevServerVersion {
     static String current() {
         String version = DevServerVersion.class.getPackage().getImplementationVersion();
         return version == null || version.isBlank() ? "development" : version;
+    }
+
+    static String sdkVersion() {
+        return buildProperty("fluxzero.sdk.version");
+    }
+
+    static String logbackVersion() {
+        return buildProperty("logback.version");
+    }
+
+    private static String buildProperty(String key) {
+        try (InputStream input = DevServerVersion.class.getResourceAsStream("version.properties")) {
+            if (input == null) {
+                throw new IllegalStateException("Missing Dev Server version metadata");
+            }
+            Properties properties = new Properties();
+            properties.load(input);
+            String value = properties.getProperty(key);
+            if (value == null || value.isBlank()) {
+                throw new IllegalStateException("Missing Dev Server build property " + key);
+            }
+            return value.strip();
+        } catch (IOException e) {
+            throw new IllegalStateException("Could not read Dev Server version metadata", e);
+        }
     }
 }

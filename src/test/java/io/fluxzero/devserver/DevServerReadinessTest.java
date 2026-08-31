@@ -16,7 +16,6 @@
 
 package io.fluxzero.devserver;
 
-import io.fluxzero.common.api.ConnectEvent;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -26,12 +25,7 @@ class DevServerReadinessTest {
 
     @Test
     void matchesUniqueClientIdRegardlessOfApplicationChosenClientName() {
-        ConnectEvent renamedClient = new ConnectEvent(
-                "flowmaps-core", "session-app-build-1", "session", "tracking", "1", "1");
-        ConnectEvent anotherProcess = new ConnectEvent(
-                "app", "session-app-build-2", "session", "tracking", "1", "1");
-
-        assertTrue(DevServer.matchesReadinessClient("session-app-build-1", renamedClient));
-        assertFalse(DevServer.matchesReadinessClient("session-app-build-1", anotherProcess));
+        assertTrue(DevServer.matchesReadinessClient("session-app-build-1", "session-app-build-1"));
+        assertFalse(DevServer.matchesReadinessClient("session-app-build-1", "session-app-build-2"));
     }
 }
