@@ -107,6 +107,24 @@ class DevLogStoreTest {
     }
 
     @Test
+    void readsAddedChangedAndResolvedProblemHistoryInCursorOrder(@TempDir Path projectDirectory) {
+        try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "orders")) {
+            store.observeStatus("compile", "build", "orders", null, "failed", "cannot compile OrderHandler");
+            store.observeStatus("compile", "build", "orders", null, "failed", "cannot compile OrderHandler");
+            store.observeStatus("compile", "build", "orders", null, "succeeded", "build ready");
+
+            List<AgentProblemChange> changes = store.readProblemChanges(0, 10, problem -> true);
+
+            assertEquals(List.of(AgentProblemChange.Type.ADDED, AgentProblemChange.Type.CHANGED,
+                                 AgentProblemChange.Type.RESOLVED),
+                         changes.stream().map(AgentProblemChange::type).toList());
+            assertEquals(List.of(1L, 2L, 3L), changes.stream().map(AgentProblemChange::sequence).toList());
+            assertEquals(2, changes.get(1).problem().occurrences());
+            assertEquals("succeeded", changes.get(2).reason());
+        }
+    }
+
+    @Test
     void resolvesInfrastructureLogProblemsWhenServiceIsRunningAgain(@TempDir Path projectDirectory) {
         try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "orders")) {
             store.process("frontend", "infrastructure", "frontend", null, "stderr",
@@ -175,6 +193,12 @@ class DevLogStoreTest {
             assertEquals(1, store.diagnostics().activeCount());
             assertEquals("billing", store.diagnostics().problems().getFirst().serviceId());
             assertEquals("billing-4", store.diagnostics().problems().getFirst().instanceId());
+            List<AgentProblemChange> changes = store.readProblemChanges(4, 10, problem -> true);
+            assertEquals(1, changes.size());
+            assertTrue(changes.stream().allMatch(change -> change.type() == AgentProblemChange.Type.RESOLVED));
+            assertTrue(changes.stream().allMatch(change -> change.sequence() == 5));
+            assertEquals("resolved: orders instance replaced", store.readEvents(4, 10, null, null)
+                    .getFirst().message());
         }
     }
 

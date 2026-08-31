@@ -90,7 +90,9 @@ class DevMcpServerTest {
 
                 client.subscribeResource(McpSchema.SubscribeRequest.builder(DevMcpServer.DIAGNOSTICS_RESOURCE)
                                                  .build());
-                store.process("app", "application", "orders", "orders-1", "stderr", "ERROR startup failed");
+                long beforeProblem = store.lastSequence();
+                store.process("app", "application", "orders", "orders-1", "stderr",
+                              "ERROR startup failed\nstack detail only");
 
                 assertTrue(update.await(2, TimeUnit.SECONDS), "diagnostics resource update was not delivered");
 
@@ -100,6 +102,33 @@ class DevMcpServerTest {
                                 .build());
                 assertFalse(Boolean.TRUE.equals(problems.isError()));
                 assertTrue(String.valueOf(problems.structuredContent()).contains("orders-1"));
+                assertTrue(String.valueOf(problems.structuredContent()).contains("ERROR startup failed"));
+                assertTrue(String.valueOf(problems.structuredContent()).contains("stack detail only"));
+                assertTrue(String.valueOf(problems.structuredContent()).contains("activeProblemCount=1"));
+
+                McpSchema.CallToolResult wait = client.callTool(
+                        McpSchema.CallToolRequest.builder("wait_for_change")
+                                .arguments(Map.of("sessionId", session.sessionId(),
+                                                  "afterSequence", beforeProblem,
+                                                  "timeoutMs", 0,
+                                                  "limit", 10))
+                                .build());
+                assertFalse(Boolean.TRUE.equals(wait.isError()));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> waitContent = (Map<String, Object>) wait.structuredContent();
+                assertTrue(waitContent.containsKey("problemChanges"));
+                assertTrue(waitContent.containsKey("activeProblemCount"));
+                assertFalse(waitContent.containsKey("activeProblems"));
+                assertEquals(1, ((List<?>) waitContent.get("problemChanges")).size());
+                @SuppressWarnings("unchecked")
+                Map<String, Object> problemChange = (Map<String, Object>) ((List<?>) waitContent.get(
+                        "problemChanges")).getFirst();
+                assertEquals("added", problemChange.get("type"));
+                assertFalse(String.valueOf(problemChange).contains("stack detail only"));
+                @SuppressWarnings("unchecked")
+                Map<String, Object> problemSummary = (Map<String, Object>) problemChange.get("problem");
+                assertFalse(problemSummary.containsKey("detail"));
+                assertEquals("ERROR startup failed", problemSummary.get("summary"));
             }
         }
         assertFalse(Files.exists(tokenFile), "shutdown should remove the session bearer token");
