@@ -1,7 +1,7 @@
 # Fluxzero Dev Server
 
 The Fluxzero Dev Server provides a complete local development environment for Fluxzero applications. It starts
-an embedded test runtime and proxy, launches one or more applications, performs rolling replacements after source
+a version-aligned test runtime and proxy, launches one or more applications, performs rolling replacements after source
 changes, runs affected tests in the background, and can manage a frontend development server behind one public
 URL.
 
@@ -110,6 +110,23 @@ Launchers resolve the latest compatible stable `1.x` release from Maven Central.
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.
 
+### Runtime Version Alignment
+
+The dev server detects the Fluxzero SDK version declared by each Maven or Gradle build and resolves the matching
+`io.fluxzero:test-server` and `io.fluxzero:proxy` artifacts from Maven Central. Runtime and proxy share one isolated
+child JVM, so their protocol generation cannot accidentally come from the SDK version embedded in the dev-server
+release. Resolved classpaths are cached under `~/.fluxzero/cache/dev-runtime/<sdk-version>/`; normal warm starts do
+not contact Maven Central again.
+
+Projects in one environment must use the same Fluxzero SDK major generation. When compatible projects use different
+versions within that generation, the newest version is selected for the shared runtime. The effective version and
+cache status are published as `sdkVersion`, `mode`, and `artifactCache` in the runtime and proxy entries of
+`.fluxzero/dev/session.json`.
+
+Build files are the source of truth; generated runtime-classpath metadata is only a fallback. For unusual build models,
+set `FLUXZERO_DEV_RUNTIME_VERSION` (or the JVM property `fluxzero.dev.runtime.version`) to an exact published SDK
+version. This override changes the local TestServer and Proxy only, not the application's dependencies.
+
 The published Maven coordinates are:
 
 ```text
@@ -203,7 +220,7 @@ in-memory runtime; changed or failed commands are retried without re-running unc
 conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
 configured commands in normalized path order.
 
-The embedded dev runtime starts consumers without a stored position ten seconds before the current end of their log,
+The local dev runtime starts consumers without a stored position ten seconds before the current end of their log,
 instead of the regular one-second look-back. Startup commands published shortly before a new application consumer is
 registered therefore remain visible during a normal cold start. Existing stored consumer positions are unaffected and
 the mechanism has no dependency on an application framework or framework lifecycle. Command results use the regular

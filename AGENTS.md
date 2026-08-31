@@ -7,7 +7,7 @@ Instructions for coding agents working in this repository.
 This repository contains the standalone Fluxzero dev server, built with Maven and Java 21. It is a local
 development product rather than an application dependency.
 
-- `src/main/java/io/fluxzero/devserver`: orchestration for the embedded Fluxzero test runtime and proxy,
+- `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero test runtime and proxy,
   application and frontend child processes, rolling reloads, background tests, startup commands, diagnostics,
   terminal attachment, and MCP access.
 - `src/main/resources`: logging and runtime resources included in the standalone distribution.
