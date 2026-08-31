@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
 import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.nio.file.Path;
@@ -38,6 +40,14 @@ class DevServerPomTest {
         assertEquals("standalone", element(pom, "shadedClassifierName"));
     }
 
+    @Test
+    void versionAlignedRuntimeArtifactsAreAvailableOnlyToTests() throws Exception {
+        Document pom = readPom(Path.of("pom.xml"));
+
+        assertEquals("test", dependencyScope(pom, "io.fluxzero", "test-server"));
+        assertEquals("test", dependencyScope(pom, "io.fluxzero", "proxy"));
+    }
+
     private static Document readPom(Path path) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -50,5 +60,26 @@ class DevServerPomTest {
 
     private static String element(Document pom, String name) {
         return pom.getElementsByTagName(name).item(0).getTextContent().strip();
+    }
+
+    private static String dependencyScope(Document pom, String groupId, String artifactId) {
+        var dependencies = pom.getElementsByTagName("dependency");
+        for (int i = 0; i < dependencies.getLength(); i++) {
+            Element dependency = (Element) dependencies.item(i);
+            if (groupId.equals(childText(dependency, "groupId"))
+                && artifactId.equals(childText(dependency, "artifactId"))) {
+                return childText(dependency, "scope");
+            }
+        }
+        return null;
+    }
+
+    private static String childText(Element parent, String name) {
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element && name.equals(element.getTagName())) {
+                return element.getTextContent().strip();
+            }
+        }
+        return null;
     }
 }

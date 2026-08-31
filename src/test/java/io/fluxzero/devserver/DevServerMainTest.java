@@ -56,7 +56,8 @@ class DevServerMainTest {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         Path outputFile = projectDirectory.resolve("dev-server.out");
         Process process = new ProcessBuilder(
-                java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                java.toString(), runtimeCacheArgument(),
+                "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + projectDirectory.resolve("registry"),
                 "-cp", testClassPath(),
                 DevServerMain.class.getName(),
@@ -245,7 +246,8 @@ class DevServerMainTest {
     private static Process startServer(Path projectDirectory, Path registryDirectory) throws IOException {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         return new ProcessBuilder(
-                java.toString(), "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
+                java.toString(), runtimeCacheArgument(),
+                "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
                 "-cp", testClassPath(), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
@@ -293,6 +295,11 @@ class DevServerMainTest {
 
     private static String testClassPath() {
         return System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+    }
+
+    private static String runtimeCacheArgument() {
+        return "-Dfluxzero.dev.runtime.cache=" + System.getProperty(
+                "fluxzero.dev.runtime.cache", "target/dev-runtime-test-cache");
     }
 
     private static boolean awaitRunningSession(Path sessionFile) throws Exception {
