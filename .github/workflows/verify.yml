@@ -69,3 +69,28 @@ jobs:
           cache-dependency-path: src/test/resources/frontend-fixtures/**/package-lock.json
       - name: Test Vite and Angular workflows
         run: ./mvnw -B verify -Pdev-server-frontend-e2e
+
+  publication:
+    name: Maven publication
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+      - name: Set local qualification version
+        run: ./mvnw -B versions:set -DnewVersion=0.0.0
+      - name: Deploy release attachments to a temporary Maven repository
+        run: >-
+          ./mvnw -B -Psign deploy -DskipTests -Dgpg.skip
+          "-DaltDeploymentRepository=fluxzero::file://${{ runner.temp }}/publication"
+      - name: Resolve and run an independent consumer
+        run: bash .github/scripts/verify-packages-consumer.sh 0.0.0 'file://${{ runner.temp }}/publication'
+      - name: Verify Central packaging without publication
+        run: |
+          cat > "$RUNNER_TEMP/central-settings.xml" <<'XML'
+          <settings><servers><server><id>central</id><username>unused</username><password>unused</password></server></servers></settings>
+          XML
+          ./mvnw -B -s "$RUNNER_TEMP/central-settings.xml" -Psign,central deploy -DskipTests -Dgpg.skip -DskipPublishing=true
