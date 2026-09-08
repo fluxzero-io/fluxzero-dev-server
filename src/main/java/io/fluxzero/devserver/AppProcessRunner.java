@@ -121,6 +121,7 @@ final class AppProcessRunner {
         environment.put("FLUXZERO_PROXY_URL", proxyUrl);
         environment.put("PROXY_PORT", Integer.toString(port(internalProxyUrl)));
         environment.put("FLUXZERO_DEV_SESSION_ID", sessionId);
+        environment.put("FLUXZERO_CLIENT_ID", clientId);
         environment.put("FLUXZERO_TASK_ID", clientId);
         environment.put("FLUX_TASK_ID", clientId);
         String namespace = application.namespace() == null ? config.namespace() : application.namespace();

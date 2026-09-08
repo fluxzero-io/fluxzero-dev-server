@@ -265,6 +265,8 @@ class DevServerWholeAppE2EIT {
             assertNotEquals(plainPid, alternatePid);
             assertEquals(applicationName, first.app().metadata().get("application.plain.applicationName"));
             assertEquals("MODE", first.app().metadata().get("application.alternate.environment"));
+            assertTrue(first.app().metadata().get("application.plain.clientId").endsWith("-plain-build-1"));
+            assertTrue(first.app().metadata().get("application.alternate.clientId").endsWith("-alternate-build-1"));
 
             writeVersion(project, "v2", false);
 
@@ -277,8 +279,11 @@ class DevServerWholeAppE2EIT {
                        && newAlternate != null && Long.parseLong(newAlternate) != alternatePid;
             }, "both named app flavors replaced");
             assertEquals("2", second.app().metadata().get("count"));
-            assertNotEquals(second.app().metadata().get("application.plain.clientId"),
-                            second.app().metadata().get("application.alternate.clientId"));
+            String plainClientId = second.app().metadata().get("application.plain.clientId");
+            String alternateClientId = second.app().metadata().get("application.alternate.clientId");
+            assertNotEquals(plainClientId, alternateClientId);
+            assertTrue(plainClientId.endsWith("-plain-build-2"), plainClientId);
+            assertTrue(alternateClientId.endsWith("-alternate-build-2"), alternateClientId);
         }
     }
 

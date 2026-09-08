@@ -31,6 +31,9 @@ public final class FixtureAppMain {
         System.out.println("environment=" + System.getenv("ENVIRONMENT"));
         System.out.println("spring.profile=" + System.getProperty("spring.profiles.active"));
         System.out.println("session=" + System.getenv("FLUXZERO_DEV_SESSION_ID"));
+        System.out.println("client=" + System.getenv("FLUXZERO_CLIENT_ID"));
+        System.out.println("task=" + System.getenv("FLUXZERO_TASK_ID"));
+        System.out.println("legacy.task=" + System.getenv("FLUX_TASK_ID"));
         System.out.println("auth.issuer=" + System.getProperty("fluxzero.auth.oidc.issuer"));
         System.out.println("auth.method=" + System.getProperty("fluxzero.auth.oidc.token-endpoint-auth-method"));
         System.out.println("feature.mode=" + System.getenv("FEATURE_MODE"));

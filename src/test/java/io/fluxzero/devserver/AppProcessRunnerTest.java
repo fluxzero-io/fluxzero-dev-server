@@ -60,6 +60,9 @@ class AppProcessRunnerTest {
             assertTrue(await(output, "namespace=local"));
             assertTrue(await(output, "environment=local"));
             assertTrue(await(output, "session=session-1"));
+            assertTrue(await(output, "client=session-1-orders-app-build-1"));
+            assertTrue(await(output, "task=session-1-orders-app-build-1"));
+            assertTrue(await(output, "legacy.task=session-1-orders-app-build-1"));
             assertTrue(await(output, "auth.issuer=http://localhost:5678"));
             assertTrue(await(output, "auth.method=none"));
             assertTrue(await(output, "args=--probe"));
