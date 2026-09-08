@@ -62,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java
         uses: actions/setup-java@v6
         with:
@@ -121,6 +123,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
         uses: actions/setup-java@v6
         with:
@@ -168,6 +172,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
         uses: actions/setup-java@v6
         with:
