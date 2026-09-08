@@ -22,6 +22,13 @@
     <artifactId>fluxzero-dev-server</artifactId>
     <version>1-SNAPSHOT</version>
 
+    <distributionManagement>
+        <repository>
+            <id>fluxzero</id>
+            <url>https://packages.fluxzero.io/publish/maven</url>
+        </repository>
+    </distributionManagement>
+
     <name>Fluxzero Dev Server</name>
     <description>Local development environment for Fluxzero applications.</description>
     <url>https://github.com/fluxzero-io/fluxzero-dev-server</url>
@@ -197,6 +204,14 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <version>3.1.4</version>
+                <configuration>
+                    <retryFailedDeploymentCount>3</retryFailedDeploymentCount>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -405,7 +420,7 @@
             </build>
         </profile>
         <profile>
-            <id>deploy</id>
+            <id>sign</id>
             <build>
                 <plugins>
                     <plugin>
@@ -454,6 +469,13 @@
                             </execution>
                         </executions>
                     </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>central</id>
+            <build>
+                <plugins>
                     <plugin>
                         <groupId>org.sonatype.central</groupId>
                         <artifactId>central-publishing-maven-plugin</artifactId>
