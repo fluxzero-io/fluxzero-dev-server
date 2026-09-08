@@ -62,6 +62,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java
         uses: actions/setup-java@v6
         with:
@@ -71,7 +73,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Build release artifacts
-        run: ./mvnw -B clean install -Psign -DskipTests -Dgpg.skip
+        run: ./mvnw -B clean install -Psign -DskipTests -Dgpg.skip -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
       - name: Verify standalone manifest
         shell: bash
         run: |
@@ -121,6 +123,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
         uses: actions/setup-java@v6
         with:
@@ -133,7 +137,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Prepare release before requesting the short-lived token
-        run: ./mvnw -B -Psign install -DskipTests -Dgpg.skip
+        run: ./mvnw -B -Psign install -DskipTests -Dgpg.skip -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
       - name: Publish with GitHub OIDC
         env:
           MAVEN_USERNAME: github-actions
@@ -147,7 +151,7 @@ jobs:
             "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -er '.value')
           echo "::add-mask::$token"
           export MAVEN_DEPLOY_TOKEN="$token"
-          ./mvnw -B -Psign deploy -DskipTests
+          ./mvnw -B -Psign deploy -DskipTests -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
 
   packages-smoke:
     name: Verify Fluxzero Packages consumer
@@ -168,6 +172,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Set release timestamp
+        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
         uses: actions/setup-java@v6
         with:
@@ -180,7 +186,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Publish release
-        run: ./mvnw -B deploy -Psign,central -DskipTests
+        run: ./mvnw -B deploy -Psign,central -DskipTests -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
         env:
           MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
