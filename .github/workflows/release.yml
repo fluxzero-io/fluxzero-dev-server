@@ -73,7 +73,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Build release artifacts
-        run: ./mvnw -B clean install -Psign -DskipTests -Dgpg.skip -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
+        run: ./mvnw -B clean install -Psign -DskipTests -Dgpg.skip
       - name: Verify standalone manifest
         shell: bash
         run: |
@@ -137,7 +137,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Prepare release before requesting the short-lived token
-        run: ./mvnw -B -Psign install -DskipTests -Dgpg.skip -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
+        run: ./mvnw -B -Psign install -DskipTests -Dgpg.skip
       - name: Publish with GitHub OIDC
         env:
           MAVEN_USERNAME: github-actions
@@ -151,7 +151,7 @@ jobs:
             "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -er '.value')
           echo "::add-mask::$token"
           export MAVEN_DEPLOY_TOKEN="$token"
-          ./mvnw -B -Psign deploy -DskipTests -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
+          ./mvnw -B -Psign deploy -DskipTests
 
   packages-smoke:
     name: Verify Fluxzero Packages consumer
@@ -186,7 +186,7 @@ jobs:
       - name: Set release version
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Publish release
-        run: ./mvnw -B deploy -Psign,central -DskipTests -Dproject.build.outputTimestamp="$RELEASE_TIMESTAMP"
+        run: ./mvnw -B deploy -Psign,central -DskipTests
         env:
           MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
           MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
