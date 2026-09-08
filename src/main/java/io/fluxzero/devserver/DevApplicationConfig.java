@@ -39,7 +39,8 @@ public record DevApplicationConfig(
     private static final Set<String> SUPERVISOR_ENVIRONMENT = Set.of(
             "ENVIRONMENT", "FLUXZERO_BASE_URL", "FLUX_BASE_URL", "FLUX_PORT",
             "FLUXZERO_APPLICATION_NAME", "FLUX_APPLICATION_NAME", "FLUXZERO_PROXY_URL", "PROXY_PORT",
-            "FLUXZERO_DEV_SESSION_ID", "FLUXZERO_TASK_ID", "FLUX_TASK_ID", "FLUXZERO_NAMESPACE");
+            "FLUXZERO_DEV_SESSION_ID", "FLUXZERO_CLIENT_ID", "FLUXZERO_TASK_ID", "FLUX_TASK_ID",
+            "FLUXZERO_NAMESPACE");
 
     public DevApplicationConfig {
         application = application == null ? null : application.strip();

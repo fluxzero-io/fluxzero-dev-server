@@ -793,11 +793,13 @@ class DevServerConfigTest {
 
     @Test
     void rejectsEnvironmentVariablesOwnedByTheSupervisor() {
-        IllegalArgumentException exception = assertThrows(
-                IllegalArgumentException.class,
-                () -> new DevApplicationConfig("app", null,
-                                               Map.of("FLUXZERO_BASE_URL", "ws://elsewhere"), Map.of()));
-        assertTrue(exception.getMessage().contains("managed by the dev server"));
+        for (String variable : List.of("FLUXZERO_BASE_URL", "FLUXZERO_CLIENT_ID", "FLUXZERO_TASK_ID",
+                                       "FLUX_TASK_ID")) {
+            IllegalArgumentException exception = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> new DevApplicationConfig("app", null, Map.of(variable, "overridden"), Map.of()));
+            assertTrue(exception.getMessage().contains("managed by the dev server"));
+        }
     }
 
     @Test
