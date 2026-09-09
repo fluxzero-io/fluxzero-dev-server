@@ -74,7 +74,11 @@ final class ProcessUtils {
     private static StartedProcess startCaptured(List<String> command, Path directory, Map<String, String> environment,
                                                 Consumer<ProcessOutput> outputConsumer) throws IOException {
         ProcessBuilder builder = new ProcessBuilder(command).directory(directory.toFile()).redirectErrorStream(false);
-        builder.environment().putAll(environment);
+        if (isWindows()) {
+            WindowsProcessEnvironment.apply(builder.environment(), environment);
+        } else {
+            builder.environment().putAll(environment);
+        }
         Process process = builder.start();
         CountDownLatch outputComplete = new CountDownLatch(2);
         readOutput(process.getInputStream(), "stdout", outputConsumer, outputComplete);

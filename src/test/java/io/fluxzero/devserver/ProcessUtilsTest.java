@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +29,45 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessUtilsTest {
+
+    @Test
+    void refreshedWindowsPathAddsCurrentRegistryEntriesAndKeepsInheritedEntries() {
+        Map<String, String> environment = new HashMap<>(Map.of(
+                "Path", "c:\\windows\\system32;C:\\agent\\bin",
+                "SystemRoot", "C:\\Windows"));
+
+        WindowsProcessEnvironment.applyRefreshedPath(
+                environment, environment.get("Path"),
+                new WindowsProcessEnvironment.RegistryPaths(
+                        "C:\\Windows\\System32;%SystemRoot%\\System32",
+                        "C:\\Users\\Rene\\AppData\\Roaming\\npm"));
+
+        assertEquals("C:\\Windows\\System32;C:\\Users\\Rene\\AppData\\Roaming\\npm;C:\\agent\\bin",
+                     environment.get("Path"));
+    }
+
+    @Test
+    void explicitWindowsPathOverrideRemainsAuthoritative() {
+        Map<String, String> environment = new HashMap<>(Map.of("Path", "C:\\stale"));
+
+        WindowsProcessEnvironment.apply(environment, Map.of("PATH", "C:\\explicit"));
+
+        assertEquals("C:\\explicit", environment.get("Path"));
+    }
+
+    @Test
+    void windowsRegistryPathParserSupportsStringAndExpandableValues() {
+        assertEquals("C:\\Windows\\System32;%JAVA_HOME%\\bin",
+                     WindowsProcessEnvironment.parseRegistryPath("""
+                             HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment
+                                 Path    REG_EXPAND_SZ    C:\\Windows\\System32;%JAVA_HOME%\\bin
+                             """));
+        assertEquals("C:\\Users\\Rene\\bin",
+                     WindowsProcessEnvironment.parseRegistryPath("""
+                             HKEY_CURRENT_USER\\Environment
+                                 Path    REG_SZ    C:\\Users\\Rene\\bin
+                             """));
+    }
 
     @Test
     void processTreeStopNeverStopsTheCurrentProcess() {
