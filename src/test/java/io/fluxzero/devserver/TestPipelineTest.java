@@ -191,6 +191,30 @@ class TestPipelineTest {
     }
 
     @Test
+    void retriesTestWhoseBuildFailedBeforeProducingAResult(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.createFile(projectDirectory.resolve("setup-fail-first"));
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        List<TestStatus> statuses = new CopyOnWriteArrayList<>();
+        List<String> output = new CopyOnWriteArrayList<>();
+
+        try (TestPipeline pipeline = new TestPipeline(config(projectDirectory), store, statuses::add, output::add)) {
+            pipeline.request(Set.of(projectDirectory.resolve("src/test/java/com/acme/OrderHandlerTest.java")));
+            assertTrue(awaitStatus(statuses, "incomplete", List.of("com.acme.OrderHandlerTest")));
+
+            pipeline.request(Set.of(projectDirectory.resolve("docs/readme.md")));
+
+            assertTrue(awaitStatus(statuses, "passed", List.of("com.acme.OrderHandlerTest")));
+        }
+
+        assertTrue(output.stream().noneMatch(line -> line.contains("failed com.acme.OrderHandlerTest")),
+                   String.join(System.lineSeparator(), output));
+        assertTrue(output.stream().anyMatch(line -> line.contains(
+                           "selected com.acme.OrderHandlerTest because previous test run did not complete")),
+                   String.join(System.lineSeparator(), output));
+    }
+
+    @Test
     void coalescedFollowUpKeepsPreviouslyFailingSelectors(@TempDir Path projectDirectory) throws Exception {
         installFakeMaven(projectDirectory);
         Files.createFile(projectDirectory.resolve("wait"));
@@ -346,16 +370,31 @@ class TestPipelineTest {
                 echo "$count" > "$count_file"
                 echo "$count $*" >> "$PWD/runs.log"
                 touch "$PWD/started-$count"
+                write_failure_report() {
+                  mkdir -p "$PWD/target/surefire-reports"
+                  printf '%s\n' \
+                    '<testsuite name="com.acme.OrderHandlerTest" tests="1" failures="1">' \
+                    '  <testcase classname="com.acme.OrderHandlerTest" name="fails">' \
+                    '    <failure message="expected failure"/>' \
+                    '  </testcase>' \
+                    '</testsuite>' > "$PWD/target/surefire-reports/TEST-com.acme.OrderHandlerTest.xml"
+                }
                 if [ -f "$PWD/wait" ]; then
                   while [ ! -f "$PWD/release" ]; do
                     sleep 0.05
                   done
                 fi
+                if [ -f "$PWD/setup-fail-first" ] && [ "$count" = "1" ]; then
+                  echo "simulated setup failure"
+                  exit 7
+                fi
                 if [ -f "$PWD/fail-first" ] && [ "$count" = "1" ]; then
+                  write_failure_report
                   echo "simulated first failing test run"
                   exit 7
                 fi
                 if [ -f "$PWD/long-fail" ]; then
+                  write_failure_report
                   echo "useful failure marker"
                   i=0
                   while [ "$i" -lt 40 ]; do
@@ -375,6 +414,7 @@ class TestPipelineTest {
                   exit 7
                 fi
                 if [ -f "$PWD/fail" ]; then
+                  write_failure_report
                   echo "simulated failing test"
                   exit 7
                 fi

@@ -673,14 +673,14 @@ class DevServerWholeAppE2EIT {
 
             writeBrokenGreetingHandlersTest(project);
 
-            TestStatus failed = waitForTestStatusAfter(
+            TestStatus incomplete = waitForTestStatusAfter(
                     project, initial.updatedAt(),
-                    status -> "failed".equals(status.state())
+                    status -> "incomplete".equals(status.state())
                               && "changed test class".equals(status.reason())
                               && status.selectors().equals(List.of("com.example.app.GreetingHandlersTest")),
                     "test compile failure");
-            assertTrue(failed.detail().contains("COMPILATION ERROR")
-                       || failed.detail().contains("GreetingHandlersTest.java"), failed.detail());
+            assertTrue(incomplete.detail().contains("COMPILATION ERROR")
+                       || incomplete.detail().contains("GreetingHandlersTest.java"), incomplete.detail());
             assertEquals("v1", rawClient.greetingState().path("version").asText());
             assertEquals(initialPid, currentAppPid(project));
         }
@@ -716,7 +716,7 @@ class DevServerWholeAppE2EIT {
 
             TestStatus removed = waitForTestStatusAfter(
                     project, added.updatedAt(),
-                    status -> "failed".equals(status.state())
+                    status -> "incomplete".equals(status.state())
                               && "test impact index".equals(status.reason())
                               && status.selectors().equals(List.of(
                                       "com.example.app.TemporaryFixtureHandlerTest#handlesTemporaryFixture")),

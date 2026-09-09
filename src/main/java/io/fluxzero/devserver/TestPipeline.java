@@ -37,9 +37,11 @@ final class TestPipeline implements AutoCloseable {
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Path> pendingChanges = new LinkedHashSet<>();
     private final Set<String> failingSelectors = new LinkedHashSet<>();
+    private final Set<String> incompleteSelectors = new LinkedHashSet<>();
     private final AtomicBoolean running = new AtomicBoolean();
     private boolean initialRequested;
     private boolean moduleFailurePending;
+    private boolean moduleIncompletePending;
 
     TestPipeline(DevServerConfig config, DevSessionStore sessionStore, Consumer<TestStatus> statusConsumer,
                  Consumer<String> output) {
@@ -117,7 +119,10 @@ final class TestPipeline implements AutoCloseable {
                                 "initial test baseline", "no previously tested project snapshot")
                         : moduleFailurePending
                                 ? TestPlanner.TestPlan.module("previous module test failure")
-                                : planner.plan(changes, Set.copyOf(failingSelectors));
+                                : moduleIncompletePending
+                                        ? TestPlanner.TestPlan.module("previous module test run did not complete")
+                                        : planner.plan(changes, Set.copyOf(failingSelectors),
+                                                       Set.copyOf(incompleteSelectors));
                 if (!plan.shouldRun() && initial) {
                     output.accept("[test] skipped initial tests because test inputs are unchanged");
                 }
@@ -143,12 +148,18 @@ final class TestPipeline implements AutoCloseable {
     private void restoreIncompleteRun() {
         sessionStore.readTestStatus()
                 .filter(status -> "failed".equals(status.state()) || "queued".equals(status.state())
-                                  || "running".equals(status.state()))
+                                  || "running".equals(status.state()) || "incomplete".equals(status.state()))
                 .ifPresent(status -> {
                     if (status.selectors().isEmpty()) {
-                        moduleFailurePending = true;
-                    } else {
+                        if ("failed".equals(status.state())) {
+                            moduleFailurePending = true;
+                        } else {
+                            moduleIncompletePending = true;
+                        }
+                    } else if ("failed".equals(status.state())) {
                         failingSelectors.addAll(status.selectors());
+                    } else {
+                        incompleteSelectors.addAll(status.selectors());
                     }
                 });
     }
@@ -171,9 +182,7 @@ final class TestPipeline implements AutoCloseable {
         try {
             long reportStartedAt = System.currentTimeMillis();
             long startedNanos = System.nanoTime();
-            if (plan.runModule() && buildTool == BuildTool.MAVEN) {
-                SurefireFailures.clear(config.projectDirectory());
-            }
+            TestReports.clear(config.projectDirectory(), buildTool);
             MavenBuildCoordinator.TestRun testRun = coordinator.runTest(
                     command, config.projectDirectory(),
                     buildTool == BuildTool.MAVEN ? MavenCommand.environment() : GradleCommand.environment(),
@@ -187,49 +196,72 @@ final class TestPipeline implements AutoCloseable {
                 return true;
             }
             ProcessUtils.ProcessResult result = testRun.result();
-            SurefireFailures.Result moduleFailures = new SurefireFailures.Result(Set.of(), null);
+            TestReports.Result reports = result.success()
+                    ? TestReports.Result.empty()
+                    : TestReports.read(config.projectDirectory(), buildTool, reportStartedAt);
             if (result.success()) {
                 if (plan.runModule()) {
                     failingSelectors.clear();
+                    incompleteSelectors.clear();
                     moduleFailurePending = false;
+                    moduleIncompletePending = false;
                 } else {
                     failingSelectors.removeAll(selectors);
+                    incompleteSelectors.removeAll(selectors);
+                }
+            } else if (reports.failureFound()) {
+                if (plan.runModule()) {
+                    failingSelectors.addAll(reports.failingSelectors());
+                    moduleFailurePending = reports.failingSelectors().isEmpty();
+                    moduleIncompletePending = false;
+                } else if (!selectors.isEmpty()) {
+                    failingSelectors.addAll(selectors);
+                    incompleteSelectors.removeAll(selectors);
                 }
             } else if (plan.runModule()) {
-                moduleFailures = buildTool == BuildTool.MAVEN
-                        ? SurefireFailures.read(config.projectDirectory(), reportStartedAt)
-                        : new SurefireFailures.Result(Set.of(), null);
-                failingSelectors.addAll(moduleFailures.selectors());
-                moduleFailurePending = moduleFailures.selectors().isEmpty();
+                moduleIncompletePending = true;
             } else if (!selectors.isEmpty()) {
-                failingSelectors.addAll(selectors);
+                incompleteSelectors.addAll(selectors);
             }
             int detailLines = result.success() ? 20 : 80;
             long durationMillis = java.time.Duration.ofNanos(System.nanoTime() - startedNanos).toMillis();
-            List<String> statusSelectors = moduleFailures.selectors().isEmpty() ? selectors
-                    : moduleFailures.selectors().stream().sorted().toList();
-            TestStatus status = TestStatus.completed(statusSelectors, plan.reason(), plan.selectorReasons(),
-                                                     result.exitCode(), result.tail(detailLines),
-                                                     moduleFailures.firstFailure(), durationMillis);
+            List<String> statusSelectors = plan.runModule() && !reports.failingSelectors().isEmpty()
+                    ? reports.failingSelectors().stream().sorted().toList() : selectors;
+            TestStatus status = result.success() || reports.failureFound()
+                    ? TestStatus.completed(statusSelectors, plan.reason(), plan.selectorReasons(),
+                                           result.exitCode(), result.tail(detailLines),
+                                           reports.firstFailure(), durationMillis)
+                    : TestStatus.incomplete(statusSelectors, plan.reason(), plan.selectorReasons(),
+                                            result.exitCode(), result.tail(detailLines), durationMillis);
             output.accept("[test] " + resultDescription(status, plan, selectors));
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
             return false;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            TestStatus status = TestStatus.completed(selectors, plan.reason(), plan.selectorReasons(),
-                                                     -1, "test run interrupted", 0);
-            output.accept("[test] failed " + selectionLabel(plan, selectors) + ": test run interrupted");
+            rememberIncomplete(plan, selectors);
+            TestStatus status = TestStatus.incomplete(selectors, plan.reason(), plan.selectorReasons(),
+                                                      -1, "test run interrupted", 0);
+            output.accept("[test] incomplete " + selectionLabel(plan, selectors) + ": test run interrupted");
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
             return false;
         } catch (Exception e) {
-            TestStatus status = TestStatus.completed(selectors, plan.reason(), plan.selectorReasons(),
-                                                     -1, e.getMessage(), 0);
-            output.accept("[test] failed " + selectionLabel(plan, selectors) + ": " + e.getMessage());
+            rememberIncomplete(plan, selectors);
+            TestStatus status = TestStatus.incomplete(selectors, plan.reason(), plan.selectorReasons(),
+                                                      -1, e.getMessage(), 0);
+            output.accept("[test] incomplete " + selectionLabel(plan, selectors) + ": " + e.getMessage());
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
             return false;
+        }
+    }
+
+    private void rememberIncomplete(TestPlanner.TestPlan plan, List<String> selectors) {
+        if (plan.runModule()) {
+            moduleIncompletePending = true;
+        } else {
+            incompleteSelectors.addAll(selectors);
         }
     }
 

@@ -151,7 +151,8 @@ final class DevLogStore implements AutoCloseable {
             return;
         }
         String normalizedState = state == null ? "unknown" : state;
-        boolean failed = "failed".equals(normalizedState) || "exited".equals(normalizedState);
+        boolean failed = "failed".equals(normalizedState) || "incomplete".equals(normalizedState)
+                         || "exited".equals(normalizedState);
         DevLogEvent event = writeEvent(failed ? ERROR : INFO, source, serviceType, serviceId, instanceId, null,
                                        "lifecycle", normalizedState + formatDetail(detail));
         String key = statusKey(serviceType, serviceId, instanceId);
