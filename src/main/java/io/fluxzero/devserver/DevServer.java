@@ -997,10 +997,14 @@ public class DevServer implements AutoCloseable {
         activity();
         projectTestStatuses.put(projectId, status);
         String aggregateState = projectTestStatuses.values().stream().anyMatch(value -> "failed".equals(value.state()))
-                ? "failed" : projectTestStatuses.values().stream().anyMatch(value -> "running".equals(value.state()))
-                        ? "running" : projectTestStatuses.values().stream().anyMatch(value -> "queued".equals(value.state()))
-                                ? "queued" : projectTestStatuses.values().stream()
-                                        .allMatch(value -> "passed".equals(value.state())) ? "passed" : "idle";
+                ? "failed"
+                : projectTestStatuses.values().stream().anyMatch(value -> "incomplete".equals(value.state()))
+                        ? "incomplete"
+                        : projectTestStatuses.values().stream().anyMatch(value -> "running".equals(value.state()))
+                                ? "running"
+                                : projectTestStatuses.values().stream().anyMatch(value -> "queued".equals(value.state()))
+                                        ? "queued" : projectTestStatuses.values().stream()
+                                                .allMatch(value -> "passed".equals(value.state())) ? "passed" : "idle";
         Map<String, String> metadata = new LinkedHashMap<>();
         projectTestStatuses.forEach((id, value) -> {
             metadata.put("project." + id + ".state", value.state());
@@ -1040,6 +1044,13 @@ public class DevServer implements AutoCloseable {
                 }
                 details.add("Details: " + terminalLogPath());
                 terminalProgress.printFailure("Tests failed", details);
+            }
+            case "incomplete" -> {
+                details.add("Duration: " + CompileTiming.format(status.durationMillis()));
+                details.add("Exit code: " + status.exitCode());
+                details.add("Cause: " + status.failureSummary());
+                details.add("Details: " + terminalLogPath());
+                terminalProgress.printFailure("Tests could not complete", details);
             }
             default -> {
             }

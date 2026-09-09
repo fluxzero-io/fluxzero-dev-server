@@ -20,24 +20,34 @@ import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-final class SurefireFailures {
-    private SurefireFailures() {
+final class TestReports {
+    private TestReports() {
     }
 
-    static void clear(Path projectDirectory) {
-        reportDirectories(projectDirectory).forEach(SurefireFailures::clearReportDirectory);
+    static void clear(Path projectDirectory, BuildTool buildTool) {
+        reportDirectories(projectDirectory, buildTool).forEach(TestReports::clearReportDirectory);
+    }
+
+    static Result read(Path projectDirectory, BuildTool buildTool, long startedAt) {
+        LinkedHashSet<String> selectors = new LinkedHashSet<>();
+        List<String> summaries = new ArrayList<>();
+        boolean[] failureFound = {false};
+        reportDirectories(projectDirectory, buildTool).forEach(
+                reports -> readReportDirectory(reports, startedAt, selectors, summaries, failureFound));
+        return new Result(Set.copyOf(selectors), summaries.isEmpty() ? null : summaries.getFirst(), failureFound[0]);
     }
 
     private static void clearReportDirectory(Path reports) {
         if (!Files.isDirectory(reports)) {
             return;
         }
-        try (var files = Files.list(reports)) {
-            files.filter(SurefireFailures::isXmlReport).forEach(file -> {
+        try (var files = Files.walk(reports, 4)) {
+            files.filter(TestReports::isXmlReport).forEach(file -> {
                 try {
                     Files.deleteIfExists(file);
                 } catch (Exception ignored) {
@@ -45,45 +55,74 @@ final class SurefireFailures {
                 }
             });
         } catch (Exception ignored) {
-            // Missing reports result in a conservative module-level retry.
+            // Missing reports are handled as an incomplete test command when it exits unsuccessfully.
         }
     }
 
-    static Result read(Path projectDirectory, long startedAt) {
-        LinkedHashSet<String> result = new LinkedHashSet<>();
-        java.util.ArrayList<String> summaries = new java.util.ArrayList<>();
-        reportDirectories(projectDirectory).forEach(
-                reports -> readReportDirectory(reports, startedAt, result, summaries));
-        return new Result(Set.copyOf(result), summaries.isEmpty() ? null : summaries.getFirst());
-    }
-
-    private static void readReportDirectory(Path reports, long startedAt, Set<String> result,
-                                            List<String> summaries) {
+    private static void readReportDirectory(Path reports, long startedAt, Set<String> selectors,
+                                            List<String> summaries, boolean[] failureFound) {
         if (!Files.isDirectory(reports)) {
             return;
         }
-        try (var files = Files.list(reports)) {
-            files.filter(SurefireFailures::isXmlReport).filter(file -> modifiedAfter(file, startedAt))
-                    .sorted().forEach(file -> readReport(file, result, summaries));
+        try (var files = Files.walk(reports, 4)) {
+            files.filter(TestReports::isXmlReport).filter(file -> modifiedAfter(file, startedAt))
+                    .sorted().forEach(file -> readReport(file, selectors, summaries, failureFound));
         } catch (Exception ignored) {
-            // Missing reports result in a conservative module-level retry.
+            // An absent or unreadable report cannot prove that a test failed.
         }
     }
 
-    private static Set<Path> reportDirectories(Path projectDirectory) {
+    private static Set<Path> reportDirectories(Path projectDirectory, BuildTool buildTool) {
+        return buildTool == BuildTool.MAVEN
+                ? mavenReportDirectories(projectDirectory) : gradleReportDirectories(projectDirectory);
+    }
+
+    private static Set<Path> mavenReportDirectories(Path projectDirectory) {
         LinkedHashSet<Path> result = new LinkedHashSet<>();
         try {
             MavenReactor.load(projectDirectory).modules().stream()
                     .map(MavenReactor.Module::directory)
-                    .map(directory -> directory.resolve("target/surefire-reports"))
-                    .forEach(result::add);
+                    .forEach(directory -> {
+                        result.add(directory.resolve("target/surefire-reports"));
+                        result.add(directory.resolve("target/failsafe-reports"));
+                    });
         } catch (Exception ignored) {
             result.add(projectDirectory.resolve("target/surefire-reports"));
+            result.add(projectDirectory.resolve("target/failsafe-reports"));
         }
         return result;
     }
 
-    private static void readReport(Path file, Set<String> result, List<String> summaries) {
+    private static Set<Path> gradleReportDirectories(Path projectDirectory) {
+        LinkedHashSet<Path> result = new LinkedHashSet<>();
+        result.add(projectDirectory.resolve("build/test-results"));
+        try {
+            GradleBuildMetadata.load(projectDirectory).modules().stream()
+                    .map(GradleBuildMetadata.Module::path)
+                    .map(path -> gradleModuleDirectory(projectDirectory, path))
+                    .map(directory -> directory.resolve("build/test-results"))
+                    .forEach(result::add);
+        } catch (Exception ignored) {
+            // Root-project reports still cover single-project builds and early metadata failures.
+        }
+        return result;
+    }
+
+    private static Path gradleModuleDirectory(Path projectDirectory, String projectPath) {
+        if (projectPath == null || projectPath.isBlank() || ".".equals(projectPath) || ":".equals(projectPath)) {
+            return projectDirectory;
+        }
+        Path result = projectDirectory;
+        for (String segment : projectPath.split(":")) {
+            if (!segment.isBlank()) {
+                result = result.resolve(segment);
+            }
+        }
+        return result;
+    }
+
+    private static void readReport(Path file, Set<String> selectors, List<String> summaries,
+                                   boolean[] failureFound) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -96,18 +135,19 @@ final class SurefireFailures {
                     && testCase.getElementsByTagName("error").getLength() == 0) {
                     continue;
                 }
+                failureFound[0] = true;
                 String className = testCase.getAttribute("classname");
                 String methodName = selectorMethod(testCase.getAttribute("name"));
                 if (!className.isBlank()) {
                     String selector = methodName == null ? className : className + "#" + methodName;
-                    result.add(selector);
+                    selectors.add(selector);
                     if (summaries.isEmpty()) {
                         summaries.add(failureSummary(testCase, selector));
                     }
                 }
             }
         } catch (Exception ignored) {
-            // A malformed report is handled by the caller's module-level retry fallback.
+            // A malformed report cannot prove that a test failed.
         }
     }
 
@@ -151,6 +191,9 @@ final class SurefireFailures {
         }
     }
 
-    record Result(Set<String> selectors, String firstFailure) {
+    record Result(Set<String> failingSelectors, String firstFailure, boolean failureFound) {
+        static Result empty() {
+            return new Result(Set.of(), null, false);
+        }
     }
 }

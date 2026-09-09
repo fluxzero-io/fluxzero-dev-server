@@ -132,6 +132,7 @@ class TerminalProgressTest {
             progress.printReplayedLine("  Open in browser http://localhost:4200");
             progress.printReplayedLine("Tests started");
             progress.printReplayedLine("Tests failed");
+            progress.printReplayedLine("Tests could not complete");
             progress.printControlHints();
         }
 
@@ -140,6 +141,7 @@ class TerminalProgressTest {
         assertTrue(output.contains("\033[36m  Open in browser http://localhost:4200\033[0m"), output);
         assertTrue(output.contains("\033[36mTests started\033[0m"), output);
         assertTrue(output.contains("\033[1;31mTests failed\033[0m"), output);
+        assertTrue(output.contains("\033[1;31mTests could not complete\033[0m"), output);
         assertTrue(output.contains("\033[36m[q]\033[0m quit   \033[36m[d]\033[0m detach   "
                                    + "\033[36m[Ctrl+C]\033[0m stop" + System.lineSeparator().repeat(2)), output);
     }

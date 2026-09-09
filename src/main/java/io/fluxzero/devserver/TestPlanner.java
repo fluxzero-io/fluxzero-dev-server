@@ -49,11 +49,18 @@ final class TestPlanner {
     }
 
     TestPlan plan(Set<Path> changedFiles, Set<String> previouslyFailingTests) {
+        return plan(changedFiles, previouslyFailingTests, Set.of());
+    }
+
+    TestPlan plan(Set<Path> changedFiles, Set<String> previouslyFailingTests,
+                  Set<String> previouslyIncompleteTests) {
         LinkedHashSet<String> selectors = new LinkedHashSet<>();
         Map<String, LinkedHashSet<String>> selectorReasons = new LinkedHashMap<>();
         previouslyFailingTests.stream().filter(this::isTestSelector).forEach(selector -> addSelector(
                 selectors, selectorReasons, selector, "previously failed"));
-        String reason = "previously failing tests";
+        previouslyIncompleteTests.stream().filter(this::isTestSelector).forEach(selector -> addSelector(
+                selectors, selectorReasons, selector, "previous test run did not complete"));
+        String reason = retryReason(previouslyFailingTests, previouslyIncompleteTests);
         boolean changedTestClass = false;
         for (Path changedFile : changedFiles) {
             String path = changedFile.toString().replace('\\', '/');
@@ -74,13 +81,14 @@ final class TestPlanner {
                     selectors, selectorReasons, selector, impactReason));
             return TestPlan.selected(
                     selectors,
-                    previouslyFailingTests.isEmpty()
-                            ? "test impact index" : "test impact index and previously failing tests",
+                    previouslyFailingTests.isEmpty() && previouslyIncompleteTests.isEmpty()
+                            ? "test impact index" : "test impact index and pending tests",
                     selectorReasons,
                     ChangeSummary.of(projectDirectory, changedFiles).displayPaths());
         }
         if (!selectors.isEmpty()) {
-            return TestPlan.selected(selectors, reason, selectorReasons, "retrying previous failures");
+            return TestPlan.selected(selectors, reason, selectorReasons,
+                                     retryExplanation(previouslyFailingTests, previouslyIncompleteTests));
         }
         boolean appCodeChanged = changedFiles.stream().map(path -> path.toString().replace('\\', '/'))
                 .anyMatch(path -> path.contains("/src/main/") && isSourceFile(path));
@@ -98,6 +106,20 @@ final class TestPlanner {
                 "build/resource change fallback",
                 "build or resource changed: " + ChangeSummary.of(projectDirectory, changedFiles).displayPaths())
                 : TestPlan.none();
+    }
+
+    private static String retryReason(Set<String> failures, Set<String> incomplete) {
+        if (!failures.isEmpty() && !incomplete.isEmpty()) {
+            return "previously failed or incomplete tests";
+        }
+        return failures.isEmpty() ? "previously incomplete tests" : "previously failing tests";
+    }
+
+    private static String retryExplanation(Set<String> failures, Set<String> incomplete) {
+        if (!failures.isEmpty() && !incomplete.isEmpty()) {
+            return "retrying previous failures and incomplete tests";
+        }
+        return failures.isEmpty() ? "retrying incomplete test run" : "retrying previous failures";
     }
 
     private static boolean isSourceFile(String path) {

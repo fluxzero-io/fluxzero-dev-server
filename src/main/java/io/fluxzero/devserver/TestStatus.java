@@ -66,4 +66,11 @@ record TestStatus(String state, List<String> selectors, String reason, Map<Strin
         return new TestStatus(exitCode == 0 ? "passed" : "failed", selectors, reason, selectionReasons,
                               exitCode, detail, failureSummary, durationMillis, Instant.now().toEpochMilli());
     }
+
+    static TestStatus incomplete(List<String> selectors, String reason, Map<String, String> selectionReasons,
+                                 int exitCode, String detail, long durationMillis) {
+        return new TestStatus("incomplete", selectors, reason, selectionReasons, exitCode, detail,
+                              "build or setup failed before tests completed", durationMillis,
+                              Instant.now().toEpochMilli());
+    }
 }

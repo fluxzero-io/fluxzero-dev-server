@@ -115,6 +115,17 @@ class TestPlannerTest {
     }
 
     @Test
+    void incompleteTestsAreRetriedWithoutCallingThemFailures() {
+        TestPlanner.TestPlan plan = planner.plan(Set.of(Path.of("/project/README.md")), Set.of(),
+                                                 Set.of("OrderTest"));
+
+        assertEquals(List.of("OrderTest"), plan.stableSelectors());
+        assertEquals("previously incomplete tests", plan.reason());
+        assertEquals("previous test run did not complete", plan.selectorReasons().get("OrderTest"));
+        assertEquals("retrying incomplete test run", plan.explanation());
+    }
+
+    @Test
     void changedMainCodeFallsBackToModuleTests() {
         TestPlanner.TestPlan plan = planner.plan(
                 Set.of(Path.of("/project/src/main/java/com/acme/OrderHandler.java")), Set.of());

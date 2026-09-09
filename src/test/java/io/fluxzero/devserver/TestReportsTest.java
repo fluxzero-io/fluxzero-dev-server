@@ -14,19 +14,23 @@
 
 package io.fluxzero.devserver;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class SurefireFailuresTest {
+class TestReportsTest {
 
     @Test
-    void readsAndClearsFailuresAcrossReactorModules(@TempDir Path projectDirectory) throws Exception {
+    void readsAndClearsMavenFailuresAcrossReactorModules(@TempDir Path projectDirectory) throws Exception {
         Files.writeString(projectDirectory.resolve("pom.xml"), """
                 <project>
                   <modelVersion>4.0.0</modelVersion>
@@ -48,6 +52,42 @@ class SurefireFailuresTest {
                 </project>
                 """);
         Path report = module.resolve("target/surefire-reports/TEST-com.acme.OrderHandlerTest.xml");
+        writeFailure(report);
+
+        TestReports.Result result = TestReports.read(
+                projectDirectory, BuildTool.MAVEN, System.currentTimeMillis());
+
+        assertTrue(result.failureFound());
+        assertEquals(java.util.Set.of("com.acme.OrderHandlerTest#createsOrder"), result.failingSelectors());
+        assertEquals("com.acme.OrderHandlerTest#createsOrder: java.lang.NoClassDefFoundError: com/acme/Order",
+                     result.firstFailure());
+
+        TestReports.clear(projectDirectory, BuildTool.MAVEN);
+        assertFalse(Files.exists(report));
+    }
+
+    @Test
+    void readsGradleFailuresFromConfiguredModules(@TempDir Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("settings.gradle"), "include 'orders'");
+        Path metadata = projectDirectory.resolve(GradleBuildMetadata.FILE);
+        Files.createDirectories(metadata.getParent());
+        new ObjectMapper().writeValue(metadata.toFile(), Map.of("modules", List.of(Map.of(
+                "path", ":orders", "name", "orders"))));
+        Path report = projectDirectory.resolve(
+                "orders/build/test-results/fluxzeroDevTest/TEST-com.acme.OrderHandlerTest.xml");
+        writeFailure(report);
+
+        TestReports.Result result = TestReports.read(
+                projectDirectory, BuildTool.GRADLE, System.currentTimeMillis());
+
+        assertTrue(result.failureFound());
+        assertEquals(java.util.Set.of("com.acme.OrderHandlerTest#createsOrder"), result.failingSelectors());
+
+        TestReports.clear(projectDirectory, BuildTool.GRADLE);
+        assertFalse(Files.exists(report));
+    }
+
+    private static void writeFailure(Path report) throws Exception {
         Files.createDirectories(report.getParent());
         Files.writeString(report, """
                 <testsuite name="com.acme.OrderHandlerTest" tests="1" errors="1">
@@ -56,14 +96,5 @@ class SurefireFailuresTest {
                   </testcase>
                 </testsuite>
                 """);
-
-        SurefireFailures.Result result = SurefireFailures.read(projectDirectory, System.currentTimeMillis());
-
-        assertEquals(java.util.Set.of("com.acme.OrderHandlerTest#createsOrder"), result.selectors());
-        assertEquals("com.acme.OrderHandlerTest#createsOrder: java.lang.NoClassDefFoundError: com/acme/Order",
-                     result.firstFailure());
-
-        SurefireFailures.clear(projectDirectory);
-        assertFalse(Files.exists(report));
     }
 }

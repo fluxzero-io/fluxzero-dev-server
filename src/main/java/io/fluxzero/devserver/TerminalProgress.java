@@ -314,6 +314,7 @@ final class TerminalProgress implements AutoCloseable {
             return BOLD_GREEN;
         }
         if (line.equals("Fluxzero dev could not start") || line.equals("Tests failed")
+            || line.equals("Tests could not complete")
             || line.equals("Application error")) {
             return BOLD_RED;
         }
