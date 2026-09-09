@@ -44,19 +44,28 @@ import java.util.concurrent.ConcurrentHashMap;
 final class DevRuntimeArtifactResolver {
     static final String CACHE_FORMAT = "# fluxzero-dev-runtime-classpath-v1";
     private static final String CENTRAL = "https://repo.maven.apache.org/maven2/";
+    private static final String PACKAGES = "https://packages.fluxzero.io/maven/";
     private static final List<String> RUNTIME_ARTIFACTS = List.of("test-server", "proxy");
     private static final ConcurrentHashMap<Path, Object> IN_PROCESS_LOCKS = new ConcurrentHashMap<>();
 
     private final Path cacheRoot;
     private final Path localRepository;
+    private final List<RemoteRepository> repositories;
 
     DevRuntimeArtifactResolver() {
         this(defaultCacheRoot(), defaultLocalRepository());
     }
 
     DevRuntimeArtifactResolver(Path cacheRoot, Path localRepository) {
+        this(cacheRoot, localRepository, List.of(
+                new RemoteRepository.Builder("fluxzero", "default", PACKAGES).build(),
+                new RemoteRepository.Builder("central", "default", CENTRAL).build()));
+    }
+
+    DevRuntimeArtifactResolver(Path cacheRoot, Path localRepository, List<RemoteRepository> repositories) {
         this.cacheRoot = cacheRoot.toAbsolutePath().normalize();
         this.localRepository = localRepository.toAbsolutePath().normalize();
+        this.repositories = List.copyOf(repositories);
     }
 
     ResolvedRuntime resolve(String version) {
@@ -89,9 +98,8 @@ final class DevRuntimeArtifactResolver {
         try (RepositorySystemSession.CloseableSession session = new SessionBuilderSupplier(system).get()
                 .setIgnoreArtifactDescriptorRepositories(true)
                 .withLocalRepositories(new LocalRepository(localRepository)).build()) {
-            RemoteRepository central = new RemoteRepository.Builder("central", "default", CENTRAL).build();
             CollectRequest collectRequest = new CollectRequest();
-            collectRequest.setRepositories(List.of(central));
+            collectRequest.setRepositories(repositories);
             RUNTIME_ARTIFACTS.forEach(artifactId -> collectRequest.addDependency(new Dependency(
                     new DefaultArtifact("io.fluxzero:" + artifactId + ":" + version), "runtime")));
             collectRequest.addDependency(new Dependency(new DefaultArtifact(

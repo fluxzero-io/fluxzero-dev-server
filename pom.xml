@@ -52,6 +52,14 @@
         <skipPublishing>false</skipPublishing>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>fluxzero</id>
+            <url>https://packages.fluxzero.io/maven</url>
+            <snapshots><enabled>false</enabled></snapshots>
+        </repository>
+    </repositories>
+
     <dependencyManagement>
         <dependencies>
             <dependency>

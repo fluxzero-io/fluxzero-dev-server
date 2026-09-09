@@ -125,17 +125,18 @@ has a lower log level than the resolved problem.
 Problem transitions are ordered by the shared event cursor. All events and transitions with the same causal sequence
 are returned as one indivisible page group, so retrying a request from the same cursor remains safe.
 
-Launchers resolve the latest compatible stable `1.x` release from Maven Central. A specific development or
+Launchers resolve the latest compatible stable `1.x` release from [Fluxzero Packages](https://packages.fluxzero.io/). A specific development or
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.
 
 ### Runtime Version Alignment
 
 The dev server detects the Fluxzero SDK version declared by each Maven or Gradle build and resolves the matching
-`io.fluxzero:test-server` and `io.fluxzero:proxy` artifacts from Maven Central. Runtime and proxy share one isolated
+`io.fluxzero:test-server` and `io.fluxzero:proxy` artifacts from Fluxzero Packages. Maven Central remains
+available for third-party dependencies. Runtime and proxy share one isolated
 child JVM, so their protocol generation cannot accidentally come from the SDK version embedded in the dev-server
 release. Resolved classpaths are cached under `~/.fluxzero/cache/dev-runtime/<sdk-version>/`; normal warm starts do
-not contact Maven Central again.
+not contact either repository again.
 
 Projects in one environment must use the same Fluxzero SDK major generation. When compatible projects use different
 versions within that generation, the newest version is selected for the shared runtime. The effective version and
