@@ -374,7 +374,7 @@ class DevServerWholeAppE2EIT {
             DevSession testedAuditlog = waitForSession(environment, session ->
                     "failed".equals(session.tests().metadata().get("project.auditlog.state")),
                                                         "auditlog project tests completed");
-            assertEquals("failed", testedAuditlog.tests().metadata().get("project.dashboard.state"));
+            assertEquals("incomplete", testedAuditlog.tests().metadata().get("project.dashboard.state"));
         }
         assertTrue(launchedPids.stream().noneMatch(ProcessUtils::isAlive));
     }
@@ -716,7 +716,7 @@ class DevServerWholeAppE2EIT {
 
             TestStatus removed = waitForTestStatusAfter(
                     project, added.updatedAt(),
-                    status -> "incomplete".equals(status.state())
+                    status -> "failed".equals(status.state())
                               && "test impact index".equals(status.reason())
                               && status.selectors().equals(List.of(
                                       "com.example.app.TemporaryFixtureHandlerTest#handlesTemporaryFixture")),
