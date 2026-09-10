@@ -15,6 +15,8 @@
 package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -103,6 +105,7 @@ class DevServerBootstrapTest {
     }
 
     @Test
+    @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Process.destroy uses TerminateProcess, not graceful SIGTERM; EOF cleanup is covered on every OS")
     void terminatingAttachedBootstrapStopsItsServer() throws Exception {
         Path root = Files.createDirectory(directory.resolve("project"));
         Process process = process(root, false);
