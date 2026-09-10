@@ -88,7 +88,7 @@ def check(client, release, manifest, archive, source, all_articles=True):
     for field in ("namespace", "sourceCommit", "contentHash"):
         assert start[field] == release[field], field
     tools = client.rpc("tools/list", {})["tools"]
-    assert len(tools) == 10
+    assert len(tools) == 11
     article = next(a for a in manifest["articles"] if a["symbols"])
     matches = client.call("docs_lookup_symbol", **selectors, symbol=article["symbols"][0], limit=20)
     assert any(a["path"] == article["path"] for a in matches["results"])
@@ -173,6 +173,7 @@ def main():
                 mcp_args = config["fluxzero-dev"]["args"]
                 assert mcp_args == ["mcp"], mcp_args
             base = [str(args.fz.resolve()), *mcp_args, "--dev-server-version", cli_version]
+            environment["PATH"] = str(args.fz.resolve().parent) + os.pathsep + environment.get("PATH", "")
         workspace = root / "workspace"
         workspace.mkdir()
         (workspace / "brief.md").write_text("An existing non-project directory")
@@ -181,7 +182,7 @@ def main():
             with bridge(command, workspace, environment, root / "first.log") as client:
                 status = client.call("get_status")
                 assert status["status"] == "dev-server-not-running", status
-                assert status["start"]["args"] == ["mcp", "--ensure-dev", "--project-dir", str(workspace)]
+                assert status["start"] == {"tool": "start_dev", "arguments": {}}
                 if args.download:
                     latest = client.call("docs_start")
                     assert latest["selection"] == "latest-release" and latest["version"] == version, latest
@@ -212,6 +213,15 @@ def main():
                                       input="", capture_output=True, text=True, timeout=30)
             assert rejected.returncode != 0, "A non-project directory with existing content must not start a dev server"
             assert not (workspace / ".fluxzero/dev/session.json").exists()
+            with bridge(command, workspace, environment, root / "rejected-start.log") as rejected_client:
+                result = rejected_client.rpc("tools/call", {"name": "start_dev", "arguments": {}})
+                deadline = time.monotonic() + 45
+                while result.get("structuredContent", {}).get("status") == "dev-server-starting" and time.monotonic() < deadline:
+                    time.sleep(.1)
+                    result = rejected_client.rpc("tools/call", {"name": "get_status", "arguments": {}})
+                assert result.get("isError"), result
+                assert result["structuredContent"]["status"] == "dev-server-start-failed", result
+                check(rejected_client, release, manifest, archive, "cache", all_articles=False)
             project = root / "greenfield"
             project.mkdir()
             default = [*base, "--project-dir", str(project)]
@@ -219,12 +229,19 @@ def main():
             stop = [str(args.fz.resolve()), "dev", "stop", "--project-dir", str(project),
                     "--dev-server-version", cli_version]
             try:
-                with bridge(default, project, environment, root / "waiting.log") as waiting:
+                with bridge(default, project, environment, root / "waiting.log") as waiting, \
+                     bridge(default, project, environment, root / "peer.log") as peer:
                     assert waiting.call("get_status")["status"] == "dev-server-not-running"
-                    bootstrapped = subprocess.run(ensure, cwd=project, env=environment, input="",
-                                                  capture_output=True, text=True, timeout=45)
-                    assert bootstrapped.returncode == 0, bootstrapped.stderr
-                    initial = waiting.call("get_status")["session"]
+                    status = waiting.call("start_dev")
+                    peer.call("start_dev")
+                    check(waiting, release, manifest, archive, "cache", all_articles=False)
+                    deadline = time.monotonic() + 45
+                    while status.get("status") == "dev-server-starting" and time.monotonic() < deadline:
+                        time.sleep(.1)
+                        status = waiting.call("get_status")
+                    initial = status["session"]
+                    assert peer.call("get_status")["session"]["sessionId"] == initial["sessionId"]
+                    assert waiting.call("start_dev")["session"]["sessionId"] == initial["sessionId"]
                     session_id, pid = initial["sessionId"], initial["pid"]
                     for attempt in range(2):
                         with bridge(ensure, project, environment, root / f"ensure-{attempt}.log") as started:
@@ -249,7 +266,7 @@ def main():
             assert session["status"] == "stopped", session
         print(f"Verified all {len(manifest['articles'])} articles for sdk/{version}: exact stdio retrieval, "
               f"{'HTTP download/latest fallback' if args.download else 'local archive'}, project detection, "
-              f"offline restart, EOF shutdown" + (", plugin CLI startup and --ensure-dev start/reuse/stop" if args.fz else ""))
+              f"offline restart, EOF shutdown" + (", plugin CLI startup, start_dev start/reuse/stop and legacy --ensure-dev compatibility" if args.fz else ""))
 
 
 if __name__ == "__main__":

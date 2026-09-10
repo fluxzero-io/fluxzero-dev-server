@@ -121,10 +121,18 @@ available independently of whether the project dev server can start or is runnin
 
 `fz mcp` needs an existing directory but starts no project server, source watcher, or listening port.
 `get_status` reports `dev-server-not-running` with structured `start` guidance when no project environment is
-active. Run the indicated `fz mcp --ensure-dev --project-dir ...` once with stdin closed (`< /dev/null` on POSIX,
-`< NUL` in cmd.exe), then call `get_status` again through the existing connection. The temporary bridge exits;
-the intentionally detached dev server remains available. Alternatively restart the MCP connection with those
-arguments. The normal project/empty-workspace validation still applies to starting that environment.
+active. Call the stdio-only `start_dev` tool with no arguments to start or reuse the environment in
+this connection's directory. It returns current status and a session cursor once available; during bootstrap
+it returns `dev-server-starting` and the agent polls `get_status`. Startup failures are tool errors with
+`dev-server-start-failed`; documentation stays available. Correct the cause before retrying `start_dev`.
+Status and documentation calls never start project processes. The normal project/empty-workspace validation
+still applies.
+
+Existing `fz mcp --ensure-dev` configurations remain supported. The shared bootstrap uses
+`.fluxzero/dev/ensure.lock`, including when an older CLI is starting the same directory.
+New launchers delegate locking to this distribution; their legacy fallback coordinates starts
+for older distributions. Older dev-server distributions do not expose `start_dev` or the docs
+surface: a project pinned to one must upgrade its dev-server distribution to use these tools.
 
 Project requests connect lazily to the loopback HTTP MCP endpoint and reconnect after a session changes.
 The HTTP endpoint exposes only project tools; `docs_*` are local to stdio. Closing the agent's stdin ends its

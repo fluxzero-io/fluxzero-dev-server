@@ -46,18 +46,20 @@ class AgentDocsMcpTest {
         Files.writeString(root.resolve("brief.md"), "A nonempty workspace without a build");
         Path archive = directory.resolve("docs.zip");
         Files.write(archive, archive("sdk", "1.2.3"));
-        CountDownLatch changed = new CountDownLatch(1);
-        try (var client = stdioClient(root, directory.resolve("cache"), changed,
+        var changed = new java.util.concurrent.atomic.AtomicReference<>(new CountDownLatch(1));
+        try (var client = stdioClient(root, directory.resolve("cache"), () -> changed.get().countDown(),
                 "-Dfluxzero.dev.docs.sdk.archive=" + archive)) {
             client.initialize();
             var tools = client.listTools().tools();
-            assertEquals(10, tools.size());
+            assertEquals(11, tools.size());
+            assertFalse(tools.stream().filter(t -> t.name().equals("start_dev")).findFirst().orElseThrow().annotations().readOnlyHint());
             assertTrue(DevMcpStdioMain.INSTRUCTIONS.length() <= 512);
             var status = call(client, "get_status", Map.of());
             assertEquals("dev-server-not-running", status.path("status").asText());
             assertEquals(root.toString(), status.path("projectDirectory").asText());
-            assertTrue(status.at("/start/args").toString().contains("--ensure-dev"));
+            assertEquals("start_dev", status.at("/start/tool").asText());
             assertTrue(client.callTool(new McpSchema.CallToolRequest("get_logs", Map.of())).isError());
+            assertTrue(client.callTool(new McpSchema.CallToolRequest("start_dev", Map.of("projectDirectory", "/"))).isError());
             var start = call(client, "docs_start", Map.of("version", "1.2.3"));
             assertEquals("dev-server-not-running", start.at("/development/status").asText());
             assertEquals("ready", start.path("status").asText());
@@ -76,13 +78,15 @@ class AgentDocsMcpTest {
                     new DevSessionStore(root).writeSession(session.withStatus("running").withMcp(
                             DevSession.ServiceStatus.running("mcp", server.url(), server.port(), null, "test")));
                     assertTrue(call(client, "get_status", Map.of()).toString().contains(session.sessionId()));
+                    assertTrue(call(client, "start_dev", Map.of()).toString().contains(session.sessionId()));
                     if (previous != null) {
                         assertTrue(call(client, "wait_for_change", Map.of("sessionId", previous, "afterSequence", 0,
                                 "timeoutMs", 0)).path("sessionChanged").asBoolean());
                     }
+                    changed.set(new CountDownLatch(1));
                     client.subscribeResource(new McpSchema.SubscribeRequest(DevMcpServer.DIAGNOSTICS_RESOURCE));
                     logs.process("app", "application", "orders", "orders-1", "stderr", "ERROR intentional failure");
-                    assertTrue(changed.await(3, TimeUnit.SECONDS));
+                    assertTrue(changed.get().await(3, TimeUnit.SECONDS));
                     assertTrue(call(client, "get_active_problems", Map.of()).toString().contains("intentional failure"));
                     assertEquals(tools, client.listTools().tools());
                 }
@@ -190,14 +194,20 @@ class AgentDocsMcpTest {
     }
 
     static McpSyncClient stdioClient(Path root, Path cache, CountDownLatch changed, String... properties) {
+        return stdioClient(root, cache, changed::countDown, properties);
+    }
+
+    static McpSyncClient stdioClient(Path root, Path cache, Runnable changed, String... properties) {
         var args = new ArrayList<>(List.of(properties));
         args.add("-Dfluxzero.dev.docs.cacheDirectory=" + cache);
         args.addAll(List.of("-cp", System.getProperty("java.class.path"), DevMcpStdioMain.class.getName(),
                            "--project-dir", root.toString()));
         var parameters = ServerParameters.builder(javaExecutable()).args(args).build();
-        return McpClient.sync(new StdioClientTransport(parameters, new JacksonMcpJsonMapper(JSON)))
+        var transport = new StdioClientTransport(parameters, new JacksonMcpJsonMapper(JSON));
+        transport.setStdErrorHandler(line -> System.err.println("stdio: " + line));
+        return McpClient.sync(transport)
                 .requestTimeout(Duration.ofSeconds(6)).initializationTimeout(Duration.ofSeconds(10))
-                .resourcesUpdateConsumer(contents -> changed.countDown()).build();
+                .resourcesUpdateConsumer(contents -> changed.run()).build();
     }
 
     private static String javaExecutable() {

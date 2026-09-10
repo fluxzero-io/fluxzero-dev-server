@@ -28,11 +28,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/** Lazily connects project requests; never starts services or changes project session state. */
+/** Lazily connects project requests; only start_dev explicitly requests CLI bootstrap. */
 final class DevMcpProjectClient implements AutoCloseable {
     private final Path directory;
     private final DevSessionStore sessions;
     private final ObjectMapper mapper;
+    private final DevMcpDevStarter starter;
     private volatile Consumer<String> resourceChange = ignored -> {};
     private Connection connection;
     private boolean closed;
@@ -41,6 +42,7 @@ final class DevMcpProjectClient implements AutoCloseable {
         this.directory = directory.toAbsolutePath().normalize();
         this.sessions = new DevSessionStore(this.directory);
         this.mapper = mapper;
+        this.starter = new DevMcpDevStarter(this.directory);
     }
 
     void onResourceChange(Consumer<String> listener) { resourceChange = listener; }
@@ -51,6 +53,22 @@ final class DevMcpProjectClient implements AutoCloseable {
                                                                        "projectDirectory", directory.toString());
         } catch (RuntimeException e) {
             return unavailable(true);
+        }
+    }
+
+    McpSchema.CallToolResult start(McpSchema.CallToolRequest request) {
+        if (request.arguments() != null && !request.arguments().isEmpty()) {
+            return McpSchema.CallToolResult.builder().isError(true)
+                    .addTextContent("start_dev accepts no arguments; it uses this MCP connection's project directory.").build();
+        }
+        try {
+            if (activeSession() == null) starter.start();
+            Connection selected = connect();
+            if (selected != null) return selected.client().callTool(
+                    new McpSchema.CallToolRequest("get_status", Map.of())).block(Duration.ofSeconds(6));
+            return unavailableResult(false, false);
+        } catch (RuntimeException e) {
+            return unavailableResult(true, true);
         }
     }
 
@@ -83,23 +101,19 @@ final class DevMcpProjectClient implements AutoCloseable {
 
     private McpSchema.CallToolResult unavailableResult(boolean failed, boolean error) {
         var status = unavailable(failed);
+        if ("dev-server-start-failed".equals(status.get("status"))) error = true;
         return McpSchema.CallToolResult.builder().structuredContent(status)
                 .addTextContent(DevMcpTools.json(status, mapper)).isError(error).build();
     }
 
     private Map<String, Object> unavailable(boolean failed) {
+        var startup = starter.status();
+        if (!startup.isEmpty()) return startup;
         return Map.of("status", failed ? "dev-server-unavailable" : "dev-server-not-running",
                 "projectDirectory", directory.toString(), "documentationAvailable", true,
                 "message", failed ? "The project dev server could not be reached. Documentation remains available."
-                                  : "No active project dev server. Documentation works without starting it.",
-                "start", Map.of("command", "fz", "args", List.of("mcp", "--ensure-dev", "--project-dir", directory.toString()),
-                        "stdin", "closed",
-                        "instructions", "When development is needed, run this command once with stdin closed "
-                                + "(< /dev/null on POSIX, < NUL in cmd.exe). --ensure-dev starts or reuses the dev server; "
-                                + "the temporary bridge exits and this connection reconnects on the next get_status. "
-                                + "Alternatively restart this MCP connection with these arguments. Do not leave a "
-                                + "second bridge running. Generate a project first if the directory does not meet "
-                                + "the dev server's project/empty-workspace requirements."));
+                                  : "No active project dev server. Call start_dev when development is needed.",
+                "start", Map.of("tool", "start_dev", "arguments", Map.of()));
     }
 
     private DevSession activeSession() {
@@ -141,6 +155,7 @@ final class DevMcpProjectClient implements AutoCloseable {
             client.subscribeResource(McpSchema.SubscribeRequest.builder(
                     DevMcpServer.DIAGNOSTICS_RESOURCE).build()).block(Duration.ofSeconds(3));
             connection = new Connection(session.sessionId(), endpoint, token, client);
+            starter.observedReady();
             return connection;
         } catch (RuntimeException e) {
             closeClient(client);
@@ -161,7 +176,10 @@ final class DevMcpProjectClient implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() { closed = true; invalidate(connection); }
+    public void close() {
+        starter.close();
+        synchronized (this) { closed = true; invalidate(connection); }
+    }
 
     private record Connection(String sessionId, URI endpoint, String token, McpAsyncClient client) {}
 }
