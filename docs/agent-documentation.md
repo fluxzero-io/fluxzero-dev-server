@@ -109,23 +109,39 @@ Add `--download` with a release-style version to test the Maven URL and checksum
 HTTP repository. Both modes reconstruct every article through stdio, detect a newly added project SDK, restart with
 the repository stopped and the local archive override removed, and verify offline retrieval and EOF shutdown.
 Add `--fz /absolute/path/to/fz --plugin-config /absolute/path/to/plugin/.mcp.json` to exercise the generated plugin
-arguments through the real CLI, including one-shot `--ensure-dev` with closed stdin, connection from an existing
+arguments through the real CLI, including `start_dev`, connection from an existing
 bridge, repeated start/reuse and explicit stop. This uses an isolated dev-server cache with a private `1.999.0`
 alias for the supplied local JAR; it does not test a public release download or alter the installed plugin.
 The script does not locate or build an SDK checkout.
 
 ## Project availability and lifetime
 
-The stdio tool catalogue is stable: five documentation tools and five project tools are available before and after
+The stdio tool catalogue is stable: five documentation tools, five project query tools and the stdio-only `start_dev` tool are available before and after
 project startup. `get_status` returns a normal structured `dev-server-not-running` or `dev-server-unavailable`
 response when it cannot access a project environment. Other project tools return the same guidance as a tool error;
 the diagnostics resource returns the availability object. These responses contain `projectDirectory`, a `start`
 command/argument array, `stdin: closed`, and a short instruction. `docs_start.development` also reports project
 availability. It does not start a server or perform an HTTP probe just to read documentation.
 
-To start development, execute the indicated `fz mcp --ensure-dev --project-dir ...` once with stdin closed, then
-call `get_status` on the original connection. Alternatively restart that connection with `--ensure-dev`. Avoid
-leaving a second bridge running or changing the plugin's global default to start environments in every directory.
+To start development, call `start_dev` with no arguments on the existing connection. It starts or reuses
+the connection's selected project directory and returns status with a cursor once ready. During bootstrap,
+it returns `dev-server-starting`; poll `get_status`. A failure returns `dev-server-start-failed` as a tool
+error; fix the cause before explicitly retrying. Existing active sessions are reused. Status, resources,
+tool discovery and docs never initiate startup. `start_dev` is annotated as a mutating, idempotent tool.
+
+`DevServerBootstrap` owns project locking, preflight, detached process startup, readiness and terminal
+ownership in the dev-server distribution. The bridge invokes it directly on a bounded background task,
+using its own Java runtime and classpath for the project process. No CLI invocation or second bridge is needed.
+Startup attempts are bounded to two minutes. Closing the bridge cancels unfinished startup; an environment
+whose control plane is ready keeps its independent background lifetime.
+
+CLI and build-plugin launchers discover `DevServerBootstrapMain` in the selected distribution and delegate
+server launches to it, including `fz mcp --ensure-dev`. Older distributions retain the legacy launcher path.
+No public extra CLI command or flag is introduced. A new distribution uses shell detachment on Unix and
+redirected child-process startup on Windows; it does not register a new macOS launchd job. Legacy launchd
+cleanup remains available through the CLI. Terminal attachment, explicit detach, EOF and signal shutdown
+are covered by lifecycle tests.
+
 The dev server's project/empty-workspace guard remains in force; documentation access does not authorize scaffold
 generation over existing files. Starting with an incompatible directory reports the existing startup error.
 

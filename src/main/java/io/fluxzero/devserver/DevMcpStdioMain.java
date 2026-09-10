@@ -38,8 +38,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Agent-owned MCP server: local documentation and an optional connection to the project environment. */
 public final class DevMcpStdioMain {
     static final String INSTRUCTIONS = "Use docs_start, then search/read relevant articles; preserve namespace/version. "
-            + "Call get_status for project readiness. If dev-server-not-running, follow start: run "
-            + "fz mcp --ensure-dev with closed stdin for the same directory when development is needed. Docs work without it. "
+            + "Call get_status for project readiness. If dev-server-not-running, call start_dev "
+            + "when development is needed; poll get_status while starting. Docs work without it. "
             + "After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Apply problemChanges by id; "
             + "get_active_problems on activeProblemCount mismatch or sessionChanged.";
 
@@ -95,6 +95,15 @@ public final class DevMcpStdioMain {
             var project = new DevMcpProjectClient(directory, mapper);
             try {
                 var tools = new ArrayList<>(DevMcpTools.tools(project::call));
+                tools.add(new McpServerFeatures.SyncToolSpecification(
+                        McpSchema.Tool.builder("start_dev", Map.of("type", "object", "properties", Map.of(),
+                                "additionalProperties", false))
+                                .description("Start or reuse development in this connection's project directory. "
+                                        + "Returns status and a cursor when ready; poll get_status while starting. "
+                                        + "May launch background processes, builds and configured startup commands.")
+                                .annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(false)
+                                        .destructiveHint(false).idempotentHint(true).openWorldHint(true).build()).build(),
+                        (exchange, request) -> project.start(request)));
                 for (var specification : AgentDocsTools.tools(docs, mapper)) {
                     if (specification.tool().name().equals("docs_start")) {
                         tools.add(DevMcpTools.tool("docs_start", specification.tool().description(),

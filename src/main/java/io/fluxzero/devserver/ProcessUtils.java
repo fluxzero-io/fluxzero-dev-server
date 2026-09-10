@@ -337,7 +337,7 @@ final class ProcessUtils {
         return isWindows() ? normalized.toLowerCase(Locale.ROOT) : normalized;
     }
 
-    private static boolean isWindows() {
+    static boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("win");
     }
 

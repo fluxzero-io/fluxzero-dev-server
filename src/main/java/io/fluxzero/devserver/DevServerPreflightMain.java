@@ -84,7 +84,7 @@ public final class DevServerPreflightMain {
         }
     }
 
-    private static PortConflictChoice choosePortConflict(int port) {
+    static PortConflictChoice choosePortConflict(int port) {
         Console console = System.console();
         if (console == null) {
             return PortConflictChoice.fail();
