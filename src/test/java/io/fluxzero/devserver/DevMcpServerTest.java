@@ -258,8 +258,8 @@ class DevMcpServerTest {
 
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
                 assertEquals("development", client.getServerInfo().version());
-                assertEquals(DevMcpServer.INSTRUCTIONS, client.getServerInstructions());
-                assertEquals(5, client.listTools().tools().size());
+                assertEquals(DevMcpStdioMain.INSTRUCTIONS, client.getServerInstructions());
+                assertEquals(10, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());
                 McpSchema.CallToolResult result = client.callTool(

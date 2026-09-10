@@ -106,6 +106,35 @@ The global index under `~/.fluxzero/dev/environments/` contains only project pat
 Current status, URLs, and application names are read from each project's `.fluxzero/dev/session.json`; MCP tokens,
 resolved environment variables, and other secrets are never copied into the index.
 
+### Agent Documentation
+
+The standalone stdio MCP started by `fz mcp` serves SDK documentation through `docs_start`, `docs_search`,
+`docs_lookup_symbol`, `docs_read`, and `docs_links`. Start with `docs_start`, search for the relevant topic or
+exact symbol, then read individual articles and follow their links. Search returns summaries; article text and
+link lists have bounded pages to avoid loading the whole manual into the agent's context.
+
+Documentation follows each project's declared SDK version, independently of the shared test runtime and its
+version override. Multiple project versions require an explicit selection. An empty project can use an explicit
+version before generation, or use the latest published release as a fallback. A known project's missing
+artifact never causes a project upgrade or silently selects another SDK version. Documentation remains
+available independently of whether the project dev server can start or is running.
+
+`fz mcp` needs an existing directory but starts no project server, source watcher, or listening port.
+`get_status` reports `dev-server-not-running` with structured `start` guidance when no project environment is
+active. Run the indicated `fz mcp --ensure-dev --project-dir ...` once with stdin closed (`< /dev/null` on POSIX,
+`< NUL` in cmd.exe), then call `get_status` again through the existing connection. The temporary bridge exits;
+the intentionally detached dev server remains available. Alternatively restart the MCP connection with those
+arguments. The normal project/empty-workspace validation still applies to starting that environment.
+
+Project requests connect lazily to the loopback HTTP MCP endpoint and reconnect after a session changes.
+The HTTP endpoint exposes only project tools; `docs_*` are local to stdio. Closing the agent's stdin ends its
+stdio process and cancels downloads without stopping a shared background project environment.
+
+Archives are downloaded on demand from Fluxzero Packages and cached per namespace and version under
+`~/.fluxzero/cache/agent-docs/`. A valid cached release needs no network access, including after a restart.
+Only the `sdk` namespace is currently provided. See [the documentation API reference](docs/agent-documentation.md)
+for selectors, limits, cache validation, and local archive configuration.
+
 ### Agent Problem Deltas
 
 The MCP `wait_for_change` tool is a cursor delta. Its `problemChanges` field contains only selected problems that were

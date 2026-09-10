@@ -80,18 +80,23 @@ final class FluxzeroSdkVersionDetector {
     }
 
     static Set<String> detect(Path projectDirectory) {
-        LinkedHashSet<String> declaredVersions = new LinkedHashSet<>();
-        if (Files.isRegularFile(projectDirectory.resolve("pom.xml"))) {
-            detectMavenProject(projectDirectory.resolve("pom.xml"), declaredVersions, new LinkedHashSet<>());
-        } else {
-            detectGradleProject(projectDirectory, declaredVersions);
-        }
+        Set<String> declaredVersions = detectDeclared(projectDirectory);
         if (!declaredVersions.isEmpty()) {
-            return Set.copyOf(declaredVersions);
+            return declaredVersions;
         }
         LinkedHashSet<String> runtimeVersions = new LinkedHashSet<>();
         detectClasspathMetadata(projectDirectory, runtimeVersions);
         return Set.copyOf(runtimeVersions);
+    }
+
+    static Set<String> detectDeclared(Path projectDirectory) {
+        LinkedHashSet<String> versions = new LinkedHashSet<>();
+        if (Files.isRegularFile(projectDirectory.resolve("pom.xml"))) {
+            detectMavenProject(projectDirectory.resolve("pom.xml"), versions, new LinkedHashSet<>());
+        } else {
+            detectGradleProject(projectDirectory, versions);
+        }
+        return Set.copyOf(versions);
     }
 
     private static void detectClasspathMetadata(Path projectDirectory, Set<String> versions) {

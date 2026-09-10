@@ -15,9 +15,6 @@
 package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.modelcontextprotocol.client.McpClient;
-import io.modelcontextprotocol.client.McpSyncClient;
-import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
@@ -25,30 +22,42 @@ import io.modelcontextprotocol.server.McpSyncServer;
 import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicBoolean;
 
-/**
- * Stdio MCP adapter that discovers and forwards to the active dev environment for a project.
- */
+/** Agent-owned MCP server: local documentation and an optional connection to the project environment. */
 public final class DevMcpStdioMain {
-    private DevMcpStdioMain() {
-    }
+    static final String INSTRUCTIONS = "Use docs_start, then search/read relevant articles; preserve namespace/version. "
+            + "Call get_status for project readiness. If dev-server-not-running, follow start: run "
+            + "fz mcp --ensure-dev with closed stdin for the same directory when development is needed. Docs work without it. "
+            + "After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Apply problemChanges by id; "
+            + "get_active_problems on activeProblemCount mismatch or sessionChanged.";
+
+    private DevMcpStdioMain() {}
 
     public static void main(String[] args) throws Exception {
         OutputStream protocolOutput = System.out;
         System.setOut(System.err);
-        Path projectDirectory = projectDirectory(args);
-        StdioBridge bridge = StdioBridge.start(projectDirectory, System.in, protocolOutput);
-        Runtime.getRuntime().addShutdownHook(new Thread(bridge::close, "fluxzero-mcp-stdio-shutdown"));
-        new CountDownLatch(1).await();
+        try (StdioBridge bridge = StdioBridge.start(projectDirectory(args), System.in, protocolOutput)) {
+            Thread shutdown = new Thread(bridge::close, "fluxzero-mcp-stdio-shutdown");
+            Runtime.getRuntime().addShutdownHook(shutdown);
+            try {
+                bridge.disconnected.await();
+            } finally {
+                try { Runtime.getRuntime().removeShutdownHook(shutdown); }
+                catch (IllegalStateException ignored) { /* JVM shutdown already owns cleanup. */ }
+            }
+        }
     }
 
     static Path projectDirectory(String[] args) {
@@ -65,120 +74,87 @@ public final class DevMcpStdioMain {
 
     static final class StdioBridge implements AutoCloseable {
         private final McpSyncServer localServer;
-        private final McpSyncClient remoteClient;
+        private final DevMcpProjectClient project;
+        private final AgentDocsService docs;
+        private final CountDownLatch disconnected;
+        private final AtomicBoolean closed = new AtomicBoolean();
 
-        static StdioBridge start(Path projectDirectory, InputStream input, OutputStream output) {
-            DevSession session = new DevSessionStore(projectDirectory).reconcileUnexpectedStop()
-                    .filter(candidate -> "running".equals(candidate.status()))
-                    .filter(candidate -> "running".equals(candidate.mcp().state()))
-                    .orElseThrow(() -> new IllegalStateException(
-                            "No active Fluxzero dev environment found in " + projectDirectory));
-            if (!ProcessUtils.isAlive(session.pid())) {
-                throw new IllegalStateException("Fluxzero dev environment process " + session.pid()
-                                                + " is no longer running");
+        static StdioBridge start(Path directory, InputStream input, OutputStream output) {
+            Path root = directory.toAbsolutePath().normalize();
+            return start(root, input, output, new AgentDocsService(
+                    () -> DevServerConfig.fromArgs(new String[]{"--project-dir", root.toString()}), new AgentDocsStore()));
+        }
+
+        static StdioBridge start(Path directory, InputStream input, OutputStream output, AgentDocsService docs) {
+            if (!Files.isDirectory(directory)) {
+                docs.close();
+                throw new IllegalArgumentException("MCP project directory must exist: " + directory);
             }
-            URI endpoint = URI.create(session.mcp().url());
-            Path tokenFile = tokenFile(projectDirectory, session);
-            String token;
+            CountDownLatch disconnected = new CountDownLatch(1);
+            ObjectMapper mapper = new ObjectMapper();
+            var project = new DevMcpProjectClient(directory, mapper);
             try {
-                token = Files.readString(tokenFile).trim();
-            } catch (Exception e) {
-                throw new IllegalStateException("Failed to read MCP token " + tokenFile, e);
-            }
-
-            AtomicReference<McpSyncServer> localServer = new AtomicReference<>();
-            McpSyncClient remoteClient = remoteClient(endpoint, token, localServer);
-            try {
-                remoteClient.initialize();
-                List<McpServerFeatures.SyncToolSpecification> tools = remoteClient.listTools().tools().stream()
-                        .map(tool -> new McpServerFeatures.SyncToolSpecification(
-                                tool, (exchange, request) -> forwardTool(remoteClient, request)))
-                        .toList();
-                List<McpServerFeatures.SyncResourceSpecification> resources = remoteClient.listResources()
-                        .resources().stream()
-                        .map(resource -> new McpServerFeatures.SyncResourceSpecification(
-                                resource, (exchange, request) -> forwardResource(remoteClient, request)))
-                        .toList();
-
-                JacksonMcpJsonMapper jsonMapper = new JacksonMcpJsonMapper(new ObjectMapper());
-                StdioServerTransportProvider transport = new StdioServerTransportProvider(jsonMapper, input, output);
-                McpSyncServer server = McpServer.sync(transport)
-                        .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
-                        .instructions(DevMcpServer.INSTRUCTIONS)
-                        .capabilities(McpSchema.ServerCapabilities.builder()
-                                              .tools(false)
-                                              .resources(true, false)
-                                              .build())
-                        .tools(tools)
-                        .resources(resources)
-                        .build();
-                localServer.set(server);
-                for (McpSchema.Resource resource : remoteClient.listResources().resources()) {
-                    remoteClient.subscribeResource(McpSchema.SubscribeRequest.builder(resource.uri()).build());
+                var tools = new ArrayList<>(DevMcpTools.tools(project::call));
+                for (var specification : AgentDocsTools.tools(docs, mapper)) {
+                    if (specification.tool().name().equals("docs_start")) {
+                        tools.add(DevMcpTools.tool("docs_start", specification.tool().description(),
+                                AgentDocsTools.properties(), arguments -> {
+                                    @SuppressWarnings("unchecked")
+                                    var response = new LinkedHashMap<>((Map<String, Object>) docs.start(arguments));
+                                    response.put("development", project.availability());
+                                    return response;
+                                }, mapper, true));
+                    } else {
+                        tools.add(specification);
+                    }
                 }
-                return new StdioBridge(server, remoteClient);
+                InputStream observed = new FilterInputStream(input) {
+                    @Override
+                    public int read() throws IOException {
+                        try { int value = in.read(); if (value < 0) disconnected.countDown(); return value; }
+                        catch (IOException e) { disconnected.countDown(); throw e; }
+                    }
+                    @Override
+                    public int read(byte[] bytes, int offset, int length) throws IOException {
+                        try { int count = in.read(bytes, offset, length); if (count < 0) disconnected.countDown(); return count; }
+                        catch (IOException e) { disconnected.countDown(); throw e; }
+                    }
+                };
+                var transport = new StdioServerTransportProvider(new JacksonMcpJsonMapper(mapper), observed, output);
+                var server = McpServer.sync(transport)
+                        .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
+                        .instructions(INSTRUCTIONS)
+                        .capabilities(McpSchema.ServerCapabilities.builder().tools(false).resources(true, false).build())
+                        .tools(tools)
+                        .resources(new McpServerFeatures.SyncResourceSpecification(DevMcpTools.diagnosticsResource(),
+                                (exchange, request) -> project.read(request)))
+                        .build();
+                project.onResourceChange(uri -> server.getAsyncServer().notifyResourcesUpdated(
+                        new McpSchema.ResourcesUpdatedNotification(uri)).onErrorComplete().subscribe());
+                return new StdioBridge(server, project, docs, disconnected);
             } catch (RuntimeException e) {
-                remoteClient.closeGracefully();
+                docs.close();
+                project.close();
                 throw e;
             }
         }
 
-        private static McpSyncClient remoteClient(URI endpoint, String token,
-                                                  AtomicReference<McpSyncServer> localServer) {
-            String baseUrl = endpoint.getScheme() + "://" + endpoint.getAuthority();
-            HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(baseUrl)
-                    .endpoint(endpoint.getPath())
-                    .httpRequestCustomizer((request, method, uri, body, context) -> request.header(
-                            "Authorization", "Bearer " + token))
-                    .build();
-            return McpClient.sync(transport)
-                    .requestTimeout(Duration.ofSeconds(35))
-                    .initializationTimeout(Duration.ofSeconds(5))
-                    .resourcesUpdateConsumer(contents -> {
-                        McpSyncServer server = localServer.get();
-                        if (server != null) {
-                            contents.stream().map(McpSchema.ResourceContents::uri).distinct()
-                                    .forEach(uri -> server.getAsyncServer().notifyResourcesUpdated(
-                                                    new McpSchema.ResourcesUpdatedNotification(uri))
-                                            .onErrorComplete()
-                                            .subscribe());
-                        }
-                    })
-                    .build();
-        }
-
-        private static McpSchema.CallToolResult forwardTool(
-                McpSyncClient remoteClient, McpSchema.CallToolRequest request
-        ) {
-            synchronized (remoteClient) {
-                return remoteClient.callTool(request);
-            }
-        }
-
-        private static McpSchema.ReadResourceResult forwardResource(
-                McpSyncClient remoteClient, McpSchema.ReadResourceRequest request
-        ) {
-            synchronized (remoteClient) {
-                return remoteClient.readResource(request);
-            }
-        }
-
-        private static Path tokenFile(Path projectDirectory, DevSession session) {
-            String configured = session.mcp().metadata().get("tokenFile");
-            return configured == null || configured.isBlank()
-                    ? projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve(DevMcpServer.TOKEN_FILE)
-                    : Path.of(configured);
-        }
-
-        private StdioBridge(McpSyncServer localServer, McpSyncClient remoteClient) {
+        private StdioBridge(McpSyncServer localServer, DevMcpProjectClient project, AgentDocsService docs,
+                            CountDownLatch disconnected) {
             this.localServer = localServer;
-            this.remoteClient = remoteClient;
+            this.project = project;
+            this.docs = docs;
+            this.disconnected = disconnected;
         }
 
         @Override
         public void close() {
-            localServer.closeGracefully();
-            remoteClient.closeGracefully();
+            if (!closed.compareAndSet(false, true)) return;
+            disconnected.countDown();
+            docs.close();
+            project.close();
+            try { localServer.getAsyncServer().closeGracefully().block(Duration.ofSeconds(3)); }
+            catch (RuntimeException ignored) { /* Peer may already have closed stdin. */ }
         }
     }
 }
