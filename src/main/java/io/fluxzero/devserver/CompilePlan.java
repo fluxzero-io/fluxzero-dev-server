@@ -27,6 +27,12 @@ record CompilePlan(String mode, List<String> goals, boolean appReload, String re
         if (!profile.appAffecting()) {
             return new CompilePlan("skip", List.of(), false, "no app-affecting changes", Set.of());
         }
+        if (profile.resourceRemoved()) {
+            // Maven's resource copier does not remove old output files. Let Maven clean
+            // and regenerate all output, respecting configured resource/output mappings.
+            return new CompilePlan("maven-full", List.of("clean", "test-compile", "dependency:build-classpath",
+                                                        "-DincludeScope=runtime"), true, "resource removed", Set.of());
+        }
         if (profile.pomChanged()) {
             return full("pom.xml changed");
         }
@@ -65,7 +71,7 @@ record CompilePlan(String mode, List<String> goals, boolean appReload, String re
     }
 
     private record ChangeProfile(boolean pomChanged, boolean buildChanged, boolean appAffecting, boolean fastEligible,
-                                 boolean mainChanged, boolean testChanged, Set<Path> fastSources) {
+                                 boolean mainChanged, boolean testChanged, boolean resourceRemoved, Set<Path> fastSources) {
 
         static ChangeProfile from(Path projectDirectory, Set<Path> changedFiles, boolean testApplication) {
             boolean pomChanged = false;
@@ -74,6 +80,7 @@ record CompilePlan(String mode, List<String> goals, boolean appReload, String re
             boolean fastEligible = !changedFiles.isEmpty();
             boolean mainChanged = false;
             boolean testChanged = false;
+            boolean resourceRemoved = false;
             java.util.LinkedHashSet<Path> fastSources = new java.util.LinkedHashSet<>();
             for (Path changedFile : changedFiles) {
                 String path = relativePath(projectDirectory, changedFile);
@@ -104,17 +111,19 @@ record CompilePlan(String mode, List<String> goals, boolean appReload, String re
                     mainChanged = true;
                     appAffecting = true;
                     fastEligible = false;
+                    resourceRemoved |= resourcePath(path) && !Files.exists(absolute(projectDirectory, changedFile));
                 } else if (testApplication && testPath(path)) {
                     testChanged = true;
                     appAffecting = true;
                     fastEligible = false;
+                    resourceRemoved |= resourcePath(path) && !Files.exists(absolute(projectDirectory, changedFile));
                 }
             }
             if (fastSources.isEmpty()) {
                 fastEligible = false;
             }
             return new ChangeProfile(pomChanged, buildChanged, appAffecting, fastEligible,
-                                     mainChanged, testChanged, Set.copyOf(fastSources));
+                                     mainChanged, testChanged, resourceRemoved, Set.copyOf(fastSources));
         }
 
         private String changeReason(boolean testApplication) {
@@ -157,6 +166,10 @@ record CompilePlan(String mode, List<String> goals, boolean appReload, String re
 
         private static boolean testPath(String path) {
             return path.startsWith("src/test/") || path.contains("/src/test/");
+        }
+
+        private static boolean resourcePath(String path) {
+            return path.matches("(?:.*/)?src/(?:main|test)/resources(?:/.*)?");
         }
 
         private static boolean gradleBuildPath(String path) {

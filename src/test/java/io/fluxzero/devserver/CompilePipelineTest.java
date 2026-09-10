@@ -251,6 +251,41 @@ class CompilePipelineTest {
     }
 
     @Test
+    void removesDeletedResourcesBeforePublishingTheNextBuild(@TempDir Path projectDirectory) throws Exception {
+        installRealMavenWrapper(projectDirectory, Path.of(System.getProperty("user.home"), ".m2", "repository"));
+        Files.writeString(projectDirectory.resolve("pom.xml"), """
+                <project xmlns="http://maven.apache.org/POM/4.0.0">
+                  <modelVersion>4.0.0</modelVersion>
+                  <groupId>com.acme</groupId><artifactId>resource-reload</artifactId><version>1</version>
+                  <properties><maven.compiler.release>21</maven.compiler.release></properties>
+                </project>
+                """);
+        writeSource(projectDirectory, "App", """
+                package com.acme;
+                public class App { public static void main(String[] args) {} }
+                """);
+        Path resources = projectDirectory.resolve("src/main/resources");
+        Path service = resources.resolve("META-INF/services/com.acme.Extension");
+        Files.createDirectories(service.getParent());
+        Files.writeString(service, "com.acme.RemovedExtension");
+        Files.writeString(resources.resolve("retained.txt"), "retain me");
+        CompilePipeline pipeline = new CompilePipeline(config(projectDirectory), ignored -> {});
+        CompileResult initial = pipeline.compile(Set.of(projectDirectory.resolve("pom.xml")));
+        assertTrue(initial.success(), initial.detail());
+        pipeline.activate(initial.snapshot());
+        Files.delete(service);
+
+        CompileResult changed = pipeline.compile(Set.of(service));
+
+        assertTrue(changed.success(), changed.detail());
+        assertFalse(Files.exists(projectDirectory.resolve("target/classes/META-INF/services/com.acme.Extension")));
+        assertFalse(Files.exists(changed.snapshot().classesDirectory().resolve("META-INF/services/com.acme.Extension")));
+        assertEquals("retain me", Files.readString(changed.snapshot().classesDirectory().resolve("retained.txt")));
+        assertTrue(Files.isRegularFile(initial.snapshot().classesDirectory().resolve("META-INF/services/com.acme.Extension")),
+                   "The active build must remain immutable until its replacement starts");
+    }
+
+    @Test
     void startsTestApplicationWithUninstalledTestScopedReactorDependency(@TempDir Path projectDirectory)
             throws Exception {
         installRealMavenWrapper(projectDirectory, projectDirectory.resolve("repository"));
