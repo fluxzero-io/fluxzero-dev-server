@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -53,8 +54,8 @@ class AgentDocsMcpTest {
                 "--project-dir", directory.toString()).redirectError(directory.resolve("stderr.log").toFile()).start();
         var executor = Executors.newVirtualThreadPerTaskExecutor();
         try {
-            var reader = process.inputReader();
-            var writer = process.outputWriter();
+            var reader = process.inputReader(StandardCharsets.UTF_8);
+            var writer = process.outputWriter(StandardCharsets.UTF_8);
             writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", 0, "method", "initialize", "params",
                     Map.of("protocolVersion", "2025-11-25", "capabilities", Map.of(),
                             "clientInfo", Map.of("name", "concurrency-test", "version", "1")))) + "\n");
@@ -306,8 +307,8 @@ class AgentDocsMcpTest {
                 "-cp", System.getProperty("java.class.path"), DevMcpStdioMain.class.getName(),
                 "--project-dir", directory.toString()).redirectError(directory.resolve("stderr.log").toFile()).start();
         try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            var reader = process.inputReader();
-            var writer = process.outputWriter();
+            var reader = process.inputReader(StandardCharsets.UTF_8);
+            var writer = process.outputWriter(StandardCharsets.UTF_8);
             writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", 1, "method", "initialize", "params",
                     Map.of("protocolVersion", "2025-11-25", "capabilities", Map.of(),
                            "clientInfo", Map.of("name", "eof-test", "version", "1")))) + "\n");
