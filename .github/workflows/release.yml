@@ -81,14 +81,6 @@ jobs:
           unzip -p target/fluxzero-dev-server-${{ needs.version.outputs.version }}-standalone.jar META-INF/MANIFEST.MF > target/standalone-manifest.txt
           grep -F "Implementation-Version: ${{ needs.version.outputs.version }}" target/standalone-manifest.txt
           grep -F "Fluxzero-SDK-Version: $SDK_VERSION" target/standalone-manifest.txt
-      - uses: actions/upload-artifact@v7
-        with:
-          name: release-artifacts
-          path: |
-            target/fluxzero-dev-server-${{ needs.version.outputs.version }}.jar
-            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-standalone.jar
-            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-sources.jar
-            target/fluxzero-dev-server-${{ needs.version.outputs.version }}-javadoc.jar
 
   tag:
     name: Tag release
@@ -151,7 +143,19 @@ jobs:
             "$ACTIONS_ID_TOKEN_REQUEST_URL" | jq -er '.value')
           echo "::add-mask::$token"
           export MAVEN_DEPLOY_TOKEN="$token"
-          ./mvnw -B -Psign deploy -DskipTests
+          set -o pipefail
+          ./mvnw -B -Psign deploy -DskipTests | tee "$RUNNER_TEMP/packages-deploy.log"
+
+      - name: Collect exact Maven release assets from Packages
+        run: python3 .github/scripts/collect-maven-assets.py --deploy-log "$RUNNER_TEMP/packages-deploy.log"
+
+      - name: Retain Maven release assets for the GitHub release
+        uses: actions/upload-artifact@v7
+        with:
+          name: maven-release-assets
+          path: maven-release-assets/*
+          if-no-files-found: error
+          retention-days: 1
 
   packages-smoke:
     name: Verify Fluxzero Packages consumer
@@ -259,17 +263,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - name: Download complete Maven release assets
+        uses: actions/download-artifact@v8
         with:
-          name: release-artifacts
-          path: release-artifacts
+          name: maven-release-assets
+          path: maven-release-assets
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_VERSION: ${{ needs.version.outputs.version }}
         run: >-
           gh release create "$RELEASE_VERSION"
-          release-artifacts/*
+          maven-release-assets/*
           --repo "$GITHUB_REPOSITORY"
           --title "Fluxzero Dev Server $RELEASE_VERSION"
           --generate-notes
