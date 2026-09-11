@@ -170,11 +170,32 @@ jobs:
     name: Publish to Maven Central
     needs: [version, packages-smoke]
     runs-on: ubuntu-latest
+    outputs:
+      publish: ${{ steps.central_window.outputs.publish }}
     steps:
+      - name: Determine Maven Central publication window
+        id: central_window
+        shell: bash
+        run: |
+          release_date="$(TZ=Europe/Amsterdam date +%F)"
+          if [[ "$release_date" < "2026-10-01" ]]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Maven Central publication"
+              echo
+              echo "Skipped: releases started on or after 1 October 2026 are published only to https://packages.fluxzero.io/maven."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.central_window.outputs.publish == 'true'
       - name: Set release timestamp
+        if: steps.central_window.outputs.publish == 'true'
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
+        if: steps.central_window.outputs.publish == 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
@@ -184,8 +205,10 @@ jobs:
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
       - name: Set release version
+        if: steps.central_window.outputs.publish == 'true'
         run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
       - name: Publish release
+        if: steps.central_window.outputs.publish == 'true'
         run: ./mvnw -B deploy -Psign,central -DskipTests
         env:
           MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
@@ -199,12 +222,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        if: needs.central.outputs.publish == 'true'
       - name: Install Java
+        if: needs.central.outputs.publish == 'true'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: "25"
       - name: Resolve standalone artifact from Central
+        if: needs.central.outputs.publish == 'true'
         env:
           RELEASE_VERSION: ${{ needs.version.outputs.version }}
           SMOKE_REPOSITORY: ${{ runner.temp }}/central-smoke
