@@ -19,7 +19,6 @@ import io.modelcontextprotocol.json.jackson2.JacksonMcpJsonMapper;
 import io.modelcontextprotocol.server.McpServer;
 import io.modelcontextprotocol.server.McpServerFeatures;
 import io.modelcontextprotocol.server.McpSyncServer;
-import io.modelcontextprotocol.server.transport.StdioServerTransportProvider;
 import io.modelcontextprotocol.spec.McpSchema;
 
 import java.io.FilterInputStream;
@@ -129,7 +128,7 @@ public final class DevMcpStdioMain {
                         catch (IOException e) { disconnected.countDown(); throw e; }
                     }
                 };
-                var transport = new StdioServerTransportProvider(new JacksonMcpJsonMapper(mapper), observed, output);
+                var transport = new SerialStdioServerTransportProvider(new JacksonMcpJsonMapper(mapper), observed, output);
                 var server = McpServer.sync(transport)
                         .serverInfo("fluxzero-dev-stdio", DevServerVersion.current())
                         .instructions(INSTRUCTIONS)
