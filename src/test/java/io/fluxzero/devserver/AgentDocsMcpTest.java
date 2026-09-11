@@ -29,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
@@ -40,6 +41,87 @@ import static io.fluxzero.devserver.AgentDocsFixture.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AgentDocsMcpTest {
+    @Test
+    void concurrentResponsesDoNotBreakTheStdioSession(@TempDir Path directory) throws Exception {
+        Path archive = directory.resolve("docs.zip");
+        Files.write(archive, archive("sdk", "1.2.3"));
+        String fragment = "# LocalOnly\nHandle locally 🦊.\n";
+        var process = new ProcessBuilder(javaExecutable(),
+                "-Dfluxzero.dev.docs.sdk.archive=" + archive,
+                "-Dfluxzero.dev.docs.cacheDirectory=" + directory.resolve("cache"),
+                "-cp", System.getProperty("java.class.path"), DevMcpStdioMain.class.getName(),
+                "--project-dir", directory.toString()).redirectError(directory.resolve("stderr.log").toFile()).start();
+        var executor = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            var reader = process.inputReader();
+            var writer = process.outputWriter();
+            writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", 0, "method", "initialize", "params",
+                    Map.of("protocolVersion", "2025-11-25", "capabilities", Map.of(),
+                            "clientInfo", Map.of("name", "concurrency-test", "version", "1")))) + "\n");
+            writer.flush();
+            assertTrue(executor.submit(reader::readLine).get(5, TimeUnit.SECONDS).contains("result"));
+            writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "method", "notifications/initialized")) + "\n");
+            // Concurrent response emission used to stop the stdio reader and strand later documentation calls.
+            for (int round = 0; round < 5; round++) {
+                int base = round * 64;
+                var replies = executor.submit(() -> {
+                    var ids = new HashSet<Integer>();
+                    while (ids.size() < 64) {
+                        var line = reader.readLine();
+                        assertNotNull(line, "the bridge closed stdout before answering all concurrent calls");
+                        var response = JSON.readTree(line);
+                        assertTrue(response.has("result"), response::toString);
+                        assertTrue(response.path("id").isIntegralNumber(), response::toString);
+                        int id = response.path("id").asInt();
+                        assertTrue(id > base && id <= base + 64, response::toString);
+                        assertTrue(ids.add(id), "duplicate response id");
+                        if (id % 4 == 0) {
+                            assertTrue(response.at("/result/isError").asBoolean(), response::toString);
+                            assertEquals("Unknown documentation article: /docs/missing-" + id,
+                                    response.at("/result/content/0/text").asText());
+                        } else {
+                            assertFalse(response.at("/result/isError").asBoolean(), response::toString);
+                            var result = JSON.readTree(response.at("/result/content/0/text").asText());
+                            assertEquals("/docs/local", result.path("path").asText());
+                            assertEquals(fragment.repeat(id), result.path("content").asText(), "response id " + id);
+                            assertEquals(fragment.length() * id, result.path("nextOffset").asInt());
+                        }
+                    }
+                    return ids;
+                });
+                for (int index = 1; index <= 64; index++) {
+                    int id = base + index;
+                    // Every success and tool error has a distinct payload, so swapped response IDs are detected.
+                    writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", id,
+                            "method", "tools/call", "params", Map.of("name", "docs_read", "arguments",
+                                    Map.of("version", "1.2.3", "path", id % 4 == 0 ? "/docs/missing-" + id : "/docs/local",
+                                            "maxChars", fragment.length() * id)))) + "\n");
+                }
+                writer.flush();
+                var expected = new HashSet<Integer>();
+                for (int index = 1; index <= 64; index++) expected.add(base + index);
+                assertEquals(expected, replies.get(10, TimeUnit.SECONDS));
+            }
+            writer.write(JSON.writeValueAsString(Map.of("jsonrpc", "2.0", "id", 321, "method", "tools/call",
+                    "params", Map.of("name", "docs_read", "arguments",
+                            Map.of("version", "1.2.3", "path", "/docs")))) + "\n");
+            writer.flush();
+            var response = JSON.readTree(executor.submit(reader::readLine).get(5, TimeUnit.SECONDS));
+            assertEquals(321, response.path("id").asInt());
+            assertTrue(response.has("result"), response::toString);
+            assertFalse(response.at("/result/isError").asBoolean(), response::toString);
+            var article = JSON.readTree(response.at("/result/content/0/text").asText());
+            assertEquals("# Start\nUse selective documentation retrieval.\n", article.path("content").asText());
+            assertFalse(Files.exists(directory.resolve(".fluxzero")), "documentation must not start a dev server");
+            writer.close();
+            assertTrue(process.waitFor(5, TimeUnit.SECONDS), "the busy bridge must still exit on EOF");
+            assertEquals(0, process.exitValue());
+        } finally {
+            process.destroyForcibly();
+            executor.close();
+        }
+    }
+
     @Test
     void servesDocsWithoutAProjectThenConnectsAndReconnectsWithoutChangingTools(@TempDir Path directory) throws Exception {
         Path root = Files.createDirectory(directory.resolve("workspace"));
@@ -99,12 +181,52 @@ class AgentDocsMcpTest {
     }
 
     @Test
+    void correlatesForwardedResponsesWhenCompletionOrderChanges(@TempDir Path root) throws Exception {
+        var session = DevSession.empty(DevServerConfig.defaults(root));
+        CountDownLatch firstStarted = new CountDownLatch(1), releaseFirst = new CountDownLatch(1);
+        CountDownLatch changed = new CountDownLatch(1);
+        AtomicInteger requests = new AtomicInteger();
+        try (var logs = new DevLogStore(root, session.sessionId(), "orders");
+             var server = DevMcpServer.start(root, new AgentQueryService(() -> {
+                 if (requests.incrementAndGet() != 1) return session.withStatus("later-response");
+                 firstStarted.countDown();
+                 try { assertTrue(releaseFirst.await(10, TimeUnit.SECONDS)); }
+                 catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+                 return session.withStatus("first-response");
+             }, logs), logs)) {
+            new DevSessionStore(root).writeSession(session.withStatus("running").withMcp(
+                    DevSession.ServiceStatus.running("mcp", server.url(), server.port(), null, "test")));
+            try (var client = stdioClient(root, root.resolve("cache"), changed);
+                 var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+                client.initialize();
+                client.subscribeResource(new McpSchema.SubscribeRequest(DevMcpServer.DIAGNOSTICS_RESOURCE));
+                try {
+                    var first = executor.submit(() -> call(client, "get_status", Map.of()));
+                    assertTrue(firstStarted.await(4, TimeUnit.SECONDS));
+                    logs.process("app", "application", "orders", "orders-1", "stderr", "ERROR correlation notification");
+                    assertTrue(changed.await(3, TimeUnit.SECONDS), "notifications must pass while a request is pending");
+                    var later = call(client, "get_status", Map.of());
+                    assertEquals("later-response", later.at("/session/status").asText());
+                    assertEquals(session.sessionId(), later.at("/session/sessionId").asText());
+                    assertFalse(first.isDone(), "the first forwarded request must still be blocked");
+                    releaseFirst.countDown();
+                    assertEquals("first-response", first.get(4, TimeUnit.SECONDS).at("/session/status").asText());
+                    assertEquals(2, requests.get());
+                } finally { releaseFirst.countDown(); }
+            }
+        } finally { releaseFirst.countDown(); }
+    }
+
+    @Test
     void latestDownloadDoesNotBlockStatusAndCanBeReadOffline(@TempDir Path directory) throws Exception {
         Path root = Files.createDirectory(directory.resolve("workspace"));
         byte[] archive = archive("sdk", "1.2.3"), checksum = hash(archive).getBytes();
+        byte[] otherArchive = archive("sdk", "1.2.4"), otherChecksum = hash(otherArchive).getBytes();
         CountDownLatch downloading = new CountDownLatch(1), release = new CountDownLatch(1);
         AtomicInteger calls = new AtomicInteger();
+        var httpExecutor = Executors.newVirtualThreadPerTaskExecutor();
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        http.setExecutor(httpExecutor);
         http.createContext("/", exchange -> {
             try (exchange) {
                 calls.incrementAndGet();
@@ -112,6 +234,8 @@ class AgentDocsMcpTest {
                 byte[] bytes;
                 if (path.endsWith("maven-metadata.xml")) {
                     bytes = "<metadata><versioning><release>1.2.3</release></versioning></metadata>".getBytes();
+                } else if (path.contains("/1.2.4/")) {
+                    bytes = path.endsWith(".sha256") ? otherChecksum : otherArchive;
                 } else {
                     downloading.countDown();
                     try { assertTrue(release.await(8, TimeUnit.SECONDS)); }
@@ -130,10 +254,17 @@ class AgentDocsMcpTest {
             var docs = executor.submit(() -> call(client, "docs_start", Map.of()));
             assertTrue(downloading.await(4, TimeUnit.SECONDS));
             assertEquals("dev-server-not-running", call(client, "get_status", Map.of()).path("status").asText());
+            // The second docs_start must complete before the first, with its own version and selection.
+            var otherDocs = call(client, "docs_start", Map.of("version", "1.2.4"));
+            assertEquals("1.2.4", otherDocs.path("version").asText());
+            assertEquals("explicit-version", otherDocs.path("selection").asText());
+            assertFalse(docs.isDone(), "the first download must still be blocked");
             release.countDown();
-            assertEquals("latest-release", docs.get(4, TimeUnit.SECONDS).path("selection").asText());
-            assertEquals(3, calls.get());
-        } finally { release.countDown(); http.stop(0); }
+            var firstDocs = docs.get(4, TimeUnit.SECONDS);
+            assertEquals("1.2.3", firstDocs.path("version").asText());
+            assertEquals("latest-release", firstDocs.path("selection").asText());
+            assertEquals(5, calls.get());
+        } finally { release.countDown(); http.stop(0); httpExecutor.close(); }
         try (var client = stdioClient(root, directory.resolve("cache"), new CountDownLatch(1), repository)) {
             client.initialize();
             assertEquals("cache", call(client, "docs_start", Map.of()).path("source").asText());
