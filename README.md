@@ -4,8 +4,6 @@
 
 Local development server for [Fluxzero](https://fluxzero.io) applications.
 
-[How it works](https://fluxzero.io/how-it-works) · [Docs](https://fluxzero.io/docs)
-
 The Fluxzero Dev Server provides a complete local development environment for Fluxzero applications. It starts
 a version-aligned test runtime and proxy, launches one or more applications, performs rolling replacements after source
 changes, runs affected tests in the background, and can manage a frontend development server behind one public
@@ -366,3 +364,23 @@ the implemented architecture, phases, and verification scenarios.
 ## License
 
 Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
+
+
+---
+
+<p align="center"><strong>Are you a builder or coding agent?</strong><br>We welcome your ideas, issues, and pull requests!</p>
+
+<p align="center">
+  <a href="https://github.com/fluxzero-io/fluxzero-sdk-java"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/sdk-dark.svg"><img src="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/sdk-light.svg" alt="SDK — Connect your code to Fluxzero" width="200" height="91"></picture></a>
+  <a href="https://github.com/fluxzero-io/fluxzero-agent-plugins"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/agents-dark.svg"><img src="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/agents-light.svg" alt="Agent plugins — Guide your coding agent" width="200" height="91"></picture></a>
+  <a href="https://github.com/fluxzero-io/fluxzero-cli"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/cli-dark.svg"><img src="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/cli-light.svg" alt="CLI — Create, run, and deploy apps" width="200" height="91"></picture></a>
+  <a href="https://github.com/fluxzero-io/fluxzero-dev-server"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/dev-server-dark.svg"><img src="https://raw.githubusercontent.com/fluxzero-io/.github/d4ab6c7914b7e21d06336601bdf8d9dd6e4b725a/assets/brand/2026-09/profile/dev-server-light.svg" alt="Dev Server — Develop and test locally" width="200" height="91"></picture></a>
+</p>
+
+<p align="center">
+  <a href="https://fluxzero.io/">Website</a> &nbsp;·&nbsp;
+  <a href="https://fluxzero.io/how-it-works">How it works</a> &nbsp;·&nbsp;
+  <a href="https://fluxzero.io/docs">Docs</a> &nbsp;·&nbsp;
+  <a href="https://fluxzero.io/about">About us</a> &nbsp;·&nbsp;
+  <a href="https://fluxzero.io/contact">Contact us</a>
+</p>
