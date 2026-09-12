@@ -1,4 +1,10 @@
+<a href="https://fluxzero.io"><img src="https://raw.githubusercontent.com/fluxzero-io/.github/main/assets/brand/2026-09/repository-header.svg" alt="Fluxzero — The European cloud for AI-built apps" width="1280"></a>
+
 # Fluxzero Dev Server
+
+The local development environment for [Fluxzero](https://fluxzero.io), the European cloud for AI-built apps. Keep applications, frontends, tests, and agent feedback in one development loop while you build the product.
+
+[Get started](https://fluxzero.io/get-started) · [How it works](https://fluxzero.io/how-it-works) · [Docs](https://fluxzero.io/docs)
 
 The Fluxzero Dev Server provides a complete local development environment for Fluxzero applications. It starts
 a version-aligned test runtime and proxy, launches one or more applications, performs rolling replacements after source
