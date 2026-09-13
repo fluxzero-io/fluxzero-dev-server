@@ -51,6 +51,19 @@ class AgentDocsStoreTest {
     }
 
     @Test
+    void usesSharedCacheWhenWritableAndWorkspaceCacheWhenItIsBlocked(@TempDir Path directory) throws Exception {
+        Path shared = directory.resolve("shared");
+        Path project = Files.createDirectory(directory.resolve("project"));
+
+        assertEquals(shared.toAbsolutePath(), AgentDocsStore.selectWritableCache(shared, project));
+
+        Path blockedParent = directory.resolve("blocked");
+        Files.writeString(blockedParent, "not a directory");
+        assertEquals(project.resolve(".fluxzero/dev/cache/agent-docs").toAbsolutePath(),
+                     AgentDocsStore.selectWritableCache(blockedParent.resolve("agent-docs"), project));
+    }
+
+    @Test
     void reusesSharedCacheOfflineAndRepairsCorruption(@TempDir Path cache) throws Exception {
         AtomicInteger calls = new AtomicInteger();
         byte[] bytes = archive("sdk", "1.2.3");

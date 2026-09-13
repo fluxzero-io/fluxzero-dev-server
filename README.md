@@ -144,6 +144,8 @@ stdio process and cancels downloads without stopping a shared background project
 
 Archives are downloaded on demand from Fluxzero Packages and cached per namespace and version under
 `~/.fluxzero/cache/agent-docs/`. A valid cached release needs no network access, including after a restart.
+When an agent sandbox cannot write that shared location, the stdio server automatically uses the ignored project-local
+`.fluxzero/dev/cache/agent-docs/` directory instead; no `dev.yaml` setting or broader filesystem permission is required.
 Only the `sdk` namespace is currently provided. See [the documentation API reference](docs/agent-documentation.md)
 for selectors, limits, cache validation, and local archive configuration.
 
