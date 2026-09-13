@@ -60,10 +60,16 @@ final class AgentDocsStore implements AutoCloseable {
     private final Map<String, AgentDocsGraph> parsed = new LinkedHashMap<>(8, 0.75f, true);
 
     AgentDocsStore() {
-        this(Path.of(setting("cacheDirectory", "CACHE_DIRECTORY",
-                             Path.of(System.getProperty("user.home"), ".fluxzero/cache/agent-docs").toString())),
+        this(defaultCacheRoot(null),
              repository(setting("repository", "REPOSITORY", "https://packages.fluxzero.io/maven/")),
              localArchives());
+    }
+
+    static AgentDocsStore forProject(Path projectDirectory) {
+        return new AgentDocsStore(defaultCacheRoot(projectDirectory),
+                                  repository(setting("repository", "REPOSITORY",
+                                                     "https://packages.fluxzero.io/maven/")),
+                                  localArchives());
     }
 
     AgentDocsStore(Path cacheRoot, URI repository, Map<String, Path> localArchives) {
@@ -240,6 +246,40 @@ final class AgentDocsStore implements AutoCloseable {
             result = System.getenv("FLUXZERO_DEV_DOCS_" + environment);
         }
         return result == null || result.isBlank() ? fallback : result.strip();
+    }
+
+    private static Path defaultCacheRoot(Path projectDirectory) {
+        String configured = setting("cacheDirectory", "CACHE_DIRECTORY", null);
+        if (configured != null) {
+            return Path.of(configured);
+        }
+        Path shared = Path.of(System.getProperty("user.home"), ".fluxzero/cache/agent-docs");
+        return selectWritableCache(shared, projectDirectory);
+    }
+
+    static Path selectWritableCache(Path shared, Path projectDirectory) {
+        Path normalized = shared.toAbsolutePath().normalize();
+        Path probe = null;
+        try {
+            Files.createDirectories(normalized);
+            probe = Files.createTempFile(normalized, ".write-check-", ".tmp");
+            Files.delete(probe);
+            probe = null;
+            return normalized;
+        } catch (IOException | SecurityException unavailable) {
+            if (projectDirectory == null) {
+                return normalized;
+            }
+            return projectDirectory.toAbsolutePath().normalize().resolve(".fluxzero/dev/cache/agent-docs");
+        } finally {
+            if (probe != null) {
+                try {
+                    Files.deleteIfExists(probe);
+                } catch (IOException ignored) {
+                    // A failed cleanup does not make the shared cache usable for subsequent writes.
+                }
+            }
+        }
     }
 
     private static Map<String, Path> localArchives() {

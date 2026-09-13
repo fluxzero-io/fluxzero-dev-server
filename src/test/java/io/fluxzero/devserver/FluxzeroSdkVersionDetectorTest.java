@@ -72,6 +72,62 @@ class FluxzeroSdkVersionDetectorTest {
     }
 
     @Test
+    void detectsKotlinGradleVersionVariableUsedByBom(@TempDir Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("build.gradle.kts"), """
+                val fluxzeroVersion = "1.262.0"
+
+                dependencies {
+                    implementation(platform("io.fluxzero:fluxzero-bom:$fluxzeroVersion"))
+                    implementation("io.fluxzero:sdk")
+                }
+                """);
+
+        assertEquals(Set.of("1.262.0"), FluxzeroSdkVersionDetector.detect(projectDirectory));
+    }
+
+    @Test
+    void detectsTypedKotlinAndGroovyVersionVariables(@TempDir Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("build.gradle.kts"), """
+                val fluxzeroVersion: String = "1.261.0"
+                dependencies {
+                    implementation(platform("io.fluxzero:fluxzero-bom:$fluxzeroVersion"))
+                }
+                """);
+
+        assertEquals(Set.of("1.261.0"), FluxzeroSdkVersionDetector.detect(projectDirectory));
+
+        Files.delete(projectDirectory.resolve("build.gradle.kts"));
+        Files.writeString(projectDirectory.resolve("build.gradle"), """
+                def fluxzeroVersion = '1.260.0'
+                dependencies {
+                    implementation platform("io.fluxzero:fluxzero-bom:$fluxzeroVersion")
+                }
+                """);
+
+        assertEquals(Set.of("1.260.0"), FluxzeroSdkVersionDetector.detect(projectDirectory));
+    }
+
+    @Test
+    void rejectsFluxzeroBuildWhoseSdkVersionCannotBeDetermined(@TempDir Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("build.gradle.kts"), """
+                dependencies {
+                    implementation("io.fluxzero:sdk")
+                }
+                """);
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "app", null, false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), null);
+
+        DevServerStartupException failure = assertThrows(
+                DevServerStartupException.class, () -> FluxzeroSdkVersionDetector.detect(config));
+
+        assertTrue(failure.getMessage().contains("Could not determine the Fluxzero SDK version"));
+        assertTrue(failure.getMessage().contains(FluxzeroSdkVersionDetector.VERSION_OVERRIDE_ENV));
+    }
+
+    @Test
     void declarativeVersionWinsOverStaleRuntimeClasspath(@TempDir Path projectDirectory) throws Exception {
         Files.writeString(projectDirectory.resolve("pom.xml"), """
                 <project>

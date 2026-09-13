@@ -458,14 +458,24 @@ public class DevServer implements AutoCloseable {
             proxyUrl = "http://localhost:" + ready.proxyPort();
 
             Map<String, String> metadata = new LinkedHashMap<>(devRuntime.metadata());
-            selection.projectVersions().forEach((project, version) ->
-                    metadata.put("project." + project + ".sdkVersion", version));
+            String detection;
+            String compatibility;
             if (!selection.fallbackProjects().isEmpty()) {
-                metadata.put("versionDetection", "fallback");
+                detection = "fallback";
+                compatibility = "unverified";
                 metadata.put("fallbackProjects", String.join(",", selection.fallbackProjects()));
             } else {
-                metadata.put("versionDetection", selection.overridden() ? "override" : "build");
+                detection = selection.overridden() ? "override" : "build";
+                compatibility = selection.overridden() ? "overridden" : "verified";
             }
+            metadata.put("versionDetection", detection);
+            metadata.put("runtimeSdkVersion", ready.version());
+            metadata.put("runtimeCompatibility", compatibility);
+            selection.projectVersions().forEach((project, version) -> {
+                metadata.put("project." + project + ".sdkVersion", version);
+                metadata.put("project." + project + ".sdkVersionSource",
+                             selection.fallbackProjects().contains(project) ? "fallback" : detection);
+            });
             String detail = "Fluxzero SDK " + ready.version() + " runtime";
             updateRuntimeStatus(DevSession.ServiceStatus.running(
                     "runtime", runtimeBaseUrl, ready.runtimePort(), devRuntime.pid(), detail)

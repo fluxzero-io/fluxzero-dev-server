@@ -81,7 +81,8 @@ public final class DevMcpStdioMain {
         static StdioBridge start(Path directory, InputStream input, OutputStream output) {
             Path root = directory.toAbsolutePath().normalize();
             return start(root, input, output, new AgentDocsService(
-                    () -> DevServerConfig.fromArgs(new String[]{"--project-dir", root.toString()}), new AgentDocsStore()));
+                    () -> DevServerConfig.fromArgs(new String[]{"--project-dir", root.toString()}),
+                    AgentDocsStore.forProject(root)));
         }
 
         static StdioBridge start(Path directory, InputStream input, OutputStream output, AgentDocsService docs) {

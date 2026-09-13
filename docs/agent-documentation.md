@@ -91,6 +91,10 @@ These settings belong to the stdio MCP process. JVM properties take precedence o
 | `fluxzero.dev.docs.repository` | `FLUXZERO_DEV_DOCS_REPOSITORY` | `https://packages.fluxzero.io/maven/` |
 | `fluxzero.dev.docs.sdk.archive` | `FLUXZERO_DEV_DOCS_SDK_ARCHIVE` | Unset |
 
+Without an explicit cache override, the stdio server first uses the shared user cache. If its process cannot write
+there, it automatically falls back to `.fluxzero/dev/cache/agent-docs/` in the selected project directory. This keeps
+documentation available in a workspace-only sandbox without requiring project configuration or broader permissions.
+
 The repository override accepts an HTTP(S) or `file:` Maven root, without credentials, query or fragment. Redirects
 are not followed. The explicit local archive bypasses download and must still match the requested namespace/version
 and pass graph validation. Its bytes are checked on every call so rebuilding a local snapshot takes effect immediately.

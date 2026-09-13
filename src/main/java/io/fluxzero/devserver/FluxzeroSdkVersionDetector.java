@@ -47,7 +47,9 @@ final class FluxzeroSdkVersionDetector {
     private static final Pattern GRADLE_COORDINATE = Pattern.compile(
             "io\\.fluxzero:(?:sdk|fluxzero-bom):([^'\"\\s)]+)");
     private static final Pattern GRADLE_VERSION_ASSIGNMENT = Pattern.compile(
-            "(?m)^\\s*(?:fluxzero(?:Sdk)?Version|fluxzero(?:\\.sdk)?\\.version|fluxzero)\\s*[=:]\\s*['\"]?([^'\"\\s]+)");
+            "(?m)^\\s*(?:(?:val|var|def)\\s+|ext\\.)?"
+            + "(?:fluxzero(?:Sdk)?Version|fluxzero(?:\\.sdk)?\\.version|fluxzero)"
+            + "\\s*(?::\\s*[A-Za-z0-9_.<>?]+\\s*)?[=:]\\s*['\"]?([^'\"\\s]+)");
     private static final Pattern TOML_FLUXZERO_VERSION = Pattern.compile(
             "(?m)^\\s*fluxzero(?:-sdk)?\\s*=\\s*['\"]([^'\"]+)['\"]");
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -66,6 +68,13 @@ final class FluxzeroSdkVersionDetector {
         for (DevBuildProject project : config.projects()) {
             Set<String> detected = detect(project.directory());
             if (detected.isEmpty()) {
+                if (declaresFluxzero(project.directory())) {
+                    throw new DevServerStartupException(
+                            "Could not determine the Fluxzero SDK version for " + project.id()
+                            + ". Declare a concrete Fluxzero SDK or BOM version in the Maven or Gradle build, or set "
+                            + VERSION_OVERRIDE_ENV + " for a custom build model. The Dev Server will not assume "
+                            + DevServerVersion.sdkVersion() + " for a Fluxzero application.");
+                }
                 projectVersions.put(project.id(), DevServerVersion.sdkVersion());
                 fallbackProjects.add(project.id());
             } else {
@@ -245,6 +254,18 @@ final class FluxzeroSdkVersionDetector {
         }
         Stream.of("fluxzeroVersion", "fluxzeroSdkVersion", "fluxzero.version", "fluxzero.sdk.version")
                 .map(properties::get).filter(FluxzeroSdkVersionDetector::concreteVersion).forEach(versions::add);
+    }
+
+    private static boolean declaresFluxzero(Path directory) {
+        return Stream.of("pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle", "settings.gradle.kts",
+                         "gradle/libs.versions.toml")
+                .map(directory::resolve).filter(Files::isRegularFile).anyMatch(path -> {
+                    try {
+                        return Files.readString(path).contains("io.fluxzero");
+                    } catch (IOException ignored) {
+                        return false;
+                    }
+                });
     }
 
     private static Map<String, String> gradleProperties(Path file) {
