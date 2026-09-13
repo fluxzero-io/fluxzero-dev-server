@@ -193,6 +193,9 @@ class DevServerLifecycleTest {
             assertTrue(Set.of("hit", "miss").contains(session.runtime().metadata().get("artifactCache")));
             assertEquals("fallback", session.runtime().metadata().get("versionDetection"));
             assertEquals("project", session.runtime().metadata().get("fallbackProjects"));
+            assertEquals(DevServerVersion.sdkVersion(), session.runtime().metadata().get("runtimeSdkVersion"));
+            assertEquals("unverified", session.runtime().metadata().get("runtimeCompatibility"));
+            assertEquals("fallback", session.runtime().metadata().get("project.project.sdkVersionSource"));
             assertTrue(session.mcp().port() > 0);
             assertNotEquals(session.runtime().port(), session.mcp().port());
             assertNotEquals(session.proxy().port(), session.mcp().port());

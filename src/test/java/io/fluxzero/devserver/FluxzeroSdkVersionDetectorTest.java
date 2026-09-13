@@ -108,6 +108,26 @@ class FluxzeroSdkVersionDetectorTest {
     }
 
     @Test
+    void rejectsFluxzeroBuildWhoseSdkVersionCannotBeDetermined(@TempDir Path projectDirectory) throws Exception {
+        Files.writeString(projectDirectory.resolve("build.gradle.kts"), """
+                dependencies {
+                    implementation("io.fluxzero:sdk")
+                }
+                """);
+        DevServerConfig config = new DevServerConfig(
+                projectDirectory, null, "app", null, false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), null);
+
+        DevServerStartupException failure = assertThrows(
+                DevServerStartupException.class, () -> FluxzeroSdkVersionDetector.detect(config));
+
+        assertTrue(failure.getMessage().contains("Could not determine the Fluxzero SDK version"));
+        assertTrue(failure.getMessage().contains(FluxzeroSdkVersionDetector.VERSION_OVERRIDE_ENV));
+    }
+
+    @Test
     void declarativeVersionWinsOverStaleRuntimeClasspath(@TempDir Path projectDirectory) throws Exception {
         Files.writeString(projectDirectory.resolve("pom.xml"), """
                 <project>
