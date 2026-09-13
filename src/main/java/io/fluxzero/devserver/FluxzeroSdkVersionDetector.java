@@ -47,7 +47,9 @@ final class FluxzeroSdkVersionDetector {
     private static final Pattern GRADLE_COORDINATE = Pattern.compile(
             "io\\.fluxzero:(?:sdk|fluxzero-bom):([^'\"\\s)]+)");
     private static final Pattern GRADLE_VERSION_ASSIGNMENT = Pattern.compile(
-            "(?m)^\\s*(?:fluxzero(?:Sdk)?Version|fluxzero(?:\\.sdk)?\\.version|fluxzero)\\s*[=:]\\s*['\"]?([^'\"\\s]+)");
+            "(?m)^\\s*(?:(?:val|var|def)\\s+|ext\\.)?"
+            + "(?:fluxzero(?:Sdk)?Version|fluxzero(?:\\.sdk)?\\.version|fluxzero)"
+            + "\\s*(?::\\s*[A-Za-z0-9_.<>?]+\\s*)?[=:]\\s*['\"]?([^'\"\\s]+)");
     private static final Pattern TOML_FLUXZERO_VERSION = Pattern.compile(
             "(?m)^\\s*fluxzero(?:-sdk)?\\s*=\\s*['\"]([^'\"]+)['\"]");
     private static final ObjectMapper MAPPER = new ObjectMapper();
