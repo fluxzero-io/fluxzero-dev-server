@@ -4,15 +4,16 @@ The dev server serves its console at `/_fluxzero/dev/` on the public application
 port, including projects without a separate frontend and frontend-only projects.
 The reserved console route remains local in frontend-only mode. **Project** is the first menu item and landing
 page, showing only the selected dev server's application, components, resources and tests. The sidebar selector
-lists the current server first, followed by other active servers and inactive servers. Search by server name or
+groups results as **Current**, **Running** and **Stopped**. The whole result row is clickable. Search by server name or
 project folder. Choosing an active server opens its Project page. Choosing an inactive server with an existing
 folder offers a confirmation to start it using its project configuration and the current dev-server distribution.
 Startup is bounded to two minutes, coalesces duplicate attempts and switches the browser only when a local
 console URL is ready. A failed start leaves the user on the current server. Temporary CLI overrides from a previous
-launch are not restored.
+launch are not restored. The dialog also offers a trash button to remove an inactive server from the selector
+without deleting project files. Folder links are available on the Project page.
 
-**Rename dev server** changes the current server's display name; the folder name is the default and can be
-restored with **Use folder name**. Names are stored per canonical project path in the global registry's `names/`
+Use the pencil next to the server title on the Project page to rename the current server. The folder name is the
+default and can be restored with **Use folder name**. Names are stored per canonical project path in the global registry's `names/`
 directory, independently of session registrations, so restarts and older server registrations do not overwrite
 them. Application names and project files are unchanged. **Monitoring** uses the same Auditlog UI as the dashboard,
 with Audit trail, Logs, Traces, Issues, Documents and Insights in the sidebar. Existing Visualize deep links remain

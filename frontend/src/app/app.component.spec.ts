@@ -63,9 +63,15 @@ describe('Dev console navigation', () => {
     openPicker();
     const options = root.querySelectorAll('.server-option');
     expect(options.length).toBe(2);
-    expect(options[0].querySelector('.server-option-name')?.getAttribute('aria-current')).toBe('true');
-    expect(options[1].textContent).toContain('stopped');
-    expect(options[1].querySelector('a')).toBeNull();
+    expect(options[0].getAttribute('aria-current')).toBe('true');
+    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Current', 'Stopped']);
+    expect(root.querySelector('.server-menu .server-state')).toBeNull();
+    expect(root.querySelector('.server-menu .icon-button')).toBeNull();
+    expect(options[1].tagName).toBe('BUTTON');
+    const navigate = spyOn(fixture.componentInstance, 'openEnvironment');
+    (options[0].querySelector('.server-path') as HTMLElement).click();
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate.calls.mostRecent().args[0]).toEqual(fixture.componentInstance.environments()[0]);
   });
   it('sorts the current server first, then active servers, then inactive servers and searches names and folders', () => {
     const component = fixture.componentInstance;
@@ -77,10 +83,15 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     expect(Array.from(root.querySelectorAll('.server-option-name')).map(e => e.textContent?.trim()))
       .toEqual(['repair-cafe', 'Zulu active', 'Alpha stopped', 'orders']);
+    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Current', 'Running', 'Stopped']);
     const search = root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement;
     search.value = '/projects/active'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
     expect(root.querySelectorAll('.server-option').length).toBe(1);
     expect(root.querySelector('.server-option-name')?.textContent).toContain('Zulu active');
+    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Running']);
+    search.value = 'not a server'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
+    expect(root.querySelectorAll('.server-group').length).toBe(0);
+    expect(root.querySelector('.server-empty')?.textContent).toBe('No matching dev servers');
   });
   it('offers only validated console URLs for navigation', () => {
     const current = fixture.componentInstance.environments()[0];
@@ -92,8 +103,7 @@ describe('Dev console navigation', () => {
   });
   it('renames through the DOM, updates the selected server everywhere and keeps the application name', async () => {
     const root: HTMLElement = fixture.nativeElement;
-    openPicker();
-    (root.querySelector('.rename-server') as HTMLButtonElement).click(); fixture.detectChanges();
+    (root.querySelector('.project-title-row [aria-label="Rename dev server"]') as HTMLButtonElement).click(); fixture.detectChanges();
     const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
     const input = dialog.querySelector('input')!;
     expect(dialog.open).toBeTrue();
@@ -114,7 +124,8 @@ describe('Dev console navigation', () => {
   it('keeps the rename dialog open on failure and can restore the folder name', async () => {
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.environments.update(list => list.map(e => ({...e, projectName:'Custom'})));
-    openPicker();(root.querySelector('.rename-server') as HTMLButtonElement).click();fixture.detectChanges();
+    fixture.detectChanges();
+    (root.querySelector('.project-title-row [aria-label="Rename dev server"]') as HTMLButtonElement).click();fixture.detectChanges();
     const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
     (dialog.querySelector('.folder-name') as HTMLButtonElement).click();fixture.detectChanges();
     expect(dialog.querySelector('input')!.value).toBe('repair-cafe');
@@ -141,11 +152,12 @@ describe('Dev console navigation', () => {
     const startCommand = spyOn(component, 'startEnvironment').and.callThrough();
     openPicker();
     const root:HTMLElement = fixture.nativeElement;
-    (root.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    (root.querySelector('.inactive-server .server-path') as HTMLElement).click();fixture.detectChanges();
     const dialog = root.querySelector('[aria-labelledby="server-start-title"]') as HTMLDialogElement;
     expect(dialog.open).toBeTrue();
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('projects/' + 'b'.repeat(64) + '/start');
+    expect(document.activeElement).toBe(dialog.querySelector('.secondary-button'));
     (dialog.querySelector('.secondary-button') as HTMLButtonElement).click();
     expect(navigate).not.toHaveBeenCalled();
     openPicker();(root.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
@@ -263,6 +275,8 @@ describe('Dev console navigation', () => {
     expect(open.request.headers.get('X-Fluxzero-Console')).toBe('1');
     open.flush(null);
     openPicker();
+    (fixture.nativeElement.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.start-dialog .primary-button')).toBeNull();
     (fixture.nativeElement.querySelector('.remove-project') as HTMLButtonElement).click();
     http.expectOne('projects/' + 'b'.repeat(64) + '/forget').flush(null);
     await fixture.whenStable(); fixture.detectChanges();
@@ -272,6 +286,8 @@ describe('Dev console navigation', () => {
   });
   it('keeps a project visible when the backend rejects removal', async () => {
     openPicker();
+    (fixture.nativeElement.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.start-dialog .primary-button')).toBeNull();
     (fixture.nativeElement.querySelector('.remove-project') as HTMLButtonElement).click();
     TestBed.inject(HttpTestingController).expectOne('projects/' + 'b'.repeat(64) + '/forget')
       .flush({error: 'Project is running.'}, {status: 409, statusText: 'Conflict'});

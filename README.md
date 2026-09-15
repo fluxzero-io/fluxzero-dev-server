@@ -396,16 +396,16 @@ Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
 ## Development console
 
 Open `/_fluxzero/dev/` on the public development URL. The **Project** page and **Monitoring** menu show only the
-selected dev server. Use the sidebar dropdown to switch servers: the current server comes first, then other
-active servers, then inactive servers. Search by name or folder. Selecting an active server opens its Project
-page; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
+selected dev server. Use the sidebar dropdown to switch servers: results are grouped as **Current**, **Running**
+and **Stopped**. Search by name or folder. Selecting an active server opens its Project page; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
 that project's `.fluxzero/dev.yaml` and the current dev-server distribution, without restoring temporary
 command-line overrides from earlier launches. The browser switches after the server's console is ready.
 
-Use **Rename dev server** in the selector to distinguish folders with the same name. The default is the folder
-name; **Use folder name** restores it. These local display names are stored in `~/.fluxzero/dev/environments/names/`
+Use the pencil next to the server title on the Project page to distinguish folders with the same name. The
+default is the folder name; **Use folder name** restores it. These local display names are stored in
+`~/.fluxzero/dev/environments/names/`
 and survive server restarts. They do not rename project directories or applications. Inactive servers can be
-removed from the selector without deleting project files.
+removed using the trash button in the dialog shown when selecting them, without deleting project files.
 
 See [local monitoring](docs/local-monitoring.md) for Auditlog setup, native VictoriaLogs, the testserver adapter
 and resource limits.

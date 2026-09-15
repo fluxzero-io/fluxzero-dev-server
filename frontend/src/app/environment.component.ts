@@ -1,5 +1,6 @@
 import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorRef, computed, DestroyRef, effect} from '@angular/core';
 import {ProjectPathComponent} from './project-path.component';
+import {EnvironmentNameComponent} from './environment-name.component';
 import {Status} from './models';
 import {ResourceDetailComponent} from './resource-detail.component';
 import {ResourceChartComponent} from './resource-chart.component';
@@ -8,11 +9,12 @@ import {totalMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading"><div>
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
+      @if(projectId()) {<dev-environment-name [id]="projectId()" [name]="displayName() || state.project" [directory]="state.projectDirectory"/>}
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
     </div></div>
