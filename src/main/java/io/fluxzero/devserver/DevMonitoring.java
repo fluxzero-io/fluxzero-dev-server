@@ -14,6 +14,8 @@
 
 package io.fluxzero.devserver;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -21,6 +23,7 @@ import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
 import java.util.LinkedHashMap;
@@ -225,48 +228,84 @@ final class DevMonitoring implements AutoCloseable {
 
     private void sampleResources(String proxyUrl) {
         try (HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(1)).build()) {
-            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             while (!closed) {
-                Map<String, Object> sample = new LinkedHashMap<>();
-                try {
-                    var response = http.send(HttpRequest.newBuilder(URI.create(proxyUrl + "/logs/local/status"))
-                            .header(DevNamespaceHeader.NAME, DevConsole.NAMESPACE).timeout(Duration.ofSeconds(2)).build(),
-                            HttpResponse.BodyHandlers.ofString());
-                    if (response.statusCode() == 200) sample.put("auditlog", mapper.readValue(response.body(), Map.class));
-                    else sample.put("error", "Auditlog resource status returned HTTP " + response.statusCode());
-                    if (storageUrl != null) {
-                        var metrics = http.send(HttpRequest.newBuilder(URI.create(storageUrl + "/metrics"))
-                                .timeout(Duration.ofSeconds(2)).build(), HttpResponse.BodyHandlers.ofString()).body();
-                        metrics.lines().filter(l -> l.startsWith("process_resident_memory_bytes ")).findFirst()
-                                .ifPresent(l -> sample.put("storageRssBytes", (long) Double.parseDouble(l.substring(l.indexOf(' ') + 1))));
-                        JvmHeapMemory.Usage memory = goMemory(metrics);
-                        if (memory != null) {
-                            sample.put("storageMemoryUsedBytes", memory.used());
-                            if (memory.max() != null) sample.put("storageMemoryMaxBytes", memory.max());
-                        }
-                        try (var files = Files.walk(project.resolve(".fluxzero/dev/monitoring/victorialogs"))) {
-                            sample.put("storageDiskBytes", files.filter(Files::isRegularFile).mapToLong(p -> {
-                                try { return Files.size(p); } catch (java.io.IOException ignored) { return 0; }
-                            }).sum());
-                        }
-                        sample.put("diskRetentionThresholdBytes", config.maxDiskBytes());
-                        sample.put("diskThresholdExceeded", ((Number) sample.get("storageDiskBytes")).longValue() > config.maxDiskBytes());
-                    }
-                    if (!ProcessUtils.isWindows()) {
-                        Long runtimeRss = residentBytes(runtimePid);
-                        if (runtimeRss != null) sample.put("runtimeRssBytes", runtimeRss);
-                        Process storage = children.get("monitoring-storage");
-                        if (storage != null && !sample.containsKey("storageRssBytes")) {
-                            Long rss = residentBytes(storage.children().findFirst().map(ProcessHandle::pid).orElse(null));
-                            if (rss != null) sample.put("storageRssBytes", rss);
-                        }
-                    }
-                    sample.put("sampledAt", java.time.Instant.now().toString());
-                } catch (java.io.IOException | RuntimeException e) { sample.put("error", "Resource measurement unavailable"); }
-                resources = Map.copyOf(sample);
+                resources = collectResources(http, proxyUrl, storageUrl);
                 Thread.sleep(5000);
             }
         } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
+
+    Map<String, Object> collectResources(HttpClient http, String proxyUrl, String storageUrl) throws InterruptedException {
+        Map<String, Object> sample = new LinkedHashMap<>();
+        List<String> errors = new ArrayList<>();
+        // Each source has its own failure boundary. Never carry an old value into a new sample.
+        measureResource(errors, "Monitoring application", () -> {
+            var response = http.send(HttpRequest.newBuilder(URI.create(proxyUrl + "/logs/local/status"))
+                    .header(DevNamespaceHeader.NAME, DevConsole.NAMESPACE).timeout(Duration.ofSeconds(2)).build(),
+                    HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() != 200) {
+                errors.add("Monitoring application resource status returned HTTP " + response.statusCode());
+                return;
+            }
+            var status = new com.fasterxml.jackson.databind.ObjectMapper().readValue(response.body(), Map.class);
+            if (status == null) throw new IOException("Missing resource status");
+            sample.put("auditlog", status);
+        });
+        if (storageUrl != null) {
+            measureResource(errors, "Monitoring database", () -> {
+                var response = http.send(HttpRequest.newBuilder(URI.create(storageUrl + "/metrics"))
+                        .timeout(Duration.ofSeconds(2)).build(), HttpResponse.BodyHandlers.ofString());
+                if (response.statusCode() != 200) {
+                    errors.add("Monitoring database resource status returned HTTP " + response.statusCode());
+                    return;
+                }
+                String metrics = response.body();
+                JvmHeapMemory.Usage memory = goMemory(metrics);
+                if (memory == null) throw new IOException("Missing memory metrics");
+                sample.put("storageMemoryUsedBytes", memory.used());
+                if (memory.max() != null) sample.put("storageMemoryMaxBytes", memory.max());
+                metrics.lines().filter(l -> l.startsWith("process_resident_memory_bytes ")).findFirst()
+                        .ifPresent(l -> sample.put("storageRssBytes", (long) Double.parseDouble(l.substring(l.indexOf(' ') + 1))));
+            });
+            sample.put("diskRetentionThresholdBytes", config.maxDiskBytes());
+            measureResource(errors, "Monitoring storage", () -> {
+                try (var files = Files.walk(project.resolve(".fluxzero/dev/monitoring/victorialogs"))) {
+                    long bytes = files.filter(Files::isRegularFile).mapToLong(p -> {
+                        try { return Files.size(p); }
+                        catch (IOException e) { throw new UncheckedIOException(e); }
+                    }).sum();
+                    sample.put("storageDiskBytes", bytes);
+                    sample.put("diskThresholdExceeded", bytes > config.maxDiskBytes());
+                }
+            });
+        }
+        if (!ProcessUtils.isWindows()) {
+            measureResource(errors, "Testserver process", () -> {
+                Long rss = residentBytes(runtimePid);
+                if (rss != null) sample.put("runtimeRssBytes", rss);
+            });
+            measureResource(errors, "Monitoring database process", () -> {
+                Process storage = children.get("monitoring-storage");
+                if (storage != null && !sample.containsKey("storageRssBytes")) {
+                    Long rss = residentBytes(storage.children().findFirst().map(ProcessHandle::pid).orElse(null));
+                    if (rss != null) sample.put("storageRssBytes", rss);
+                }
+            });
+        }
+        sample.put("sampledAt", java.time.Instant.now().toString());
+        if (!errors.isEmpty()) sample.put("error", String.join("; ", errors));
+        return Map.copyOf(sample);
+    }
+
+    private static void measureResource(List<String> errors, String source, ResourceMeasurement measurement)
+            throws InterruptedException {
+        try { measurement.collect(); }
+        catch (IOException | RuntimeException e) { errors.add(source + " resource measurement unavailable"); }
+    }
+
+    @FunctionalInterface
+    private interface ResourceMeasurement {
+        void collect() throws IOException, InterruptedException;
     }
 
     @Override public synchronized void close() {
