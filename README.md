@@ -18,6 +18,9 @@ the agent to generate the project in the same root. When a Maven or Gradle build
 new project configuration and starts the normal runtime, proxy, IDP, application, and test lifecycle without
 replacing the MCP session. Non-empty directories without a build root remain invalid.
 
+For independent full suites and dependency changes while using a frontend watcher, see
+[external verification and build isolation](docs/external-verification.md).
+
 ## Requirements
 
 - JDK 21 or newer
