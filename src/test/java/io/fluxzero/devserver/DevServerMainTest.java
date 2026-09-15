@@ -220,8 +220,9 @@ class DevServerMainTest {
             assertEquals(2, jsonOutput.path("active").asInt());
             assertEquals(2, jsonOutput.path("environments").size());
             var listedPaths = new java.util.HashSet<String>();
-            jsonOutput.path("environments").forEach(environment ->
-                    listedPaths.add(environment.path("projectDirectory").asText()));
+            for (var environment : jsonOutput.path("environments")) {
+                listedPaths.add(Path.of(environment.path("projectDirectory").asText()).toRealPath().toString());
+            }
             assertEquals(java.util.Set.of(orders.toRealPath().toString(), reporting.toRealPath().toString()), listedPaths);
             assertFalse(json.output().contains("token"), json.output());
 
