@@ -136,6 +136,41 @@ public class DevGatewayTest {
     }
 
     @Test
+    void renamesKnownProjectsThroughProtectedBoundedJsonEndpoint(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var project = directory.resolve("orders");
+        registry.register(DevSession.empty(DevServerConfig.defaults(project)).withStatus("stopped"));
+        var known = registry.listKnown().getFirst();
+        var console = new DevConsole(java.util.Map::of, null, registry);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "projects/" + known.id() + "/rename";
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(url, "https://example.com", true).statusCode());
+            assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+            assertEquals(400, projectPost(url, gateway.url(), true).statusCode());
+            for (String invalid : List.of("{", "{}", "{\"name\":123}", "{\"name\":\"" + "x".repeat(101) + "\"}")) {
+                assertEquals(400, renamePost(url, gateway.url(), invalid).statusCode());
+            }
+            assertEquals(413, renamePost(url, gateway.url(), " ".repeat(4097)).statusCode());
+            var response = renamePost(url, gateway.url(), "{\"name\":\"Orders preview\"}");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("Orders preview"));
+            assertEquals("Orders preview", registry.findKnown(known.id()).orElseThrow().projectName());
+            assertEquals(200, renamePost(url, gateway.url(), "{\"name\":\"\"}").statusCode());
+            assertEquals("orders", registry.findKnown(known.id()).orElseThrow().projectName());
+            assertEquals(403, projectPost(url.replace("/rename", "/start"), "https://example.com", true).statusCode());
+            assertEquals(404, projectPost(url.replace("/rename", "/start"), gateway.url(), true).statusCode(), "Cannot start a missing folder");
+        }
+    }
+
+    private static HttpResponse<String> renamePost(String url, String origin, String body) throws Exception {
+        return HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).header("Origin", origin)
+                .header("X-Fluxzero-Console", "1").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
     void maintenanceRequiresSameOriginPostAndReturnsConflictForBusyAction() throws Exception {
         var called = new AtomicReference<String>();
         var console = new DevConsole(java.util.Map::of, null).withMaintenance(action -> {

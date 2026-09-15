@@ -199,6 +199,37 @@ class DevEnvironmentRegistryTest {
         assertTrue(new DevEnvironmentRegistry(directory.resolve("registry")).listKnown().isEmpty());
     }
 
+    @Test
+    void namesDistinguishEqualFolderNamesAndSurviveRegistrationAndRestart(@TempDir Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        Path first = directory.resolve("one/orders"), second = directory.resolve("two/orders");
+        var session = DevSession.empty(DevServerConfig.defaults(first)).withStatus("stopped");
+        for (Path project : java.util.List.of(first, second)) {
+            var stopped = DevSession.empty(DevServerConfig.defaults(project)).withStatus("stopped");
+            new DevSessionStore(project).writeSession(stopped);
+            registry.register(stopped);
+        }
+        String firstPath = first.toRealPath().toString(), secondPath = second.toRealPath().toString();
+        var original = registry.listKnown().stream().filter(e -> e.projectDirectory().equals(firstPath)).findFirst().orElseThrow();
+        assertTrue(registry.listKnown().stream().allMatch(e -> e.projectName().equals("orders")));
+        String sessionBefore = java.nio.file.Files.readString(first.resolve(".fluxzero/dev/session.json"));
+        assertEquals("Orders feature branch", registry.rename(original.id(), "  Orders feature branch  ").projectName());
+        assertEquals(sessionBefore, java.nio.file.Files.readString(first.resolve(".fluxzero/dev/session.json")));
+        registry.unregister(session);
+        registry.register(session);
+        var otherInstance = new DevEnvironmentRegistry(directory.resolve("registry"));
+        assertEquals("Orders feature branch", otherInstance.findKnown(original.id()).orElseThrow().projectName());
+        assertEquals("orders", otherInstance.listKnown().stream().filter(e -> e.projectDirectory().equals(secondPath)).findFirst().orElseThrow().projectName());
+        registry.forget(original.id());
+        registry.register(session);
+        assertEquals("Orders feature branch", registry.findKnown(original.id()).orElseThrow().projectName());
+        assertEquals("orders", registry.rename(original.id(), "").projectName());
+        assertEquals("orders", otherInstance.findKnown(original.id()).orElseThrow().projectName());
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> registry.rename(original.id(), "x".repeat(101)));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> registry.rename(original.id(), "line\nbreak"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> registry.rename("0".repeat(64), "Unknown"));
+    }
+
     private static DevSession withProcess(DevSession session, long pid, long startedAt, long heartbeatAt) {
         return new DevSession(session.sessionId(), pid, session.devServerVersion(), session.projectDirectory(),
                               session.observability(), session.status(), session.runtime(), session.proxy(),

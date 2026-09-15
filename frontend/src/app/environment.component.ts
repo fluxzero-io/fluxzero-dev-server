@@ -11,8 +11,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 @Component({selector: 'dev-environment', standalone: true, imports: [ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading"><div>
     <div class="project-title-row">
-      @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{state.project}}</a></h3>}
-      @else {<h1>{{state.project}}</h1>}
+      @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
+      @else {<h1>{{displayName() || state.project}}</h1>}
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
     </div></div>
@@ -98,6 +98,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   status = input<Status>();
+  displayName = input('');
   readonly groups = computed(() => {
     const state = this.status();
     if (!state) return [];

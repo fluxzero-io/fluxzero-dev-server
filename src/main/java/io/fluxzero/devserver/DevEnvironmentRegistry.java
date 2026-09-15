@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Global, non-sensitive index of project-local development sessions. */
@@ -108,6 +109,37 @@ final class DevEnvironmentRegistry {
         return listKnown().stream().filter(e -> e.id().equals(id)).findFirst();
     }
 
+    /** User labels live separately so older registrations cannot overwrite them on startup. */
+    synchronized ConsoleEnvironment rename(String id, String name) {
+        var project = findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+        if (name == null || name.length() > 100 || name.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Use a name of at most 100 characters without control characters.");
+        }
+        Path path = Path.of(project.projectDirectory());
+        String label = name.strip();
+        Path file = nameFile(path);
+        if (label.isEmpty() || label.equals(folderName(path))) delete(file);
+        else write(file, Map.of("name", label));
+        return findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+    }
+
+    private Path nameFile(Path project) {
+        return directory.resolve("names").resolve(hash(project.toString()) + ".json");
+    }
+
+    private String displayName(Path project) {
+        try {
+            var name = objectMapper.readTree(nameFile(project).toFile()).path("name");
+            if (name.isTextual() && !name.asText().isBlank() && name.asText().length() <= 100
+                    && name.asText().chars().noneMatch(Character::isISOControl)) return name.asText();
+        } catch (IOException | RuntimeException ignored) { /* Missing or damaged preferences use the folder name. */ }
+        return folderName(project);
+    }
+
+    private static String folderName(Path project) {
+        return project.getFileName() == null ? project.toString() : project.getFileName().toString();
+    }
+
     /** A tombstone hides legacy registrations without touching CLI ownership or project files. */
     synchronized void forget(String id) {
         var project = findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
@@ -171,7 +203,7 @@ final class DevEnvironmentRegistry {
                 }
             }
         } catch (RuntimeException ignored) { /* No usable public local URL. */ }
-        return new ConsoleEnvironment(hash(project.toString()), Files.isDirectory(project), project.getFileName() == null ? project.toString() : project.getFileName().toString(),
+        return new ConsoleEnvironment(hash(project.toString()), Files.isDirectory(project), displayName(project),
                 project.toString(), running ? "running" : "stopped", port, consoleUrl,
                 running && !responsive ? "Not responding" : null);
     }

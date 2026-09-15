@@ -395,10 +395,20 @@ Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
 
 ## Development console
 
-Open `/_fluxzero/dev/` on the public development URL for **Projects**, the landing
-page listing local dev servers. Switching projects keeps this page open on the
-selected server. The sidebar also provides current environment status and optional **Monitoring**. See [local monitoring](docs/local-monitoring.md) for
-Auditlog setup, native VictoriaLogs, the testserver adapter and resource limits.
+Open `/_fluxzero/dev/` on the public development URL. The **Project** page and **Monitoring** menu show only the
+selected dev server. Use the sidebar dropdown to switch servers: the current server comes first, then other
+active servers, then inactive servers. Search by name or folder. Selecting an active server opens its Project
+page; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
+that project's `.fluxzero/dev.yaml` and the current dev-server distribution, without restoring temporary
+command-line overrides from earlier launches. The browser switches after the server's console is ready.
+
+Use **Rename dev server** in the selector to distinguish folders with the same name. The default is the folder
+name; **Use folder name** restores it. These local display names are stored in `~/.fluxzero/dev/environments/names/`
+and survive server restarts. They do not rename project directories or applications. Inactive servers can be
+removed from the selector without deleting project files.
+
+See [local monitoring](docs/local-monitoring.md) for Auditlog setup, native VictoriaLogs, the testserver adapter
+and resource limits.
 
 Monitoring uses the dashboard's section navigation and page layout. The current view title and project name
 sit above the embedded page, sharing its background and content gutters in light and dark themes.
@@ -406,7 +416,7 @@ The embedded application keeps its existing filters, trace navigation and per-vi
 
 ### Component resources and maintenance
 
-Projects shows two rows: the customer application (including its managed frontends), followed by the Fluxzero dev
+Project shows two rows: the customer application (including its managed frontends), followed by the Fluxzero dev
 server and its supporting processes. A stopped customer application stays visible. Both status badges show only
 the status text, without process counts. The customer row has no popovers. Immediate hover/focus popovers on the dev-server
 row break down status and memory by component and follow the selected theme. Hovering the total memory chart

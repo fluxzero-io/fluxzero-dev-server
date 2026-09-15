@@ -2,16 +2,21 @@
 
 The dev server serves its console at `/_fluxzero/dev/` on the public application
 port, including projects without a separate frontend and frontend-only projects.
-The reserved console route remains local in frontend-only mode. **Projects** is the first menu item and landing page. It lists known dev servers on this computer by project folder, with
-running/stopped status, the last public port, and links to responsive instances.
-Selecting an active project switches to that dev server's **Projects** page.
-The current project appears first with its folder, port, service status and monitoring
-resources. Other projects follow in a compact list. The current project remains
-selected when opening its own link. The sidebar contains **Projects** and **Monitoring**. The external-link icon beside
-the current project name opens the application in a new tab. The displayed dev
-server name is the last component of its project directory, independent of the
-Fluxzero application name; there is no separate display-name setting yet. **Monitoring** uses the same Auditlog UI as the dashboard, with Audit
-trail, Logs, Traces, Issues, Documents, Insights and Visualize in the left sidebar.
+The reserved console route remains local in frontend-only mode. **Project** is the first menu item and landing
+page, showing only the selected dev server's application, components, resources and tests. The sidebar selector
+lists the current server first, followed by other active servers and inactive servers. Search by server name or
+project folder. Choosing an active server opens its Project page. Choosing an inactive server with an existing
+folder offers a confirmation to start it using its project configuration and the current dev-server distribution.
+Startup is bounded to two minutes, coalesces duplicate attempts and switches the browser only when a local
+console URL is ready. A failed start leaves the user on the current server. Temporary CLI overrides from a previous
+launch are not restored.
+
+**Rename dev server** changes the current server's display name; the folder name is the default and can be
+restored with **Use folder name**. Names are stored per canonical project path in the global registry's `names/`
+directory, independently of session registrations, so restarts and older server registrations do not overwrite
+them. Application names and project files are unchanged. **Monitoring** uses the same Auditlog UI as the dashboard,
+with Audit trail, Logs, Traces, Issues, Documents and Insights in the sidebar. Existing Visualize deep links remain
+supported, but Visualize is not a menu item.
 The shell uses the dashboard's light/dark theme tokens, logos and navigation
 spacing; the theme is also applied to the embedded monitoring views.
 
@@ -22,7 +27,7 @@ Discovery uses the current user's global registry under
 and last public URLs after a normal stop; the existing CLI list/stop cleanup
 behavior is unchanged. Registration imports already registered environments.
 Older projects that stopped before this history existed become known again when
-started. The console does not scan the filesystem or start other dev servers.
+started. The console does not scan the filesystem. It starts another known dev server only after explicit confirmation.
 Each project path has an **Open folder** button: Finder on macOS, Windows Explorer
 on Windows, and the desktop file manager (`xdg-open`) on Linux. Missing folders
 have a disabled button. Only known project directories can be opened; paths are
@@ -34,7 +39,7 @@ registrations from reappearing during discovery; starting the project again
 registers it visibly. Running servers must be stopped before they can be removed.
 Project actions require a local, same-origin POST with the console request header;
 GET requests and cross-origin browser requests cannot launch file managers or
-change the overview.
+rename, start or remove servers from the selector.
 
 Automated tests use an isolated registry under the build output, including their
 bootstrap child processes. Existing historical test entries can be removed with

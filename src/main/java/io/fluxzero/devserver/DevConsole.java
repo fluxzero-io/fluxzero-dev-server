@@ -38,6 +38,7 @@ final class DevConsole implements AutoCloseable {
     private final Path monitoringAssets;
     private final DevEnvironmentRegistry environments;
     private final FolderOpener folderOpener;
+    private final DevConsoleProjectStarter projectStarter;
     private java.util.function.Function<String, Runnable> maintenance;
 
     DevConsole withMaintenance(java.util.function.Consumer<String> maintenance) {
@@ -60,12 +61,13 @@ final class DevConsole implements AutoCloseable {
                FolderOpener folderOpener) {
         this.folderOpener = folderOpener;
         this.environments = environments;
+        this.projectStarter = new DevConsoleProjectStarter(environments);
         this.updates = new DevConsoleUpdates(status, environments::listKnown);
         this.monitoringAssets = monitoringAssets;
     }
 
     void start() { updates.start(); }
-    @Override public void close() { updates.close(); }
+    @Override public void close() { updates.close(); projectStarter.close(); }
 
     boolean isApi(Request request) {
         String path = request.getHttpURI().getPath();
@@ -164,10 +166,43 @@ final class DevConsole implements AutoCloseable {
             return actionResult(response, callback, 405, "Use POST for project actions.");
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Project actions require the local console.");
-        var match = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(ROOT) + "projects/([a-f0-9]{64})/(open-folder|forget)").matcher(path);
+        var match = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(ROOT) + "projects/([a-f0-9]{64})/(open-folder|forget|rename|start)").matcher(path);
         if (!match.matches()) return actionResult(response, callback, 404, "Unknown project action.");
         var project = environments.findKnown(match.group(1)).orElse(null);
         if (project == null) return actionResult(response, callback, 404, "Project is no longer listed.");
+        if ("start".equals(match.group(2))) {
+            try {
+                var startup = projectStarter.start(project.id());
+                // Bootstrap has its own two-minute deadline; keep this request alive while waiting.
+                request.addIdleTimeoutListener(timeout -> startup.isDone());
+                startup.whenComplete((started, error) -> {
+                    try {
+                        if (error != null) actionResult(response, callback, 409,
+                                "Unable to start the dev server. Check the project configuration and .fluxzero/dev/bootstrap.log.");
+                        else {
+                            response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+                            response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(started)), callback);
+                        }
+                    } catch (Exception failure) { callback.failed(failure); }
+                });
+                return true;
+            } catch (IllegalArgumentException e) { return actionResult(response, callback, 404, e.getMessage()); }
+            catch (IllegalStateException e) { return actionResult(response, callback, 409, e.getMessage()); }
+        }
+        if ("rename".equals(match.group(2))) {
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(4097);
+                if (body.length > 4096) return actionResult(response, callback, 413, "Dev server name request is too large.");
+                var name = new ObjectMapper().readTree(body);
+                if (name == null || !name.path("name").isTextual()) return actionResult(response, callback, 400, "Provide a dev server name.");
+                var renamed = environments.rename(project.id(), name.path("name").textValue());
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+                response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(renamed)), callback);
+                return true;
+            } catch (com.fasterxml.jackson.core.JacksonException | IllegalArgumentException e) {
+                return actionResult(response, callback, 400, "Use a name of at most 100 characters without control characters.");
+            }
+        }
         if ("forget".equals(match.group(2))) {
             try { environments.forget(project.id()); }
             catch (IllegalArgumentException e) { return actionResult(response, callback, 404, e.getMessage()); }

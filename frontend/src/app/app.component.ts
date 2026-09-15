@@ -1,15 +1,16 @@
-import {Component, ElementRef, HostListener, inject, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
+import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
-import {Environment, monitoringPath, monitoringViews, Status} from './models';
+import {Environment, environmentConsoleUrl, monitoringPath, monitoringViews, Status} from './models';
 import {ProjectsComponent} from './projects.component';
+import {EnvironmentSelectorComponent} from './environment-selector.component';
 import {ThemeMenuComponent} from './theme-menu.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [ProjectsComponent, EnvironmentComponent, ThemeMenuComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [ProjectsComponent, EnvironmentComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -29,7 +30,9 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
   readonly monitoringExpanded = signal(true);
-  readonly views = monitoringViews;
+  readonly views = monitoringViews.filter(view => view.key !== 'visualize');
+  readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
+  readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
   frameSource?: SafeResourceUrl;
   private ready = false;
   private navigationId = 0;
@@ -81,15 +84,24 @@ export class AppComponent implements OnInit, OnDestroy {
     this.menuOpen.set(false);
   }
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {
-    if (!environment.consoleUrl || environment.status !== 'running') return;
+    const url = environmentConsoleUrl(environment);
+    if (!url) return;
     if (environment.projectDirectory === this.status()?.projectDirectory) this.navigate('projects');
-    else {
-      const url = new URL(environment.consoleUrl);
-      if (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
-        url.hash = 'projects';
-        location.assign(url.href);
-      }
-    }
+    else location.assign(url);
+  }
+  @HandleCommand('startEnvironment') async startEnvironment(id: string) {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown dev server.');
+    const environment = await firstValueFrom(this.http.post<Environment>('projects/' + id + '/start', null,
+      {headers: {'X-Fluxzero-Console': '1'}, timeout: 130000}));
+    this.environments.update(projects => projects.map(p => p.id === id ? environment : p));
+    this.openEnvironment(environment);
+  }
+  @HandleCommand('renameEnvironment') async renameEnvironment({id, name}: {id: string; name: string}) {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown dev server.');
+    const environment = await firstValueFrom(this.http.post<Environment>('projects/' + id + '/rename', {name},
+      {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+    this.environments.update(projects => projects.map(p => p.id === id ? environment : p));
+    return environment;
   }
   @HandleCommand('openProjectFolder') openProjectFolder(id: string) { return this.projectAction(id, 'open-folder'); }
   @HandleCommand('forgetProject') forgetProject(id: string) { return this.projectAction(id, 'forget'); }
@@ -151,7 +163,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   isMonitoring() { return this.route().startsWith('monitoring/'); }
   activeView() { return this.route().split(/[/?#]/)[1]; }
-  viewLabel() { return this.views.find(v => v.key === this.activeView())?.label || 'Monitoring'; }
+  viewLabel() { return monitoringViews.find(v => v.key === this.activeView())?.label || 'Monitoring'; }
   private ensureFrame() {
     if (!this.frameSource && this.isMonitoring() && this.status()?.monitoring.enabled) {
       const url = new URL('monitoring' + this.wantedPath, document.baseURI);

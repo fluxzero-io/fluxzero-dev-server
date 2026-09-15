@@ -38,3 +38,15 @@ export function monitoringPath(value: unknown): string | null {
   if (typeof value !== 'string' || !/^\/[a-z]+(?:[/?#]|$)/.test(value)) return null;
   return monitoringViews.some(v => value.split(/[/?#]/)[1] === v.key) ? value : null;
 }
+
+/** Keep registry-provided navigation on a local dev console, including modified clicks. */
+export function environmentConsoleUrl(environment: Environment): string | null {
+  if (environment.status !== 'running' || !environment.consoleUrl) return null;
+  try {
+    const url = new URL(environment.consoleUrl);
+    if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+      || url.username || url.password || url.pathname !== '/_fluxzero/dev/' || url.search) return null;
+    url.hash = 'projects';
+    return url.href;
+  } catch { return null; }
+}

@@ -6,8 +6,9 @@
       <img class="brand-mark" src="assets/fluxzero-devserver-logo.svg" alt="">
       <span class="brand-title">Fluxzero dev server</span>
     </a>
+    <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <nav aria-label="Dev server navigation">
-      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Projects</span></a>
+      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Project</span></a>
       <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="monitoringExpanded.set(!monitoringExpanded())" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
         <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
@@ -20,12 +21,12 @@
   <main>
 
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
-    @if(route() === 'projects') {<dev-projects [status]="status()" [environments]="environments()" [currentProject]="status()?.projectDirectory || ''"/>}
-    @if(route() === 'environment') {<dev-environment [status]="status()"/>}
+    @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}
+    @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">
       <header class="monitoring-heading">
         <h1 id="monitoring-title">{{viewLabel()}}</h1>
-        <p>{{status()?.project}}</p>
+        <p>{{currentName()}}</p>
       </header>
       @if(!status()?.monitoring?.enabled) {<div class="monitoring-empty"><h2>Monitoring is not configured</h2><p>Configure monitoring in this environment to explore its messages, logs and traces.</p></div>}
       @if(frameSource) {<iframe #frame name="dev-monitoring" [title]="viewLabel()" [src]="frameSource" (load)="frameLoaded()"></iframe>}

@@ -2,7 +2,7 @@ import {TestBed, ComponentFixture} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
 import {AppComponent} from './app.component';
-import {monitoringPath, Status, Environment} from './models';
+import {monitoringPath, environmentConsoleUrl, Status, Environment} from './models';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 import {By} from '@angular/platform-browser';
 import {EnvironmentComponent} from './environment.component';
@@ -47,24 +47,134 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
-  it('shows all known folders at the top level, with links only for active environments', () => {
+  function openPicker() {
+    (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+  }
+  it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(root.querySelector('nav a')?.textContent?.trim()).toBe('Projects');
+    expect(root.querySelector('nav a')?.textContent?.trim()).toBe('Project');
     expect(root.querySelector('nav a')?.getAttribute('aria-current')).toBe('page');
-    expect(root.querySelector('nav a[href="#environment"]')).toBeNull();
-    expect(root.querySelector('h1')?.textContent).toBe('Projects');
-    expect(root.textContent).toContain('/projects/orders');
-    expect(root.textContent).toContain('gestopt');
-    const rows = root.querySelectorAll('.table-card tbody tr');
-    expect(rows.length).toBe(1);
-    expect(rows[0].textContent).toContain('orders');
-    expect(rows[0].querySelector('a')).toBeNull();
-    const current = root.querySelector('.current-project')!;
-    expect(current.textContent).toContain('/projects/repair-cafe');
-    expect(current.textContent).not.toContain('4200');
-    expect(current.textContent).toContain('passed');
-    expect(current.textContent).toContain('Fluxzero dev server');
-    expect(current.compareDocumentPosition(root.querySelector('.table-card table')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
+    expect(root.querySelector('h1')?.textContent).toBe('Project');
+    expect(root.querySelector('main')?.textContent).not.toContain('Other projects');
+    expect(root.querySelector('main')?.textContent).not.toContain('/projects/orders');
+    expect(root.querySelector('.current-project')?.textContent).toContain('/projects/repair-cafe');
+    openPicker();
+    const options = root.querySelectorAll('.server-option');
+    expect(options.length).toBe(2);
+    expect(options[0].querySelector('.server-option-name')?.getAttribute('aria-current')).toBe('true');
+    expect(options[1].textContent).toContain('stopped');
+    expect(options[1].querySelector('a')).toBeNull();
+  });
+  it('sorts the current server first, then active servers, then inactive servers and searches names and folders', () => {
+    const component = fixture.componentInstance;
+    const stopped = component.environments()[1];
+    component.environments.update(list => [...list,
+      {...stopped, id:'c'.repeat(64), projectName:'Zulu active', projectDirectory:'/projects/active', status:'running', consoleUrl:'http://localhost:4500/_fluxzero/dev/'},
+      {...stopped, id:'d'.repeat(64), projectName:'Alpha stopped', projectDirectory:'/projects/other'}]);
+    openPicker();
+    const root: HTMLElement = fixture.nativeElement;
+    expect(Array.from(root.querySelectorAll('.server-option-name')).map(e => e.textContent?.trim()))
+      .toEqual(['repair-cafe', 'Zulu active', 'Alpha stopped', 'orders']);
+    const search = root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement;
+    search.value = '/projects/active'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
+    expect(root.querySelectorAll('.server-option').length).toBe(1);
+    expect(root.querySelector('.server-option-name')?.textContent).toContain('Zulu active');
+  });
+  it('offers only validated console URLs for navigation', () => {
+    const current = fixture.componentInstance.environments()[0];
+    expect(environmentConsoleUrl(current)).toBe('http://localhost:4200/_fluxzero/dev/#projects');
+    for (const consoleUrl of ['https://example.org', 'http://localhost:4200/other', 'http://user@localhost:4200/_fluxzero/dev/', 'javascript:alert(1)', 'invalid']) {
+      expect(environmentConsoleUrl({...current, consoleUrl})).toBeNull();
+    }
+    expect(environmentConsoleUrl({...current, status:'stopped'})).toBeNull();
+  });
+  it('renames through the DOM, updates the selected server everywhere and keeps the application name', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    openPicker();
+    (root.querySelector('.rename-server') as HTMLButtonElement).click(); fixture.detectChanges();
+    const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
+    const input = dialog.querySelector('input')!;
+    expect(dialog.open).toBeTrue();
+    expect(input.value).toBe('repair-cafe');
+    input.value = 'Repair preview'; input.dispatchEvent(new Event('input')); fixture.detectChanges();
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit', {cancelable:true}));
+    const request = TestBed.inject(HttpTestingController).expectOne('projects/' + 'a'.repeat(64) + '/rename');
+    expect(request.request.body).toEqual({name:'Repair preview'});
+    request.flush({...fixture.componentInstance.environments()[0], projectName:'Repair preview'});
+    await fixture.whenStable();fixture.detectChanges();
+    expect(dialog.open).toBeFalse();
+    expect(root.querySelector('.server-picker-button')?.textContent).toContain('Repair preview');
+    expect(root.querySelector('.current-project-title')?.textContent).toBe('Repair preview');
+    expect(root.querySelector('.component-table tbody th')?.textContent).toContain('Repair Café');
+    fixture.componentInstance.navigate('monitoring/logs');fixture.detectChanges();
+    expect(root.querySelector('.monitoring-heading p')?.textContent).toBe('Repair preview');
+  });
+  it('keeps the rename dialog open on failure and can restore the folder name', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.environments.update(list => list.map(e => ({...e, projectName:'Custom'})));
+    openPicker();(root.querySelector('.rename-server') as HTMLButtonElement).click();fixture.detectChanges();
+    const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
+    (dialog.querySelector('.folder-name') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(dialog.querySelector('input')!.value).toBe('repair-cafe');
+    dialog.querySelector('form')!.dispatchEvent(new Event('submit', {cancelable:true}));
+    TestBed.inject(HttpTestingController).expectOne('projects/' + 'a'.repeat(64) + '/rename')
+      .flush({error:'Unable to save name.'},{status:503,statusText:'Unavailable'});
+    await fixture.whenStable();fixture.detectChanges();
+    expect(dialog.open).toBeTrue();
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe('Unable to save name.');
+    expect(root.querySelector('.server-picker-button')?.textContent).toContain('Custom');
+  });
+  it('dismisses the picker with Escape and an outside click', () => {
+    const root:HTMLElement = fixture.nativeElement;
+    openPicker();
+    (root.querySelector('dev-environment-selector') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+    fixture.detectChanges();expect(root.querySelector('.server-menu')).toBeNull();
+    openPicker();(root.querySelector('h1') as HTMLElement).click();fixture.detectChanges();
+    expect(root.querySelector('.server-menu')).toBeNull();
+  });
+  it('requires confirmation before starting an inactive server and switches only after success', async () => {
+    const component = fixture.componentInstance;
+    component.environments.update(list => list.map(e => ({...e,directoryExists:true})));
+    const navigate = spyOn(component, 'openEnvironment');
+    const startCommand = spyOn(component, 'startEnvironment').and.callThrough();
+    openPicker();
+    const root:HTMLElement = fixture.nativeElement;
+    (root.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    const dialog = root.querySelector('[aria-labelledby="server-start-title"]') as HTMLDialogElement;
+    expect(dialog.open).toBeTrue();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectNone('projects/' + 'b'.repeat(64) + '/start');
+    (dialog.querySelector('.secondary-button') as HTMLButtonElement).click();
+    expect(navigate).not.toHaveBeenCalled();
+    openPicker();(root.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    (dialog.querySelector('.primary-button') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(navigate).not.toHaveBeenCalled();
+    expect((dialog.querySelector('.primary-button') as HTMLButtonElement).disabled).toBeTrue();
+    const started:Environment = {...component.environments()[1],status:'running',consoleUrl:'http://localhost:4300/_fluxzero/dev/'};
+    http.expectOne('projects/' + 'b'.repeat(64) + '/start').flush(started);
+    await startCommand.calls.mostRecent().returnValue;
+    await fixture.whenStable();fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledOnceWith(started);
+    expect(dialog.open).toBeFalse();
+  });
+  it('keeps the user on the current server when startup fails', async () => {
+    const component = fixture.componentInstance;
+    component.environments.update(list => list.map(e => ({...e,directoryExists:true})));
+    const navigate = spyOn(component, 'openEnvironment');
+    const startCommand = spyOn(component, 'startEnvironment').and.callThrough();
+    openPicker();
+    const root:HTMLElement = fixture.nativeElement;
+    (root.querySelector('.inactive-server') as HTMLButtonElement).click();fixture.detectChanges();
+    const dialog = root.querySelector('[aria-labelledby="server-start-title"]') as HTMLDialogElement;
+    (dialog.querySelector('.primary-button') as HTMLButtonElement).click();
+    TestBed.inject(HttpTestingController).expectOne('projects/' + 'b'.repeat(64) + '/start')
+      .flush({error:'The port is occupied.'},{status:409,statusText:'Conflict'});
+    await fixture.whenStable();fixture.detectChanges();
+    expect(navigate).not.toHaveBeenCalled();expect(dialog.open).toBeTrue();
+    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe('The port is occupied.');
+    expect((dialog.querySelector('.primary-button') as HTMLButtonElement).disabled).toBeFalse();
   });
   it('updates tests and server history from push without polling, and replaces history on reconnect', () => {
     const state = fixture.componentInstance.status()!;
@@ -134,8 +244,8 @@ describe('Dev console navigation', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Projects');
-    expect(fixture.nativeElement.textContent).toContain('/projects/orders');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Project');
+    expect(fixture.nativeElement.querySelector('main').textContent).not.toContain('/projects/orders');
   });
   it('keeps monitoring views in the left navigation even without a configured backend', async () => {
     const link = fixture.nativeElement.querySelector('nav a[href="#monitoring/logs"]') as HTMLAnchorElement;
@@ -152,7 +262,8 @@ describe('Dev console navigation', () => {
     expect(open.request.method).toBe('POST');
     expect(open.request.headers.get('X-Fluxzero-Console')).toBe('1');
     open.flush(null);
-    (fixture.nativeElement.querySelector('tbody .remove-project') as HTMLButtonElement).click();
+    openPicker();
+    (fixture.nativeElement.querySelector('.remove-project') as HTMLButtonElement).click();
     http.expectOne('projects/' + 'b'.repeat(64) + '/forget').flush(null);
     await fixture.whenStable(); fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain('/projects/orders');
@@ -160,7 +271,8 @@ describe('Dev console navigation', () => {
     http.verify();
   });
   it('keeps a project visible when the backend rejects removal', async () => {
-    (fixture.nativeElement.querySelector('tbody .remove-project') as HTMLButtonElement).click();
+    openPicker();
+    (fixture.nativeElement.querySelector('.remove-project') as HTMLButtonElement).click();
     TestBed.inject(HttpTestingController).expectOne('projects/' + 'b'.repeat(64) + '/forget')
       .flush({error: 'Project is running.'}, {status: 409, statusText: 'Conflict'});
     await fixture.whenStable(); fixture.detectChanges();
@@ -245,7 +357,7 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('actions/truncate-data');
-    expect(root.querySelector('.maintenance-confirm')?.textContent).toContain('Delete application and monitoring data');
+    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')?.textContent).toContain('Delete application and monitoring data');
     (root.querySelector('.maintenance-confirm button') as HTMLButtonElement).click();
     const request = http.expectOne('actions/truncate-data');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
@@ -257,7 +369,7 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const dialog = root.querySelector('dialog')!;
+    const dialog = root.querySelector<HTMLDialogElement>('.maintenance-confirm')!;
     expect(dialog.open).toBeTrue();
     expect(document.activeElement).toBe(dialog.querySelector('[autofocus]'));
     expect(dialog.querySelector('input')).toBeNull();
@@ -272,13 +384,13 @@ describe('Dev console navigation', () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
       fixture.detectChanges();
-      expect(root.querySelector('dialog')!.open).toBeTrue();
-      expect(root.querySelector('dialog input')).toBeNull();
+      expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
+      expect(root.querySelector('.maintenance-confirm input')).toBeNull();
       http.expectNone('actions/truncate-data');
-      (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+      (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
       http.expectOne('actions/truncate-data').flush(null);
       await fixture.whenStable();
-      expect(root.querySelector('dialog')!.open).toBeFalse();
+      expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeFalse();
       fixture.componentInstance.status.update(s => s ? {...s, maintenance: {...s.maintenance, busy:false, error:''}} : s);
       fixture.detectChanges();
     }
@@ -332,7 +444,7 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', '#settings');
     fixture.componentInstance.readRoute(); fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Projects');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Project');
   });
   it('updates the test bar while a run is in progress without a total status pill', () => {
     const root: HTMLElement = fixture.nativeElement;
@@ -355,17 +467,17 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(root.querySelector('dialog')!.open).toBeTrue();
-    expect(root.querySelector('dialog input')).toBeNull();
-    (root.querySelector('dialog .secondary-button') as HTMLButtonElement).click();
+    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
+    expect(root.querySelector('.maintenance-confirm input')).toBeNull();
+    (root.querySelector('.maintenance-confirm .secondary-button') as HTMLButtonElement).click();
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(root.querySelector('dialog')!.open).toBeTrue();
+    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
     TestBed.inject(HttpTestingController).expectNone('actions/truncate-data');
-    (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
     TestBed.inject(HttpTestingController).expectOne('actions/truncate-data').flush(null);
     await fixture.whenStable();
-    expect(root.querySelector('dialog')!.open).toBeFalse();
+    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeFalse();
   });
   it('keeps a stopped customer application separate from a running development environment', () => {
     const root: HTMLElement = fixture.nativeElement;
@@ -471,7 +583,7 @@ describe('Dev console navigation', () => {
       expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
       request.flush(null);
       await fixture.whenStable();
-      expect(fixture.nativeElement.querySelector('dialog').open).toBeFalse();
+      expect(fixture.nativeElement.querySelector('.maintenance-confirm').open).toBeFalse();
       expect(button.querySelector('.spinner-border')).not.toBeNull();
       const status = fixture.componentInstance.status()!;
       push({status:{...status,maintenance:{...status.maintenance,busy:true,error:''}},environments:[]});
@@ -489,7 +601,7 @@ describe('Dev console navigation', () => {
     const button = root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(root.querySelector('.spinner-border')).toBeNull();
-    (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(button.querySelector('.spinner-border[aria-label="Truncating data"]')).not.toBeNull();
     expect(button.querySelector('.bi-trash')).toBeNull();
