@@ -538,7 +538,7 @@ public class DevServer implements AutoCloseable {
             return;
         }
         try {
-            idpService = ManagedIdpService.start(config, runtimeBaseUrl, publicFluxzeroUrl, this::print);
+            idpService = ManagedIdpService.start(config, runtimeBaseUrl, publicFluxzeroUrl, publicUrl, this::print);
             updateIdpStatus(DevSession.ServiceStatus.running("idp", idpService.issuer(), null, null,
                                                              "managed local IDP"));
         } catch (RuntimeException e) {
@@ -2004,7 +2004,7 @@ public class DevServer implements AutoCloseable {
             this.appProcessRunner = new AppProcessRunner(
                     config, runtimeBaseUrl, publicFluxzeroUrl, proxyUrl, session.sessionId(),
                     DevServer.this::printAppOutput, new OnePasswordEnvironment(config.projectDirectory()),
-                    placeholderResolver);
+                    placeholderResolver, publicUrl);
             this.testPipeline = new TestPipeline(
                     config, projectStore, buildCoordinator, status -> updateTestStatus(id, status),
                     message -> {testOutput.add(id,message);printProjectOutput(id,message);if(devGateway!=null)devGateway.refreshConsole();},

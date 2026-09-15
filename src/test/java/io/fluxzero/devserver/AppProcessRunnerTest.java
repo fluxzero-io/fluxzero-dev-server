@@ -130,13 +130,19 @@ class AppProcessRunnerTest {
         List<String> output = new CopyOnWriteArrayList<>();
         AppProcessRunner runner = new AppProcessRunner(
                 config, "ws://localhost:1234", "http://localhost:4200/_fluxzero", "http://localhost:5678",
-                "session-gateway", (applicationName, instanceId, stream, line) -> output.add(line));
+                "session-gateway", (applicationName, instanceId, stream, line) -> output.add(line),
+                new OnePasswordEnvironment(projectDirectory),
+                DevPlaceholderResolver.services("session-gateway", Map.of()), "http://localhost:4200");
         BuildSnapshot snapshot = new BuildSnapshot(1, projectDirectory.resolve("build"), testClassesDirectory(),
                                                    List.of(), Instant.now());
 
         AppInstance app = runner.start(snapshot);
         try {
             assertTrue(await(output, "proxy=http://localhost:4200/_fluxzero"));
+            assertTrue(await(output, "auth.issuer=http://localhost:4200/_fluxzero"));
+            assertTrue(await(output, "auth.application=http://localhost:4200"));
+            assertTrue(await(output, "auth.callback=http://localhost:4200/app/callback"));
+            assertTrue(await(output, "auth.audience=http://localhost:4200/api"));
             assertTrue(await(output, "proxy.port=5678"));
             assertTrue(await(output, "proxy.system.port=5678"));
         } finally {

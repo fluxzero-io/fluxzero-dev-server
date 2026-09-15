@@ -28,6 +28,7 @@ final class AppProcessRunner {
     private final String runtimeBaseUrl;
     private final String proxyUrl;
     private final String internalProxyUrl;
+    private final String applicationUrl;
     private final String sessionId;
     private final AppProcessOutput output;
     private final OnePasswordEnvironment onePassword;
@@ -66,10 +67,18 @@ final class AppProcessRunner {
     AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String internalProxyUrl,
                      String sessionId, AppProcessOutput output, OnePasswordEnvironment onePassword,
                      DevPlaceholderResolver placeholderResolver) {
+        this(config, runtimeBaseUrl, proxyUrl, internalProxyUrl, sessionId, output, onePassword,
+             placeholderResolver, proxyUrl);
+    }
+
+    AppProcessRunner(DevServerConfig config, String runtimeBaseUrl, String proxyUrl, String internalProxyUrl,
+                     String sessionId, AppProcessOutput output, OnePasswordEnvironment onePassword,
+                     DevPlaceholderResolver placeholderResolver, String applicationUrl) {
         this.config = config;
         this.runtimeBaseUrl = runtimeBaseUrl;
         this.proxyUrl = proxyUrl;
         this.internalProxyUrl = internalProxyUrl;
+        this.applicationUrl = applicationUrl;
         this.sessionId = sessionId;
         this.output = output;
         this.onePassword = onePassword;
@@ -178,15 +187,8 @@ final class AppProcessRunner {
         if (config.idpMode() == IdpMode.EXTERNAL) {
             return properties;
         }
-        addSystemProperty(properties, "fluxzero.auth.external-base-url", proxyUrl);
-        addSystemProperty(properties, "fluxzero.auth.oidc.issuer", proxyUrl);
-        addSystemProperty(properties, "fluxzero.auth.oidc.client-id", "local-auth-app");
-        addSystemProperty(properties, "fluxzero.auth.oidc.redirect-uri", proxyUrl + "/app/callback");
-        addSystemProperty(properties, "fluxzero.auth.oidc.resource-audience", proxyUrl + "/api");
-        addSystemProperty(properties, "fluxzero.auth.oidc.scope", "openid profile email");
-        addSystemProperty(properties, "fluxzero.auth.oidc.login-state-secret",
-                          "local-development-login-state-secret-change-me");
-        addSystemProperty(properties, "fluxzero.auth.oidc.token-endpoint-auth-method", "none");
+        ManagedIdpService.devProperties(proxyUrl, applicationUrl)
+                .forEach((key, value) -> addSystemProperty(properties, key, value));
         return properties;
     }
 

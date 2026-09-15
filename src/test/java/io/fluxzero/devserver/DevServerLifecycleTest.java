@@ -517,7 +517,7 @@ class DevServerLifecycleTest {
 
             String verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
             String state = "dev-state";
-            String redirectUri = proxyUrl + "/app/callback";
+            String redirectUri = devServer.session().gateway().url() + "/app/callback";
             HttpResponse<String> authorize = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/auth?"
                     + form(Map.of(
                             "response_type", "code",
@@ -539,6 +539,8 @@ class DevServerLifecycleTest {
                     .build());
             assertEquals(302, login.statusCode(), login.body());
             URI callback = URI.create(location(login));
+            assertEquals("/app/callback", callback.getPath());
+            assertEquals(URI.create(redirectUri).getAuthority(), callback.getAuthority());
             assertEquals(state, queryParam(callback, "state"));
             String code = queryParam(callback, "code");
 
