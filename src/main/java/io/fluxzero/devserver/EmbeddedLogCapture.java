@@ -78,7 +78,8 @@ final class EmbeddedLogCapture implements AutoCloseable {
             if (event.getThrowableProxy() != null) {
                 message += System.lineSeparator() + ThrowableProxyUtil.asString(event.getThrowableProxy());
             }
-            DevLogEvent.Level level = level(event.getLevel());
+            DevLogEvent.Level level = expectedClientDisconnect(event.getLoggerName(), event.getFormattedMessage())
+                    ? DevLogEvent.Level.INFO : level(event.getLevel());
             if (mcpLibraryLogger(event.getLoggerName())) {
                 // The SDK logs per-client transport failures. DevMcpServer owns global MCP lifecycle health.
                 store.embeddedTelemetry(identity.source(), identity.serviceType(), identity.serviceId(), level,
@@ -120,6 +121,14 @@ final class EmbeddedLogCapture implements AutoCloseable {
                 default -> DevLogEvent.Level.INFO;
             };
         }
+    }
+
+    static boolean expectedClientDisconnect(String logger, String message) {
+        if (logger == null || !logger.startsWith("io.modelcontextprotocol.") || message == null) return false;
+        return (message.startsWith("Failed to send message to session ")
+                || message.startsWith("Failed to send keep-alive ping to session "))
+                && (message.endsWith(": Client disconnected") || message.endsWith(": Stream closed")
+                    || message.endsWith(": Stream is not available") || message.endsWith(": Stream not available"));
     }
 
     private record ServiceIdentity(String source, String serviceType, String serviceId) {

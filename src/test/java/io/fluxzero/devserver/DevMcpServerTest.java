@@ -185,6 +185,8 @@ class DevMcpServerTest {
             store.observeStatus("probe", "infrastructure", "probe", null, "running", "recovered");
 
             assertFalse(transportEvents.isEmpty(), "the abandoned server-side transport should remain observable");
+            assertTrue(transportEvents.stream().filter(event -> event.message().contains("Client disconnected"))
+                    .allMatch(event -> event.level() == DevLogEvent.Level.INFO), transportEvents.toString());
             assertEquals(0, store.diagnostics().activeCount(),
                          "a disconnected client session must not become an environment problem");
 
@@ -195,7 +197,7 @@ class DevMcpServerTest {
                                 .arguments(Map.of("sessionId", session.sessionId(),
                                                   "afterSequence", disconnectCursor,
                                                   "sources", List.of("mcp"),
-                                                  "minimumLevel", "ERROR"))
+                                                  "minimumLevel", "INFO"))
                                 .build());
                 assertFalse(Boolean.TRUE.equals(logs.isError()));
                 assertTrue(String.valueOf(logs.structuredContent()).contains("Client disconnected"),
