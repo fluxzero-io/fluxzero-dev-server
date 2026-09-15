@@ -47,6 +47,9 @@ final class FrontendProcess implements AutoCloseable {
     private final AtomicBoolean managedUpdatePending = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Consumer<String> output;
+    private volatile boolean suspended;
+    private boolean resumeAfterSuspension;
+    private boolean launching;
     private volatile boolean setupRunning;
     private volatile boolean everReady;
     private volatile RecoveryReason recoveryReason = RecoveryReason.NONE;
@@ -117,11 +120,12 @@ final class FrontendProcess implements AutoCloseable {
     }
 
     void launch(Consumer<String> output) {
-        if (config.mode() != FrontendConfig.Mode.COMMAND || closed.get()
-            || !launchStarted.compareAndSet(false, true)) {
-            return;
+        synchronized (this) {
+            if (config.mode() != FrontendConfig.Mode.COMMAND || closed.get() || suspended
+                || !launchStarted.compareAndSet(false, true)) return;
+            launching = true;
+            this.output = output;
         }
-        this.output = output;
         try {
             runSetup(output);
             if (!closed.get()) {
@@ -135,6 +139,8 @@ final class FrontendProcess implements AutoCloseable {
                 return;
             }
             throw new IllegalStateException("Failed to start frontend command", e);
+        } finally {
+            synchronized (this) { launching = false; }
         }
     }
 
@@ -151,6 +157,7 @@ final class FrontendProcess implements AutoCloseable {
     }
 
     private DevSession.ServiceStatus commandStatus() {
+        if (suspended) return DevSession.ServiceStatus.stopped("frontend").withState("paused", "paused for exclusive build work");
         String failure = failureDetail;
         if (failure != null) {
             return DevSession.ServiceStatus.failed("frontend", failure);
@@ -208,8 +215,42 @@ final class FrontendProcess implements AutoCloseable {
 
     boolean managed() { return config.mode() == FrontendConfig.Mode.COMMAND; }
 
+    synchronized void suspendForBuild() {
+        if (!managed() || closed.get() || suspended) return;
+        if (setupRunning || launching || !launchStarted.get())
+            throw new IllegalStateException("Frontend startup is still running; retry pause after startup");
+        suspended = true;
+        restartGeneration++;
+        Process current = process;
+        resumeAfterSuspension = current != null && current.isAlive();
+        process = null;
+        ready.set(false);
+        recoveryInProgress.set(false);
+        if (current != null) {
+            var descendants = current.descendants().toList();
+            ProcessUtils.forceStopTree(current);
+            if (current.isAlive() || descendants.stream().anyMatch(ProcessHandle::isAlive)) {
+                process = current;
+                resumeAfterSuspension = false;
+                throw new IllegalStateException("Frontend processes did not stop; exclusive build work is unsafe");
+            }
+        }
+        statusConsumer.accept(status());
+    }
+
+    synchronized void resumeAfterBuild() throws IOException {
+        if (!suspended) return;
+        suspended = false;
+        if (!closed.get() && resumeAfterSuspension) {
+            resumeAfterSuspension = false;
+            recoveryReason = RecoveryReason.NONE;
+            launchProcess(output == null ? ignored -> {} : output);
+        }
+        statusConsumer.accept(status());
+    }
+
     synchronized void requestRestart() throws IOException {
-        if (!managed() || closed.get()) return;
+        if (!managed() || closed.get() || suspended) return;
         restartGeneration++;
         Process current = process;
         process = null;
@@ -228,7 +269,7 @@ final class FrontendProcess implements AutoCloseable {
     }
 
     synchronized boolean refreshAfterManagedUpdate() {
-        if (config.mode() != FrontendConfig.Mode.COMMAND || closed.get()
+        if (config.mode() != FrontendConfig.Mode.COMMAND || closed.get() || suspended
             || !managedUpdatePending.compareAndSet(true, false)) {
             return false;
         }
@@ -300,9 +341,13 @@ final class FrontendProcess implements AutoCloseable {
                 if (closed.get()) {
                     break;
                 }
-                Boolean confirmedReady = stableReadiness.observe(observedReady, System.nanoTime());
+                Boolean confirmedReady;
+                synchronized (this) {
+                    if (suspended || current != process) continue;
+                    confirmedReady = stableReadiness.observe(observedReady, System.nanoTime());
+                    if (confirmedReady != null) ready.set(confirmedReady);
+                }
                 if (confirmedReady != null) {
-                    ready.set(confirmedReady);
                     failedProbes = 0;
                     if (confirmedReady) {
                         everReady = true;
@@ -366,8 +411,8 @@ final class FrontendProcess implements AutoCloseable {
         }
     }
 
-    private void launchProcess(Consumer<String> output) throws IOException {
-        if (closed.get()) {
+    private synchronized void launchProcess(Consumer<String> output) throws IOException {
+        if (closed.get() || suspended) {
             return;
         }
         String frontendPort = Integer.toString(port(internalUrl));
