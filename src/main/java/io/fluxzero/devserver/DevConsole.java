@@ -145,7 +145,7 @@ final class DevConsole implements AutoCloseable {
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Maintenance requires the local console.");
         String action = path.substring((ROOT + "actions/").length());
-        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "clear-test-output", "run-tests").contains(action))
+        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "clear-test-output", "run-tests", "pause-builds", "resume-builds").contains(action))
             return actionResult(response, callback, 404, "Unknown maintenance action.");
         Runnable accepted;
         try { accepted = maintenance.apply(action); }

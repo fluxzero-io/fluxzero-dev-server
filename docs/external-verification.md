@@ -6,22 +6,44 @@ files against a second process running `clean`, compiling, or rewriting classpat
 
 ## Full verification outside the managed loop
 
-Use this sequence when a project requires a separate full suite before pushing:
+Use the standalone verification entry point from the same dev-server distribution as the running environment:
 
-1. Record the actual application directory, active profile and launch options. In a repository containing
-   `app/`, operate on `app/`, not the repository root. Record whether the environment was running.
-2. Use `fz dev stop --project-dir <app>` and wait for successful completion. If stopping fails, do not start
-   an external build against the same output. Stop externally owned watchers separately if relevant.
-3. Run the project's full verification through its wrapper. On Windows use an absolute path to `gradlew.bat`
-   or `mvnw.cmd`; on Unix use the executable project wrapper. Preserve the build's exit code.
-4. If the environment was running, restart using `fz dev start --background --project-dir <app>` with its
-   original profile/options. Report a restart failure separately. A successful restart must not turn a failed
-   verification into success.
-5. Confirm the new session is ready and a build is active before browser acceptance.
+```powershell
+java -cp C:\tools\fluxzero-dev-server-standalone.jar io.fluxzero.devserver.DevVerificationMain --project-dir C:\repo\app --timeout-seconds 1800 -- C:\repo\app\gradlew.bat --no-daemon check
+```
 
-This is stop/verify/start, not an in-memory pause: stopping discards the in-memory runtime. It is not an automatic
-`pause/verify/resume` API. Save or reseed disposable development data as appropriate before using this workflow.
-Do not restart an environment that was stopped before verification began.
+```sh
+java -cp /tools/fluxzero-dev-server-standalone.jar io.fluxzero.devserver.DevVerificationMain --project-dir /repo/app --timeout-seconds 1800 -- /repo/app/gradlew --no-daemon check
+```
+
+Use the actual application directory and project wrapper (Maven's `mvnw.cmd`/`mvnw` works too). This entry point
+requires an already running local console. It does not start an environment or change its profile.
+
+The operation waits for active managed compilation/tests and application replacement, holds all project build
+coordinators, and stops managed frontend process trees. The last application and in-memory runtime stay alive.
+Only after status reports `paused` does it execute the supplied argument vector in the application directory.
+Changes observed during the pause remain queued. After the external command exits, frontends restart and queued
+managed work continues. A failing command preserves its exit code; failure to resume after a successful command
+is also a failure. Confirm frontend readiness and the active build before browser acceptance.
+
+The timeout bounds the external command. On timeout or graceful interruption the helper stops its process tree
+before resuming. If a writer cannot be stopped, the environment remains paused. Do not launch detached writers
+from the command. Externally managed watchers and runners must be stopped separately.
+
+### Console integration and recovery
+
+The local console exposes same-origin, authenticated-by-origin POST actions
+`/_fluxzero/dev/actions/pause-builds` and `/_fluxzero/dev/actions/resume-builds`, with the existing
+`X-Fluxzero-Console: 1` header and exact console `Origin`. HTTP 202 means accepted, not completed. Poll
+`/_fluxzero/dev/status.json`: `maintenance.buildPauseState` progresses through `pausing`, `paused`, `resuming`,
+and `running`; check `maintenance.error` and wait for `maintenance.busy` to become false after resumption.
+Concurrent maintenance is rejected with HTTP 409. Acquisition of lifecycle/build locks is bounded.
+
+If the helper is forcibly killed, there is deliberately no timed automatic resumption that could race a surviving
+writer. Stop/finish that writer first, then issue `resume-builds` and check status. Restarting the whole dev server
+is a fallback and discards its in-memory data. Older distributions without these actions require the original
+`fz dev stop --project-dir <app>`, external verification, and `fz dev start --background --project-dir <app>`
+sequence with the original launch options. Never turn a failed verification into success because restart succeeded.
 
 ## Isolated output for an external Gradle runner
 
@@ -47,9 +69,12 @@ while the watcher remains active does not release the lock.
 
 - Declare dependency-install inputs precisely: dependencies and lockfiles, install hooks, Node/npm versions and
   npm configuration. Ordinary source or build-script edits should not unnecessarily reinstall dependencies.
-- For an actual dependency change, stop the managed loop and any externally owned frontend process, install,
-  then restart using the sequence above. A future coordinated install operation would need to stop the watcher
-  before replacement and restart only after successful installation.
+- For an actual dependency change, use the verification entry point above with the install command (for example
+  an explicit Node executable, its npm CLI script, `--prefix <frontend-directory> ci`). It stops managed watchers
+  before replacing dependencies and resumes the environment after the command. Check the install exit code and
+  frontend readiness: a failed install may leave incomplete dependencies requiring repair. Stop externally owned
+  watchers separately. This is an explicit coordinated operation; the server does not infer arbitrary custom
+  Gradle task inputs or automatically rewrite dependency-install tasks.
 - A Gradle-managed Node toolchain covers Gradle's Node tasks. A frontend command beginning with bare `node`
   still uses the launcher's PATH. Configure an explicit executable or an appropriate project launcher when
   identical versions are required for both builds and the running frontend.

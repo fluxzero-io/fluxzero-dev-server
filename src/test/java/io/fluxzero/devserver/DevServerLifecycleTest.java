@@ -55,6 +55,42 @@ class DevServerLifecycleTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void exclusiveVerificationPreservesSessionAndReturnsCommandFailure(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external", "--no-watch", "--no-compile-on-start"});
+        try (DevServer server = new DevServer(config).start()) {
+            String id = server.session().sessionId();
+            long runtime = server.session().runtime().pid();
+            String java = Path.of(System.getProperty("java.home"), "bin", ProcessUtils.isWindows() ? "java.exe" : "java").toString();
+            assertEquals(7, DevVerificationMain.run(project, List.of(java, "-cp", System.getProperty("java.class.path"),
+                    VerificationFailure.class.getName()), Duration.ofSeconds(10)));
+            assertEquals(id, server.session().sessionId());
+            assertEquals(runtime, server.session().runtime().pid());
+            assertTrue(ProcessHandle.of(runtime).orElseThrow().isAlive());
+            Path childPid = project.resolve("verification-child.pid");
+            var timeoutFailure = assertThrows(IllegalStateException.class, () -> DevVerificationMain.run(project,
+                    List.of(java, "-cp", System.getProperty("java.class.path"), VerificationWait.class.getName(),
+                            childPid.toString()), Duration.ofSeconds(2)));
+            assertTrue(timeoutFailure.getMessage().contains("timed out"));
+            assertFalse(ProcessUtils.isAlive(Long.parseLong(Files.readString(childPid))));
+            assertEquals(id, server.session().sessionId());
+            assertEquals(runtime, server.session().runtime().pid());
+            assertEquals(0, DevVerificationMain.run(project, List.of(java, "-version"), Duration.ofSeconds(10)));
+        }
+    }
+
+    public static class VerificationWait {
+        public static void main(String[] args) throws Exception {
+            Files.writeString(Path.of(args[0]), Long.toString(ProcessHandle.current().pid()));
+            Thread.sleep(60_000);
+        }
+    }
+
+    public static class VerificationFailure {
+        public static void main(String[] args) { System.exit(7); }
+    }
+
+    @Test
     void consoleUpdatesCountsFromReportsDuringRun(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external", "--no-watch", "--no-compile-on-start"});

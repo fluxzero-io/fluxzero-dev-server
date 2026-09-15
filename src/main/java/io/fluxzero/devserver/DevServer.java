@@ -593,6 +593,8 @@ public class DevServer implements AutoCloseable {
     private final AtomicBoolean maintenanceBusy = new AtomicBoolean();
     private volatile String maintenanceError = "";
     private volatile Thread maintenanceThread;
+    private volatile String buildPauseState = "running";
+    private volatile java.util.concurrent.CountDownLatch buildResume;
     private final TestOutput testOutput = new TestOutput();
     private final Map<String, TestStatus> lastTestResults = new ConcurrentHashMap<>();
 
@@ -670,7 +672,7 @@ public class DevServer implements AutoCloseable {
         result.put("tests", session.tests().state()); result.put("frontend", session.frontend().state());
         result.put("monitoring", monitoring == null ? Map.of("enabled", false) : monitoring.status());
         result.put("components", components);
-        result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", devRuntime != null && devRuntime.resetSupported(),
+        result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", devRuntime != null && devRuntime.resetSupported(),
                 "restartSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
         Map<String, Object> testResults = new LinkedHashMap<>();
         testResults.put("state", testsRunning ? "running" : testsIncomplete
@@ -731,6 +733,11 @@ public class DevServer implements AutoCloseable {
 
     private synchronized Runnable requestMaintenance(String action) {
         if (closed.get()) throw new IllegalStateException("The dev server is unavailable.");
+        if ("resume-builds".equals(action)) {
+            var resume = buildResume;
+            if (resume == null) throw new IllegalStateException("Builds are not paused");
+            return resume::countDown;
+        }
         if ("clear-test-output".equals(action)) return () -> {testOutput.clear(); if(devGateway!=null)devGateway.refreshConsole();};
         if ("run-tests".equals(action)) {
             if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
@@ -748,12 +755,18 @@ public class DevServer implements AutoCloseable {
             && frontendProcesses.values().stream().noneMatch(FrontendProcess::managed)) throw new IllegalStateException("No application build is available yet.");
         if (!maintenanceBusy.compareAndSet(false, true)) throw new IllegalStateException("Maintenance is already running.");
         maintenanceError = "";
+        if ("pause-builds".equals(action)) {
+            buildResume = new java.util.concurrent.CountDownLatch(1);
+            buildPauseState = "pausing";
+        }
         return () -> maintenanceThread = Thread.ofVirtual().name("dev-console-maintenance").start(() -> {
             try {
-                applicationLifecycleLock.lockInterruptibly();
+                if (!applicationLifecycleLock.tryLock(30, TimeUnit.SECONDS))
+                    throw new IllegalStateException("Timed out waiting for application lifecycle work");
                 try {
                     if (closed.get()) return;
                     switch (action) {
+                        case "pause-builds" -> pauseBuildsForVerification();
                         case "restart-devserver" -> requestShutdown(RESTART_REQUESTED);
                         case "restart-application" -> restartCustomerApplications();
                         case "truncate-data" -> truncateEnvironment();
@@ -772,9 +785,44 @@ public class DevServer implements AutoCloseable {
             } finally {
                 // Shutdown is bounded; a slow maintenance operation may finish after close() has returned.
                 if (closed.get()) { closeQuietly(monitoring); closeQuietly(commandPipeline); closeQuietly(devRuntime); }
+                if ("pause-builds".equals(action)) {
+                    buildResume = null;
+                    buildPauseState = "running";
+                }
                 maintenanceBusy.set(false);
             }
         });
+    }
+
+    private void pauseBuildsForVerification() throws Exception {
+        var coordinators = projects.values().stream().sorted(java.util.Comparator.comparing(p -> p.id))
+                .map(p -> p.buildCoordinator).toList();
+        withBuildLocks(coordinators, 0, System.nanoTime() + TimeUnit.SECONDS.toNanos(30), () -> {
+            var frontends = frontendProcesses.values().stream().filter(FrontendProcess::managed).toList();
+            try {
+                if (buildResume.getCount() == 0) return null;
+                for (FrontendProcess frontend : frontends) frontend.suspendForBuild();
+                buildPauseState = "paused";
+                record("[maintenance] builds paused; managed frontends stopped; application and runtime retained");
+                while (!closed.get() && !buildResume.await(1, TimeUnit.SECONDS)) activity();
+            } finally {
+                buildPauseState = "resuming";
+                Exception failure = null;
+                if (!closed.get()) for (FrontendProcess frontend : frontends) {
+                    try { frontend.resumeAfterBuild(); }
+                    catch (Exception e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
+                }
+                if (failure != null) throw failure;
+            }
+            return null;
+        });
+    }
+
+    private static <T> T withBuildLocks(List<MavenBuildCoordinator> coordinators, int index, long deadline,
+                                       MavenBuildCoordinator.InterruptibleSupplier<T> action) throws Exception {
+        if (index == coordinators.size()) return action.get();
+        return coordinators.get(index).withMaintenanceLock(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())),
+                () -> withBuildLocks(coordinators, index + 1, deadline, action));
     }
 
     private void truncateEnvironment() throws Exception {
