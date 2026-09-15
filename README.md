@@ -23,7 +23,7 @@ For independent full suites and dependency changes while using a frontend watche
 
 ## Requirements
 
-- JDK 21 or newer
+- JDK 25 for building and running the dev server
 - A project-local Maven or Gradle wrapper in applications being developed
 - Node.js and npm only when running the optional frontend framework tests
 

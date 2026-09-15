@@ -4,7 +4,7 @@ Instructions for coding agents working in this repository.
 
 ## Project Shape
 
-This repository contains the standalone Fluxzero dev server, built with Maven and Java 21. It is a local
+This repository contains the standalone Fluxzero dev server, built and run with Maven and Java 25. It is a local
 development product rather than an application dependency.
 
 - `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero test runtime and proxy,
@@ -27,7 +27,9 @@ integration boundary.
 ## Build And Test
 
 - Use the Maven wrapper: `./mvnw` on Unix and `mvnw.cmd` on Windows.
-- The project compiles with `maven.compiler.release=21`.
+- Use JDK 25 for builds, tests, and the running dev server. Java 21 compatibility is not required.
+- The project currently compiles its own sources with `maven.compiler.release=21`; this bytecode target does not
+  imply Java 21 runtime support for the standalone distribution and its dependencies.
 - Full verification is `./mvnw -B clean install`.
 - Run focused tests with `./mvnw -B -Dtest=ClassName test`.
 - Run whole-application development workflow tests with `./mvnw -B verify -Pdev-server-e2e`.
