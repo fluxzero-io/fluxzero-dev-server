@@ -108,7 +108,6 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!['truncate-data', 'restart-devserver', 'restart-application'].includes(action)) return;
     await firstValueFrom(this.http.post('actions/' + action, null,
       {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
-    this.status.update(status => status ? {...status, maintenance: {...status.maintenance, busy: true, error: ''}} : status);
   }
   @HandleCommand('runTests') async runTests() {
     await firstValueFrom(this.http.post('actions/run-tests', null,

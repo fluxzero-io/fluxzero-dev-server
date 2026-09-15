@@ -4,6 +4,8 @@ import {provideHttpClientTesting, HttpTestingController} from '@angular/common/h
 import {AppComponent} from './app.component';
 import {monitoringPath, Status, Environment} from './models';
 import {ConsoleConnection, ConsoleState} from './console-connection';
+import {By} from '@angular/platform-browser';
+import {EnvironmentComponent} from './environment.component';
 
 describe('Dev console navigation', () => {
   let fixture: ComponentFixture<AppComponent>;
@@ -457,14 +459,85 @@ describe('Dev console navigation', () => {
   });
   for (const [label, action] of [['Restart application','restart-application'], ['Restart dev server','restart-devserver']]) {
     it('dispatches ' + action + ' without the truncate confirmation', async () => {
-      (fixture.nativeElement.querySelector('[aria-label="' + label + '"]') as HTMLButtonElement).click();
+      const button = fixture.nativeElement.querySelector('[aria-label="' + label + '"]') as HTMLButtonElement;
+      button.click();
+      fixture.detectChanges();
+      expect(button.querySelector('.spinner-border[role="status"]')).not.toBeNull();
+      expect(button.querySelector('.bi-arrow-clockwise')).toBeNull();
+      expect(button.disabled).toBeTrue();
+      expect(fixture.nativeElement.querySelectorAll('.spinner-border').length).toBe(1);
+      expect(fixture.nativeElement.textContent).not.toContain('Maintenance in progress');
       const request = TestBed.inject(HttpTestingController).expectOne('actions/' + action);
       expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
       request.flush(null);
       await fixture.whenStable();
       expect(fixture.nativeElement.querySelector('dialog').open).toBeFalse();
+      expect(button.querySelector('.spinner-border')).not.toBeNull();
+      const status = fixture.componentInstance.status()!;
+      push({status:{...status,maintenance:{...status.maintenance,busy:true,error:''}},environments:[]});
+      await fixture.whenStable();
+      expect(button.querySelector('.spinner-border')).not.toBeNull();
+      push({status:{...status,maintenance:{...status.maintenance,busy:false,error:''}},environments:[]});
+      await fixture.whenStable();
+      expect(button.querySelector('.spinner-border')).toBeNull();
+      expect(button.querySelector('.bi-arrow-clockwise')).not.toBeNull();
+      expect(button.disabled).toBeFalse();
     });
   }
+  it('replaces the trash icon only after confirmation and restores it after a reconnect snapshot', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    const button = root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement;
+    button.click(); fixture.detectChanges();
+    expect(root.querySelector('.spinner-border')).toBeNull();
+    (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(button.querySelector('.spinner-border[aria-label="Truncating data"]')).not.toBeNull();
+    expect(button.querySelector('.bi-trash')).toBeNull();
+    TestBed.inject(HttpTestingController).expectOne('actions/truncate-data').flush(null);
+    await fixture.whenStable();
+    connected(false); await fixture.whenStable();
+    expect(button.querySelector('.spinner-border')).not.toBeNull();
+    push({status:{...fixture.componentInstance.status()!},environments:[]});
+    connected(true); await fixture.whenStable();
+    expect(button.querySelector('.spinner-border')).toBeNull();
+    expect(button.querySelector('.bi-trash')).not.toBeNull();
+    expect(button.disabled).toBeFalse();
+  });
+  it('restores the icon when the maintenance request fails', async () => {
+    const environment = fixture.debugElement.query(By.directive(EnvironmentComponent)).componentInstance as EnvironmentComponent;
+    const maintain = spyOn(environment,'maintain').and.callThrough();
+    const button = fixture.nativeElement.querySelector('[aria-label="Restart application"]') as HTMLButtonElement;
+    button.click(); fixture.detectChanges();
+    TestBed.inject(HttpTestingController).expectOne('actions/restart-application')
+      .flush({error:'Unable to restart application.'},{status:503,statusText:'Unavailable'});
+    await maintain.calls.mostRecent().returnValue;
+    await fixture.whenStable();
+    expect(button.querySelector('.spinner-border')).toBeNull();
+    expect(button.disabled).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Unable to restart application.');
+  });
+  it('restores the icon after sixty seconds without a completion update and allows retrying', async () => {
+    const nativeTimeout = window.setTimeout.bind(window);
+    let expire: () => void = () => {throw Error('Maintenance timeout was not scheduled');};
+    spyOn(window,'setTimeout').and.callFake(((handler: TimerHandler, delay?: number, ...args: any[]) => {
+      if (delay === 60_000) expire = handler as () => void;
+      return nativeTimeout(handler,delay,...args);
+    }) as typeof window.setTimeout);
+    const button = fixture.nativeElement.querySelector('[aria-label="Restart dev server"]') as HTMLButtonElement;
+    const http = TestBed.inject(HttpTestingController);
+    button.click(); fixture.detectChanges();
+    http.expectOne('actions/restart-devserver').flush(null);
+    await fixture.whenStable();
+    expect(button.querySelector('.spinner-border')).not.toBeNull();
+    connected(false); expire(); await fixture.whenStable();
+    expect(button.querySelector('.spinner-border')).toBeNull();
+    expect(button.disabled).toBeFalse();
+    button.click(); fixture.detectChanges();
+    expect(button.querySelector('.spinner-border')).not.toBeNull();
+    http.expectOne('actions/restart-devserver').flush(null);
+    await fixture.whenStable();
+    http.verify();
+  });
   it('follows system appearance changes while preserving the system preference', () => {
     const system = window.matchMedia('(prefers-color-scheme: dark)');
     const previous = system.matches;

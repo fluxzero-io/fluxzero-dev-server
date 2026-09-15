@@ -32,6 +32,10 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .sidebar-footer span { display: flex; align-items: center; gap: 10px; }
 .icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 6px; color: var(--dashboard-control-icon); background: transparent; }
 .icon-button:hover { background: var(--dashboard-active-soft); color: var(--dashboard-active); }
+.spinner-border {display:inline-block;width:2rem;height:2rem;vertical-align:-.125em;border:.25em solid currentColor;border-right-color:transparent;border-radius:50%;animation:spinner-border .75s linear infinite;}
+.spinner-border-sm {width:1rem;height:1rem;border-width:.2em;}
+@keyframes spinner-border {to {transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce) {.spinner-border {animation-duration:1.5s;}}
 main { min-width: 0; flex: 1; }
 .connection { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .connection i {font-size:16px;color:var(--dashboard-muted);}

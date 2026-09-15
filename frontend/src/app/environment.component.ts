@@ -1,4 +1,4 @@
-import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorRef, computed} from '@angular/core';
+import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorRef, computed, DestroyRef, effect} from '@angular/core';
 import {ProjectPathComponent} from './project-path.component';
 import {Status} from './models';
 import {ResourceDetailComponent} from './resource-detail.component';
@@ -38,11 +38,18 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             } @else {—}
           </td>
           <td role="cell" class="component-restart">
-            <button class="icon-button" type="button" [attr.aria-label]="component.application ? 'Restart application' : 'Restart dev server'" title="Restart" [disabled]="busy() || !(component.application ? state.maintenance?.applicationRestartSupported : state.maintenance?.restartSupported)" (click)="maintain(component.application ? 'restart-application' : 'restart-devserver')"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+            @let restartAction = component.application ? 'restart-application' : 'restart-devserver';
+            <button class="icon-button" type="button" [attr.aria-label]="component.application ? 'Restart application' : 'Restart dev server'" title="Restart" [attr.aria-busy]="maintenanceAction() === restartAction" [disabled]="busy() || !(component.application ? state.maintenance?.applicationRestartSupported : state.maintenance?.restartSupported)" (click)="maintain(restartAction)">
+              @if(maintenanceAction() === restartAction) {<span class="spinner-border spinner-border-sm" role="status" [attr.aria-label]="component.application ? 'Restarting application' : 'Restarting dev server'"></span>}
+              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
+            </button>
           </td>
           <td role="cell" class="component-actions">
             @if(component.application && component.url) {<a class="icon-button application-link" [href]="component.url" target="_blank" rel="noopener" [attr.aria-label]="'Open ' + component.name" title="Open application"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
-            @if(!component.application) {<button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')"><i class="bi bi-trash" aria-hidden="true"></i></button>}
+            @if(!component.application) {<button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
+              @if(maintenanceAction() === 'truncate-data') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Truncating data"></span>}
+              @else {<i class="bi bi-trash" aria-hidden="true"></i>}
+            </button>}
           </td>
         </tr>
       }</tbody>
@@ -54,7 +61,6 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <div class="dialog-actions"><button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Truncate data</button>
       <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
     }</dialog>
-    @if(busy()) {<p role="status">Maintenance in progress…</p>}
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
     <div class="test-summary">
       <div class="test-heading"><h3>Tests</h3></div>
@@ -123,7 +129,25 @@ export class EnvironmentComponent {
   confirmAction = signal<string | null>(null);
   actionError = signal('');
   submitting = signal(false);
-  busy() { return this.submitting() || !!this.status()?.maintenance?.busy; }
+  readonly maintenanceAction = signal<string | null>(null);
+  private maintenanceStatus?: Status;
+  private maintenanceTimeout?: ReturnType<typeof setTimeout>;
+  constructor() {
+    effect(() => {
+      // The command response only acknowledges the request. Wait for a subsequent
+      // push (including a reconnect snapshot) to report that the operation is done.
+      if (this.maintenanceAction() && !this.submitting()
+          && this.status() !== this.maintenanceStatus && !this.status()?.maintenance?.busy) {
+        this.finishMaintenance();
+      }
+    });
+    inject(DestroyRef).onDestroy(() => this.finishMaintenance());
+  }
+  private finishMaintenance() {
+    clearTimeout(this.maintenanceTimeout);
+    this.maintenanceAction.set(null);
+  }
+  busy() { return !!this.maintenanceAction() || this.submitting() || !!this.status()?.maintenance?.busy; }
   requestMaintenance(action: string) {
     if (this.busy()) return;
     this.confirmAction.set(action);
@@ -137,10 +161,16 @@ export class EnvironmentComponent {
     void this.maintain(action);
   }
   async maintain(action: string) {
+    if (this.busy()) return;
+    this.maintenanceAction.set(action);
+    this.maintenanceTimeout = setTimeout(() => this.finishMaintenance(), 60_000);
     this.submitting.set(true); this.actionError.set(''); this.confirmAction.set(null);
     try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment', action); }
-    catch (error: any) { this.actionError.set(error?.error?.error || 'Maintenance could not be started.'); }
-    finally { this.submitting.set(false); }
+    catch (error: any) {
+      this.actionError.set(error?.error?.error || 'Maintenance could not be started.');
+      this.finishMaintenance();
+    }
+    finally { this.maintenanceStatus = this.status(); this.submitting.set(false); }
   }
   testState() { const state = this.status(); return ['idle', 'stopped'].includes(state?.tests || '') && state?.testResults?.available ? state.testResults.state || state.tests : state?.tests; }
   readonly startingTests = signal(false);
