@@ -210,8 +210,8 @@ class DevServerMainTest {
 
             ProcessResult list = runControl(orders, registryDirectory, "list");
             assertEquals(0, list.exitCode(), list.output());
-            assertTrue(list.output().contains(orders.toString()), list.output());
-            assertTrue(list.output().contains(reporting.toString()), list.output());
+            assertTrue(list.output().contains(orders.getFileName().toString()), list.output());
+            assertTrue(list.output().contains(reporting.getFileName().toString()), list.output());
             assertTrue(list.output().contains("2 active, 0 stale."), list.output());
 
             ProcessResult json = runControl(orders, registryDirectory, "list", "--json");
@@ -219,6 +219,10 @@ class DevServerMainTest {
             var jsonOutput = new ObjectMapper().readTree(json.output());
             assertEquals(2, jsonOutput.path("active").asInt());
             assertEquals(2, jsonOutput.path("environments").size());
+            var listedPaths = new java.util.HashSet<String>();
+            jsonOutput.path("environments").forEach(environment ->
+                    listedPaths.add(environment.path("projectDirectory").asText()));
+            assertEquals(java.util.Set.of(orders.toRealPath().toString(), reporting.toRealPath().toString()), listedPaths);
             assertFalse(json.output().contains("token"), json.output());
 
             ProcessResult stop = runControl(orders, registryDirectory, "stop");
@@ -231,8 +235,8 @@ class DevServerMainTest {
             assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");
             ProcessResult stale = runControl(reporting, registryDirectory, "list");
             assertEquals(0, stale.exitCode(), stale.output());
-            assertFalse(stale.output().contains(orders.toString()), stale.output());
-            assertTrue(stale.output().contains(reporting.toString()), stale.output());
+            assertFalse(stale.output().contains(orders.getFileName().toString()), stale.output());
+            assertTrue(stale.output().contains(reporting.getFileName().toString()), stale.output());
             assertTrue(stale.output().contains("0 active, 1 stale."), stale.output());
         } finally {
             if (ordersProcess.isAlive()) {
@@ -241,6 +245,8 @@ class DevServerMainTest {
             if (reportingProcess.isAlive()) {
                 reportingProcess.destroyForcibly();
             }
+            assertTrue(ordersProcess.waitFor(5, TimeUnit.SECONDS), "orders dev server did not terminate");
+            assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");
         }
     }
 

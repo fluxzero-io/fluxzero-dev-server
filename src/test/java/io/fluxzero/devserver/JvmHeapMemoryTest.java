@@ -47,10 +47,17 @@ class JvmHeapMemoryTest {
             command.addAll(java.util.List.of("-cp", Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI()).toString(), HeapFixture.class.getName()));
             Process child = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(output.toFile()).start();
             try (var memory = new JvmHeapMemory()) {
+                // Attaching before main is ready can fail and trigger the sampler's retry backoff.
+                assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+                    while (!Files.readString(output).contains("MAX=")) {
+                        assertTrue(child.isAlive(), () -> "Heap fixture exited: " + output);
+                        Thread.sleep(25);
+                    }
+                });
                 var usage = assertTimeoutPreemptively(Duration.ofSeconds(20), () -> {
                     while (true) {
                         var reading = memory.sample(Set.of(child.pid()), Set.of()).get(child.pid());
-                        if (reading != null && Files.readString(output).contains("MAX=")) return reading;
+                        if (reading != null) return reading;
                         assertTrue(child.isAlive(), () -> "Heap fixture exited: " + output);
                         Thread.sleep(25);
                     }

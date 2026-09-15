@@ -47,10 +47,31 @@ class DevMonitoringConfigTest {
     }
     @Test void quotesWindowsAndUnixProcessCommandsWithoutLosingOwnership() {
         var args = java.util.List.of("C:/Program Files/Java/bin/java", "-jar", "my auditlog.jar");
-        assertTrue(DevMonitoring.launchCommand(args, true).startsWith("\"\"C:/Program Files"));
+        assertTrue(DevMonitoring.launchCommand(args, true).startsWith("\"C:/Program Files"));
         assertFalse(DevMonitoring.launchCommand(args, true).contains("wait $!"));
         assertTrue(DevMonitoring.launchCommand(java.util.List.of("/my folder/java", "-jar", "app.jar"), false).endsWith(" & wait $!"));
         assertThrows(IllegalArgumentException.class, () -> DevMonitoring.launchCommand(java.util.List.of("%TEMP%/java"), true));
+    }
+    @Test void launchesMonitoringArgumentsThroughTheOwnedShell() throws Exception {
+        Path classes = Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
+        String executable = Path.of(System.getProperty("java.home"), "bin",
+                ProcessUtils.isWindows() ? "java.exe" : "java").toString();
+        var args = java.util.List.of(executable, "-cp", classes.toString(), ArgumentFixture.class.getName(),
+                "path with spaces", "value&literal", "Aa_Zz !?");
+        var output = new java.util.concurrent.CopyOnWriteArrayList<String>();
+        Process child = ProcessUtils.start(ProcessUtils.shellCommand(
+                DevMonitoring.launchCommand(args, ProcessUtils.isWindows()), "monitoring-test"),
+                project, java.util.Map.of(), output::add);
+        try {
+            assertTrue(child.waitFor(10, java.util.concurrent.TimeUnit.SECONDS), output.toString());
+            assertEquals(0, child.exitValue(), output.toString());
+            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+            while (output.size() < 3 && System.nanoTime() < deadline) Thread.sleep(10);
+            assertEquals(args.subList(4, args.size()), output);
+        } finally { ProcessUtils.forceStopTree(child); }
+    }
+    public static class ArgumentFixture {
+        public static void main(String[] args) { for (String arg : args) System.out.println(arg); }
     }
     @Test void rejectsCorruptedDownload() throws Exception {
         Path archive = project.resolve("archive"); Files.writeString(archive, "broken");

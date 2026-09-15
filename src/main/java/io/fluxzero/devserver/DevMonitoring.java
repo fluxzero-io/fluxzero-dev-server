@@ -179,7 +179,7 @@ final class DevMonitoring implements AutoCloseable {
             if (args.stream().anyMatch(a -> a.contains("\"") || a.contains("%") || a.contains("\n") || a.contains("\r"))) {
                 throw new IllegalArgumentException("Unsupported character in monitoring process argument");
             }
-            return "\"" + args.stream().map(a -> "\"" + a + "\"").collect(Collectors.joining(" ")) + "\"";
+            return args.stream().map(a -> "\"" + a + "\"").collect(Collectors.joining(" "));
         }
         return args.stream().map(DevMonitoring::quote).collect(Collectors.joining(" ")) + " & wait $!";
     }
