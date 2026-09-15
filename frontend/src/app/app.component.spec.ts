@@ -48,7 +48,10 @@ describe('Dev console navigation', () => {
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
   function openPicker() {
-    (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
+    const root: HTMLElement = fixture.nativeElement;
+    const clear = root.querySelector('[aria-label="Deselect dev server"]') as HTMLButtonElement | null;
+    if (clear) clear.click();
+    else (root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement).click();
     fixture.detectChanges();
   }
   it('scopes the menu and project page to the selected dev server', () => {
@@ -72,6 +75,29 @@ describe('Dev console navigation', () => {
     (options[0].querySelector('.server-path') as HTMLElement).click();
     expect(navigate).toHaveBeenCalledTimes(1);
     expect(navigate.calls.mostRecent().args[0]).toEqual(fixture.componentInstance.environments()[0]);
+  });
+  it('replaces the selected name with an inline search field and restores it when a server is selected', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    const selector = root.querySelector('dev-environment-selector') as HTMLElement;
+    expect(selector.querySelector('.server-picker-button')?.textContent).toContain('repair-cafe');
+    expect(selector.querySelector('input')).toBeNull();
+    const navigate = spyOn(fixture.componentInstance, 'openEnvironment');
+    openPicker();
+    const search = selector.querySelector('input') as HTMLInputElement;
+    expect(selector.querySelector('.server-picker-button')).toBeNull();
+    expect(search.parentElement?.parentElement).toBe(selector);
+    expect(search.value).toBe('');
+    expect(document.activeElement).toBe(search);
+    expect(navigate).not.toHaveBeenCalled();
+    search.value = 'repair'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
+    (selector.querySelector('.server-option') as HTMLAnchorElement).click(); fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(navigate.calls.mostRecent().args[0]).toEqual(fixture.componentInstance.environments()[0]);
+    expect(selector.querySelector('input')).toBeNull();
+    expect(selector.querySelector('.server-menu')).toBeNull();
+    expect(document.activeElement).toBe(selector.querySelector('[aria-label="Deselect dev server"]'));
+    openPicker();
+    expect((selector.querySelector('input') as HTMLInputElement).value).toBe('');
   });
   it('sorts the current server first, then active servers, then inactive servers and searches names and folders', () => {
     const component = fixture.componentInstance;
@@ -142,8 +168,10 @@ describe('Dev console navigation', () => {
     openPicker();
     (root.querySelector('dev-environment-selector') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     fixture.detectChanges();expect(root.querySelector('.server-menu')).toBeNull();
+    expect(root.querySelector('[aria-label="Search dev servers"]')).not.toBeNull();
     openPicker();(root.querySelector('h1') as HTMLElement).click();fixture.detectChanges();
     expect(root.querySelector('.server-menu')).toBeNull();
+    expect(root.querySelector('[aria-label="Search dev servers"]')).not.toBeNull();
   });
   it('requires confirmation before starting an inactive server and switches only after success', async () => {
     const component = fixture.componentInstance;

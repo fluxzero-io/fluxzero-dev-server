@@ -5,15 +5,21 @@ import {sendCommand} from './dom-handlers';
 
 @Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet], template: `
   <div class="dashboard-section-label">Current dev server</div>
-  <button #trigger class="server-picker-button" type="button" aria-label="Choose dev server" aria-haspopup="dialog"
-    aria-controls="dev-server-picker" [attr.aria-expanded]="open()" [title]="currentName()" (click)="toggle()">
-    <i class="bi bi-collection" aria-hidden="true"></i><span>{{currentName()}}</span><i class="bi bi-chevron-down" aria-hidden="true"></i>
-  </button>
+  @if (!searching()) {
+    <div class="server-picker-button" [title]="currentName()">
+      <i class="bi bi-collection" aria-hidden="true"></i><span>{{currentName()}}</span>
+      <button #trigger class="server-clear-button" type="button" aria-label="Deselect dev server" title="Deselect dev server"
+        (click)="clearSelection($event)"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+  } @else {
+    <div class="search server-search"><i class="bi bi-search" aria-hidden="true"></i>
+      <input #search type="search" placeholder="Search by name or folder" aria-label="Search dev servers"
+        aria-controls="dev-server-picker" aria-haspopup="dialog" [attr.aria-expanded]="open()" autocomplete="off"
+        [value]="filter()" (focus)="open.set(true)" (click)="open.set(true)" (input)="filter.set(search.value); open.set(true)">
+    </div>
+  }
   @if(open()) {
     <div id="dev-server-picker" class="server-menu" role="dialog" aria-label="Dev servers">
-      <div class="search"><i class="bi bi-search" aria-hidden="true"></i>
-        <input #search type="search" placeholder="Search by name or folder" aria-label="Search dev servers"
-          [value]="filter()" (input)="filter.set(search.value)"></div>
       <div class="server-options">
         @for(group of groups(); track group.label) {
           <section class="server-group" [attr.aria-label]="group.label">
@@ -61,14 +67,18 @@ import {sendCommand} from './dom-handlers';
   </dialog>
 `, styles: `
   :host {display:block;position:relative;margin-bottom:20px;min-width:0;}
-  .server-picker-button {display:grid;grid-template-columns:16px minmax(0,1fr) 14px;align-items:center;gap:5px;width:100%;min-height:38px;
+  .server-picker-button {display:grid;grid-template-columns:16px minmax(0,1fr) 24px;align-items:center;gap:5px;width:100%;min-height:38px;
     padding:0 8px;border:1px solid var(--dashboard-border);border-radius:6px;background:var(--dashboard-surface);color:var(--dashboard-text);text-align:left;}
   .server-picker-button span {overflow:hidden;font-size:15px;font-weight:700;text-overflow:ellipsis;white-space:nowrap;}
   .server-picker-button i {color:var(--dashboard-control-icon);font-size:14px;}
-  .server-picker-button:hover {border-color:var(--dashboard-focus-border);}
+  .server-clear-button {display:grid;place-items:center;width:24px;height:28px;padding:0;border:0;border-radius:4px;background:transparent;color:inherit;}
+  .server-clear-button:hover {background:var(--dashboard-active-soft);}
+  .server-clear-button:focus-visible {outline:2px solid var(--dashboard-focus-border);}
+  .server-search:focus-within {border-color:var(--dashboard-focus-border);}
   .server-menu {position:absolute;top:calc(100% + 6px);left:0;z-index:30;width:380px;max-width:calc(100vw - 44px);max-height:calc(100dvh - 230px);
     display:flex;flex-direction:column;padding:6px;border:1px solid var(--dashboard-border);border-radius:8px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
-  .search {flex:none;width:100%;margin:0 0 6px;padding:8px 10px;}
+  .server-search {width:100%;min-height:38px;margin:0;padding:0 8px;gap:5px;}
+  .server-search input {min-width:0;width:100%;font-size:15px;}
   .server-options {overflow-y:auto;overscroll-behavior:contain;min-height:0;}
   .server-group + .server-group {margin-top:6px;}
   .server-group-title {margin:0;padding:8px 10px;font-size:12px;font-weight:700;color:var(--dashboard-muted);}
@@ -97,6 +107,7 @@ export class EnvironmentSelectorComponent {
   readonly current = input<Environment>();
   readonly currentName = input('Select dev server');
   readonly open = signal(false);
+  readonly searching = signal(false);
   readonly filter = signal('');
   readonly selectedToStart = signal<Environment | null>(null);
   readonly starting = signal(false);
@@ -115,8 +126,9 @@ export class EnvironmentSelectorComponent {
     ].filter(group => group.environments.length);
   });
 
-  toggle() {
-    if (this.open()) { this.open.set(false); return; }
+  clearSelection(event?: MouseEvent) {
+    event?.stopPropagation();
+    this.searching.set(true);
     this.filter.set('');
     this.open.set(true);
     this.changeDetector.detectChanges();
@@ -126,6 +138,9 @@ export class EnvironmentSelectorComponent {
     if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     this.open.set(false);
+    this.searching.set(false);
+    this.filter.set('');
+    this.changeDetector.detectChanges();
     sendCommand(this.elementRef.nativeElement, 'openEnvironment', environment);
     this.restoreFocus();
   }
@@ -136,7 +151,7 @@ export class EnvironmentSelectorComponent {
       await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'forgetProject', this.selectedToStart()!.id);
       this.startDialog?.nativeElement.close();
       this.selectedToStart.set(null);
-      this.toggle();
+      this.clearSelection();
     } finally { this.removing.set(false); }
   }
   offerStart(environment: Environment) {
@@ -157,7 +172,7 @@ export class EnvironmentSelectorComponent {
     } catch (error: any) { this.startError.set(error?.error?.error || 'Unable to start the dev server. Check its status before retrying.'); }
     finally { this.starting.set(false); }
   }
-  restoreFocus() { this.trigger?.nativeElement.focus(); }
+  restoreFocus() { (this.searching() ? this.search : this.trigger)?.nativeElement.focus(); }
   @HostListener('document:click', ['$event'])
   @HostListener('document:focusin', ['$event']) dismissOutside(event: Event) {
     if (!this.elementRef.nativeElement.contains(event.target as Node)) this.open.set(false);
@@ -165,7 +180,7 @@ export class EnvironmentSelectorComponent {
   @HostListener('window:blur') dismissOnBlur() { this.open.set(false); }
   @HostListener('keydown', ['$event']) keydown(event: KeyboardEvent) {
     if (event.key === 'Escape' && this.open()) {
-      event.preventDefault(); event.stopPropagation(); this.open.set(false); this.restoreFocus();
+      event.preventDefault(); event.stopPropagation(); this.restoreFocus(); this.open.set(false);
     }
   }
 }
