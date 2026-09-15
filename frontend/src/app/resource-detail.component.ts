@@ -15,7 +15,7 @@ import {formatBytes} from './format-bytes';
       <span class="resource-tooltip-content">
         @for(component of components(); track component.id) {
           <span class="resource-tooltip-row"><span>{{component.name}}</span>
-            @if(kind() === 'status') {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
+            @if(kind() === 'status') {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<span class="resource-tooltip-memory"><dev-resource-chart [samples]="samples()" [componentId]="component.id"/><span class="resource-value">{{formatBytes(usedMemory(component))}} / {{formatBytes(component.memoryMaxBytes)}}</span></span>}
           </span>
         } @empty {<span>No managed application processes</span>}

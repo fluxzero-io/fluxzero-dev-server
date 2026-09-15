@@ -23,8 +23,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           <th role="rowheader" scope="row" class="component-name">{{component.name}}
           </th>
           <td role="cell">
-            @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
-            @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
+            @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
+            @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
           <td role="cell" class="component-memory" data-label="Memory">
             @if(component.application) {<dev-resource-chart [samples]="state.resourceHistory || []" metric="applicationMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
@@ -106,7 +106,7 @@ export class EnvironmentComponent {
         id: application ? 'application' : 'devserver', application, components,
         name: application ? components.find(c => !c.id.startsWith('frontend-'))?.name || state.project : 'Fluxzero dev server',
         runningProcesses: running, totalProcesses: total,
-        state: components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
+        state: running > 0 && running < total ? 'degraded' : components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
         memoryBytes: totalMemory(components),
         memoryMaxBytes: totalMemory(components, true),
         url: components.find(c => c.url)?.url

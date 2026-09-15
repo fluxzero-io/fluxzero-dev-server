@@ -55,7 +55,8 @@ tbody tr:hover { background: var(--dashboard-panel-soft); }
 .project-name i { color: var(--dashboard-control-icon); font-size: 19px; }
 .project-path { color: var(--dashboard-muted); font-size: 12px; margin-top: 7px; overflow-wrap: anywhere; }
 .current-label { color: var(--dashboard-active); font-size: 10px; font-weight: 600; background: var(--dashboard-active-soft); padding: 3px 6px; border-radius: 4px; }
-.badge { white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; background: var(--dashboard-panel-soft); color: var(--dashboard-muted); border: 1px solid var(--dashboard-border); border-radius: 5px; font-size: 12px; }
+/* Eight letters (starting/degraded), plus dot, gap, padding and borders. */
+.badge { width: calc(8ch + 32px); flex: none; white-space: nowrap; display: inline-flex; align-items: center; justify-content: flex-start; text-align: left; gap: 6px; padding: 4px 9px; background: var(--dashboard-panel-soft); color: var(--dashboard-muted); border: 1px solid var(--dashboard-border); border-radius: 5px; font-size: 12px; }
 .badge.running { background: var(--dashboard-success-bg); color: var(--dashboard-success-text); border-color: var(--dashboard-success-border); }
 .port { font-variant-numeric: tabular-nums; font-family: monospace; }
 .detail { display: block; margin-top: 5px; color: var(--dashboard-muted); }
@@ -149,7 +150,7 @@ dialog.maintenance-confirm h2 {margin-top:0;font-size:20px;}
 .dialog-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:24px;}
 
 .badge::before {content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
-.badge.starting {color:#9a6700;background:#fff8c5;border-color:#e7cf73;}
+.badge.starting,.badge.degraded {color:var(--dashboard-warning-text);background:var(--dashboard-warning-bg);border-color:var(--dashboard-warning-border);}
 .badge.failed {color:var(--dashboard-danger);background:var(--dashboard-danger-bg);border-color:var(--dashboard-danger-border);}
 .test-bar.running-tests {background:repeating-linear-gradient(120deg,var(--dashboard-border) 0 8px,var(--dashboard-panel-soft) 8px 16px);}
 .test-bar>span {transition:width .3s ease;}

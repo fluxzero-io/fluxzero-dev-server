@@ -395,7 +395,8 @@ describe('Dev console navigation', () => {
     const rows = root.querySelectorAll('.component-table tbody tr');
     expect(rows.length).toBe(2);
     expect(rows[0].querySelector('th')?.textContent).toContain('Customer');
-    expect(rows[1].querySelector('.badge')?.textContent).toBe('failed');
+    expect(rows[1].querySelector('.badge')?.textContent).toBe('degraded');
+    expect(rows[1].querySelector('.badge')?.classList.contains('degraded')).toBeTrue();
     const statusDetail = rows[1].querySelector('dev-resource-detail')!;
     statusDetail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('Monitoring database');
@@ -414,6 +415,45 @@ describe('Dev console navigation', () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.map(c => ({...c, memoryBytes:null, memoryUsedBytes:null}))} : s);
     fixture.detectChanges();
     expect(rows[1].querySelector('.component-memory')?.textContent).toBe('— / 4.0 MiB');
+  });
+  for (const [states, expected] of [
+    ['running,running', 'running'], ['running,stopped', 'degraded'],
+    ['running,failed', 'degraded'], ['running,starting', 'degraded'],
+    ['stopped,stopped', 'stopped'], ['stopped,failed', 'failed'], ['starting,stopped', 'starting']
+  ]) {
+    it('summarises ' + states + ' as ' + expected, () => {
+      fixture.componentInstance.status.update(s => s ? {...s, components: states.split(',').map((state, i) => ({
+        id:'component-' + i, name:'Component ' + i, state, application:false, memoryBytes:null,
+        runningProcesses:state === 'running' ? 1 : 0, totalProcesses:1
+      }))} : s);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelectorAll('.component-table tbody tr')[1].querySelector('.badge').textContent).toBe(expected);
+    });
+  }
+  it('shows degraded when only part of a component process tree is running', () => {
+    fixture.componentInstance.status.update(s => s ? {...s, components:[{
+      id:'component', name:'Component', state:'running', application:false, memoryBytes:null,
+      runningProcesses:1, totalProcesses:2
+    }]} : s);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.component-table tbody tr')[1].querySelector('.badge').textContent).toBe('degraded');
+  });
+  it('aligns equally sized status labels in the table and component tooltip', () => {
+    fixture.componentInstance.status.update(s => s ? {...s, components: ['running','starting','stopped','failed','degraded'].map(state => ({
+      id:state, name:state, state, application:false, memoryBytes:null
+    }))} : s);
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    root.querySelector('dev-resource-detail')!.dispatchEvent(new MouseEvent('mouseenter'));
+    fixture.detectChanges();
+    const badges = Array.from(root.querySelectorAll<HTMLElement>('.badge'));
+    expect(root.querySelectorAll('[role=tooltip] .badge').length).toBe(5);
+    for (const badge of badges) {
+      expect(badge.getBoundingClientRect().width).toBeCloseTo(badges[0].getBoundingClientRect().width, 1);
+      expect(getComputedStyle(badge).textAlign).toBe('left');
+      expect(getComputedStyle(badge).justifyContent).toBe('flex-start');
+      expect(badge.scrollWidth).toBeLessThanOrEqual(badge.clientWidth);
+    }
   });
   for (const [label, action] of [['Restart application','restart-application'], ['Restart dev server','restart-devserver']]) {
     it('dispatches ' + action + ' without the truncate confirmation', async () => {
