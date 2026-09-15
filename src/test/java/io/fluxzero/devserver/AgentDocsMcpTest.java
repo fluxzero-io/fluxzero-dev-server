@@ -43,6 +43,64 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class AgentDocsMcpTest {
     @Test
+    void findsRunningApplicationUnderRepositoryRoot(@TempDir Path directory) throws Exception {
+        Path root = Files.createDirectory(directory.resolve("repository"));
+        Path app = Files.createDirectory(root.resolve("app"));
+        pom(app, "1.2.3");
+        Path archive = directory.resolve("docs.zip");
+        Files.write(archive, archive("sdk", "1.2.3"));
+        var session = DevSession.empty(DevServerConfig.defaults(app));
+        try (var logs = new DevLogStore(app, session.sessionId(), "app");
+             var server = DevMcpServer.start(app, new AgentQueryService(() -> session, logs), logs)) {
+            new DevSessionStore(app).writeSession(session.withStatus("running").withMcp(
+                    DevSession.ServiceStatus.running("mcp", server.url(), server.port(), null, "test")));
+            try (var client = stdioClient(root, directory.resolve("cache"), new CountDownLatch(1),
+                    "-Dfluxzero.dev.docs.sdk.archive=" + archive)) {
+                client.initialize();
+                var status = call(client, "get_status", Map.of());
+                assertEquals(session.sessionId(), status.at("/session/sessionId").asText(), status.toString());
+                var docs = call(client, "docs_start", Map.of());
+                assertEquals("project-sdk", docs.path("selection").asText());
+                assertEquals(app.toString(), docs.at("/development/projectDirectory").asText());
+                assertFalse(Files.exists(root.resolve(".fluxzero/dev/session.json")));
+            }
+        }
+    }
+
+    @Test
+    void explicitlySelectsProjectForDocsStatusAndResourcesWithoutStarting(@TempDir Path directory) throws Exception {
+        Path root = Files.createDirectory(directory.resolve("workspace"));
+        Path orders = Files.createDirectory(root.resolve("orders"));
+        Path billing = Files.createDirectory(root.resolve("billing"));
+        pom(orders, "1.2.3");
+        pom(billing, "1.2.3");
+        Path archive = directory.resolve("docs.zip");
+        Files.write(archive, archive("sdk", "1.2.3"));
+        try (var client = stdioClient(root, directory.resolve("cache"), new CountDownLatch(1),
+                "-Dfluxzero.dev.docs.sdk.archive=" + archive)) {
+            client.initialize();
+            var initial = call(client, "select_project", Map.of());
+            assertEquals(root.toString(), initial.path("projectDirectory").asText());
+            assertEquals(2, initial.path("candidates").size());
+            for (Path project : List.of(orders, billing, orders)) {
+                var selection = call(client, "select_project", Map.of("projectDirectory", project.getFileName().toString()));
+                assertEquals(project.toString(), selection.path("projectDirectory").asText());
+                assertEquals(project.toString(), call(client, "get_status", Map.of()).path("projectDirectory").asText());
+                var docs = call(client, "docs_start", Map.of());
+                assertEquals("project-sdk", docs.path("selection").asText());
+                assertEquals(project.toString(), docs.at("/development/projectDirectory").asText());
+                var resource = client.readResource(new McpSchema.ReadResourceRequest(DevMcpServer.DIAGNOSTICS_RESOURCE));
+                assertTrue(resource.contents().toString().contains(project.toString().replace("\\", "\\\\"))
+                        || resource.contents().toString().contains(project.toString()), resource.toString());
+                assertFalse(Files.exists(project.resolve(".fluxzero/dev/session.json")));
+            }
+            assertTrue(client.callTool(new McpSchema.CallToolRequest("select_project", Map.of("projectDirectory", ".."))).isError());
+            assertTrue(client.callTool(new McpSchema.CallToolRequest("select_project", Map.of("projectDirectory", "missing"))).isError());
+            assertEquals(orders.toString(), call(client, "get_status", Map.of()).path("projectDirectory").asText());
+        }
+    }
+
+    @Test
     void concurrentResponsesDoNotBreakTheStdioSession(@TempDir Path directory) throws Exception {
         Path archive = directory.resolve("docs.zip");
         Files.write(archive, archive("sdk", "1.2.3"));
@@ -134,7 +192,7 @@ class AgentDocsMcpTest {
                 "-Dfluxzero.dev.docs.sdk.archive=" + archive)) {
             client.initialize();
             var tools = client.listTools().tools();
-            assertEquals(11, tools.size());
+            assertEquals(12, tools.size());
             assertFalse(tools.stream().filter(t -> t.name().equals("start_dev")).findFirst().orElseThrow().annotations().readOnlyHint());
             assertTrue(DevMcpStdioMain.INSTRUCTIONS.length() <= 512);
             var status = call(client, "get_status", Map.of());
