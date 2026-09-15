@@ -129,6 +129,12 @@ hard RSS limit; working buffers and native memory can exceed these settings.
 The current project page reports measured storage RSS, current disk bytes, the threshold and
 whether it has been exceeded. Auditlog's Java heap has a 384 MiB maximum.
 
+The dev server starts its managed Java processes (applications, Testserver/Proxy
+and monitoring) with `-Djava.rmi.server.hostname=127.0.0.1`. This keeps local JMX
+heap measurements available when the computer changes networks: RMI references
+use loopback instead of the LAN address at startup. This also applies to any RMI
+objects exported by these locally managed applications.
+
 To use the existing testserver instead:
 
 ```yaml

@@ -98,7 +98,9 @@ final class DevMonitoring implements AutoCloseable {
             }
             String java = config.javaExecutable() == null ? Path.of(System.getProperty("java.home"), "bin", ProcessUtils.isWindows() ? "java.exe" : "java").toString()
                     : config.javaExecutable();
-            startProcess("monitoring-auditlog", List.of(java, "--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow", "-Xms32m", "-Xmx384m", "-jar", jar.toString()), env, null);
+            startProcess("monitoring-auditlog", List.of(java, JvmHeapMemory.LOCAL_JMX_OPTION,
+                    "--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow",
+                    "-Xms32m", "-Xmx384m", "-jar", jar.toString()), env, null);
             await("monitoring-auditlog", proxyUrl + "/api/health", true);
             state = "running";
             resourceWorker = Thread.ofVirtual().name("monitoring-resources").start(() -> sampleResources(proxyUrl));

@@ -102,6 +102,7 @@ final class AppProcessRunner {
                 ? MainClassDetector.detect(application.classesDirectory()) : application.mainClass();
         List<String> command = new ArrayList<>();
         command.add(javaExecutable());
+        command.add(JvmHeapMemory.LOCAL_JMX_OPTION);
         command.add("--enable-native-access=ALL-UNNAMED");
         command.add("-Dfluxzero.dev.session=" + sessionId);
         command.addAll(environmentSystemProperties(application));

@@ -158,6 +158,7 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
     private void startProcess(DevServerConfig config, String sessionId, int proxyPort) {
         List<String> command = new ArrayList<>();
         command.add(javaExecutable());
+        command.add(JvmHeapMemory.LOCAL_JMX_OPTION);
         command.add("--enable-native-access=ALL-UNNAMED");
         command.add("-Dfluxzero.dev.session=" + sessionId);
         command.add("-Dfluxzero.dev.project=" + config.projectDirectory());

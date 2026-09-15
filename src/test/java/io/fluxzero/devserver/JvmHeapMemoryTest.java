@@ -14,13 +14,16 @@
 
 package io.fluxzero.devserver;
 
+import com.sun.tools.attach.VirtualMachine;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.lang.management.ManagementFactory;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 
@@ -44,6 +47,7 @@ class JvmHeapMemoryTest {
             var command = new java.util.ArrayList<String>();
             command.add(Path.of(System.getProperty("java.home"), "bin", ProcessUtils.isWindows() ? "java.exe" : "java").toString());
             command.addAll(flags);
+            command.add(JvmHeapMemory.LOCAL_JMX_OPTION);
             command.addAll(java.util.List.of("-cp", Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI()).toString(), HeapFixture.class.getName()));
             Process child = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(output.toFile()).start();
             try (var memory = new JvmHeapMemory()) {
@@ -67,6 +71,7 @@ class JvmHeapMemoryTest {
                 assertEquals(effectiveMax, usage.max());
                 assertTrue(usage.used() >= 8 * 1024 * 1024);
                 assertTrue(usage.used() <= usage.max());
+                assertLocalConnectorAddress(child.pid());
                 child.destroy();
                 assertTrue(child.waitFor(5, TimeUnit.SECONDS));
                 assertTrue(memory.sample(Set.of(child.pid()), Set.of()).isEmpty());
@@ -75,6 +80,22 @@ class JvmHeapMemoryTest {
                 child.waitFor(5, TimeUnit.SECONDS);
             }
         }
+    }
+
+    static void assertLocalConnectorAddress(long pid) throws Exception {
+        VirtualMachine vm = VirtualMachine.attach(Long.toString(pid));
+        String address;
+        try {
+            address = vm.getAgentProperties().getProperty("com.sun.management.jmxremote.localConnectorAddress");
+            if (address == null) address = vm.startLocalManagementAgent();
+        } finally {
+            vm.detach();
+        }
+        // Inspect the advertised endpoint without making a connection: a regression
+        // must not try to reach the machine's potentially stale LAN address.
+        String stub = new String(Base64.getDecoder().decode(
+                address.substring(address.indexOf("/stub/") + 6)), StandardCharsets.ISO_8859_1);
+        assertTrue(stub.contains("127.0.0.1"), "Local JMX must advertise loopback, not a LAN address");
     }
 
     @Test void absentProcessesAndClosedSamplerHaveNoInventedLimit() {

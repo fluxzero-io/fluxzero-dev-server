@@ -35,6 +35,10 @@ import java.util.concurrent.TimeUnit;
 
 /** Reads actual heap usage through local JMX, without blocking console updates on attach or sampling. */
 final class JvmHeapMemory implements AutoCloseable {
+    // RMI otherwise embeds the current LAN address in the local JMX stub. That address
+    // becomes unreachable after a network change, even though the JVM is still running.
+    static final String LOCAL_JMX_OPTION = "-Djava.rmi.server.hostname=127.0.0.1";
+
     record Usage(long used, Long max) {
         static Usage from(MemoryUsage usage) {
             return new Usage(usage.getUsed(), usage.getMax() > 0 ? usage.getMax() : null);

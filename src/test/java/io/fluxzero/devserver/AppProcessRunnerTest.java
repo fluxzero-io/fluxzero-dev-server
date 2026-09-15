@@ -68,6 +68,7 @@ class AppProcessRunnerTest {
             assertTrue(await(output, "args=--probe"));
             assertTrue(await(output, "[stderr] fixture-stderr=available"));
             assertTrue(app.alive());
+            JvmHeapMemoryTest.assertLocalConnectorAddress(app.pid());
         } finally {
             app.stop(Duration.ofSeconds(2));
         }
