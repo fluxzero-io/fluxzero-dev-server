@@ -48,10 +48,7 @@ describe('Dev console navigation', () => {
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
   function openPicker() {
-    const root: HTMLElement = fixture.nativeElement;
-    const clear = root.querySelector('[aria-label="Deselect dev server"]') as HTMLButtonElement | null;
-    if (clear) clear.click();
-    else (root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement).click();
+    (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
   it('scopes the menu and project page to the selected dev server', () => {
@@ -65,41 +62,44 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.current-project')?.textContent).toContain('/projects/repair-cafe');
     openPicker();
     const options = root.querySelectorAll('.server-option');
-    expect(options.length).toBe(2);
-    expect(options[0].getAttribute('aria-current')).toBe('true');
-    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Current', 'Stopped']);
+    expect(options.length).toBe(1);
+    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Stopped']);
+    expect(options[0].textContent).toContain('orders');
+    expect(options[0].tagName).toBe('BUTTON');
+    expect(root.querySelector('.server-menu')?.textContent).not.toContain('repair-cafe');
     expect(root.querySelector('.server-menu .server-state')).toBeNull();
     expect(root.querySelector('.server-menu .icon-button')).toBeNull();
-    expect(options[1].tagName).toBe('BUTTON');
-    const navigate = spyOn(fixture.componentInstance, 'openEnvironment');
-    (options[0].querySelector('.server-path') as HTMLElement).click();
-    expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate.calls.mostRecent().args[0]).toEqual(fixture.componentInstance.environments()[0]);
+    expect(root.querySelector('[aria-label="Deselect dev server"]')).toBeNull();
+    expect(root.querySelector('.server-picker-button')?.textContent).toContain('repair-cafe');
   });
-  it('replaces the selected name with an inline search field and restores it when a server is selected', () => {
+  it('keeps the visited server current while navigating and derives the selection from the destination server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    const selector = root.querySelector('dev-environment-selector') as HTMLElement;
-    expect(selector.querySelector('.server-picker-button')?.textContent).toContain('repair-cafe');
-    expect(selector.querySelector('input')).toBeNull();
-    const navigate = spyOn(fixture.componentInstance, 'openEnvironment');
+    const component = fixture.componentInstance;
+    const destination: Environment = {...component.environments()[1], id:'c'.repeat(64), projectName:'Workshop',
+      projectDirectory:'/projects/workshop', status:'running', consoleUrl:'http://localhost:4500/_fluxzero/dev/'};
+    component.environments.update(list => [...list, destination]);
+    const navigate = spyOn(component, 'openEnvironment');
     openPicker();
-    const search = selector.querySelector('input') as HTMLInputElement;
-    expect(selector.querySelector('.server-picker-button')).toBeNull();
-    expect(search.parentElement?.parentElement).toBe(selector);
-    expect(search.value).toBe('');
+    const search = root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement;
     expect(document.activeElement).toBe(search);
-    expect(navigate).not.toHaveBeenCalled();
-    search.value = 'repair'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
-    (selector.querySelector('.server-option') as HTMLAnchorElement).click(); fixture.detectChanges();
+    search.value = 'workshop'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
+    const option = root.querySelector('a.server-option') as HTMLAnchorElement;
+    expect(option.href).toBe('http://localhost:4500/_fluxzero/dev/#projects');
+    (option.querySelector('.server-path') as HTMLElement).click(); fixture.detectChanges();
     expect(navigate).toHaveBeenCalledTimes(1);
-    expect(navigate.calls.mostRecent().args[0]).toEqual(fixture.componentInstance.environments()[0]);
-    expect(selector.querySelector('input')).toBeNull();
-    expect(selector.querySelector('.server-menu')).toBeNull();
-    expect(document.activeElement).toBe(selector.querySelector('[aria-label="Deselect dev server"]'));
+    expect(navigate.calls.mostRecent().args[0]).toEqual(destination);
+    expect(root.querySelector('.server-menu')).toBeNull();
+    expect(root.querySelector('.server-picker-button')?.textContent).toContain('repair-cafe');
+    expect(document.activeElement).toBe(root.querySelector('[aria-label="Choose dev server"]'));
+    push({status:{...component.status()!, project:'Workshop',projectDirectory:destination.projectDirectory},environments:component.environments()});
+    fixture.detectChanges();
+    expect(root.querySelector('.server-picker-button')?.textContent).toContain('Workshop');
     openPicker();
-    expect((selector.querySelector('input') as HTMLInputElement).value).toBe('');
+    expect((root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement).value).toBe('');
+    expect(root.querySelector('.server-menu')?.textContent).not.toContain('Workshop');
+    expect(root.querySelector('.server-menu')?.textContent).toContain('repair-cafe');
   });
-  it('sorts the current server first, then active servers, then inactive servers and searches names and folders', () => {
+  it('excludes the current server and sorts other active servers before inactive servers, searching names and folders', () => {
     const component = fixture.componentInstance;
     const stopped = component.environments()[1];
     component.environments.update(list => [...list,
@@ -108,8 +108,8 @@ describe('Dev console navigation', () => {
     openPicker();
     const root: HTMLElement = fixture.nativeElement;
     expect(Array.from(root.querySelectorAll('.server-option-name')).map(e => e.textContent?.trim()))
-      .toEqual(['repair-cafe', 'Zulu active', 'Alpha stopped', 'orders']);
-    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Current', 'Running', 'Stopped']);
+      .toEqual(['Zulu active', 'Alpha stopped', 'orders']);
+    expect(Array.from(root.querySelectorAll('.server-group-title')).map(e => e.textContent)).toEqual(['Running', 'Stopped']);
     const search = root.querySelector('[aria-label="Search dev servers"]') as HTMLInputElement;
     search.value = '/projects/active'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
     expect(root.querySelectorAll('.server-option').length).toBe(1);
@@ -168,10 +168,10 @@ describe('Dev console navigation', () => {
     openPicker();
     (root.querySelector('dev-environment-selector') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     fixture.detectChanges();expect(root.querySelector('.server-menu')).toBeNull();
-    expect(root.querySelector('[aria-label="Search dev servers"]')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Choose dev server"]')?.textContent).toContain('repair-cafe');
     openPicker();(root.querySelector('h1') as HTMLElement).click();fixture.detectChanges();
     expect(root.querySelector('.server-menu')).toBeNull();
-    expect(root.querySelector('[aria-label="Search dev servers"]')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Choose dev server"]')?.textContent).toContain('repair-cafe');
   });
   it('requires confirmation before starting an inactive server and switches only after success', async () => {
     const component = fixture.componentInstance;
