@@ -107,6 +107,26 @@ class DevLogStoreTest {
     }
 
     @Test
+    void resolvesMultilineCompileFailuresOnlyForTheSuccessfulProject(@TempDir Path directory) {
+        try (DevLogStore store = new DevLogStore(directory, "session-1", "application")) {
+            store.accept("[compile] failed: compilation failed\r\nHandler.java:12: error: cannot find symbol", "orders");
+            store.accept("[compile] failed: compilation failed\nBilling.java:9: error: cannot find symbol", "billing");
+            store.accept("ERROR supervisor failure");
+            assertEquals(3, store.diagnostics().errors());
+            assertEquals(2, store.diagnostics().problems().stream()
+                    .filter(problem -> "build".equals(problem.serviceType())).count());
+
+            store.observeStatus("compile", "build", "orders", null, "running", "retrying");
+            assertEquals(3, store.diagnostics().errors());
+            store.observeStatus("compile", "build", "orders", null, "succeeded", "build ready");
+            assertEquals(2, store.diagnostics().errors());
+            assertTrue(store.diagnostics().problems().stream().noneMatch(p -> "orders".equals(p.serviceId())));
+            assertTrue(read(store.problemsFile()).contains("resolved"));
+            assertTrue(read(store.combinedLog()).contains("Handler.java:12"));
+        }
+    }
+
+    @Test
     void readsAddedChangedAndResolvedProblemHistoryInCursorOrder(@TempDir Path projectDirectory) {
         try (DevLogStore store = new DevLogStore(projectDirectory, "session-1", "orders")) {
             store.observeStatus("compile", "build", "orders", null, "failed", "cannot compile OrderHandler");

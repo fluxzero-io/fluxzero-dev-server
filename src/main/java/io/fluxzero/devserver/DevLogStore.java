@@ -54,7 +54,7 @@ final class DevLogStore implements AutoCloseable {
     private static final int MAX_ARCHIVES = 2;
     private static final int RETAINED_SESSIONS = 5;
     private static final int MAX_DETAIL_LENGTH = 8_000;
-    private static final Pattern SOURCE_PREFIX = Pattern.compile("^\\[([a-zA-Z0-9_.-]+)]\\s?(.*)$");
+    private static final Pattern SOURCE_PREFIX = Pattern.compile("^\\[([a-zA-Z0-9_.-]+)]\\s?(.*)$", Pattern.DOTALL);
     private static final Pattern LEVEL = Pattern.compile(
             "(?i)(?:^|\\s|\\[)(ERROR|WARN|WARNING|INFO|DEBUG|TRACE)(?:]|:|\\s)");
 
