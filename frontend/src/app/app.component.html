@@ -1,0 +1,34 @@
+<div class="dashboard-shell">
+  <button class="mobile-menu icon-button" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list"></i></button>
+  @if(menuOpen()) {<button class="nav-backdrop" (click)="menuOpen.set(false)" aria-label="Close navigation"></button>}
+  <aside class="dashboard-sidebar" [class.open]="menuOpen()">
+    <a class="dashboard-brand" href="#projects" (click)="link($event, 'projects')" aria-label="Fluxzero dev server home">
+      <img class="brand-mark" src="assets/fluxzero-devserver-logo.svg" alt="">
+      <span class="brand-title">Fluxzero dev server</span>
+    </a>
+    <nav aria-label="Dev server navigation">
+      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Projects</span></a>
+      <div class="dashboard-nav-section">
+        <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="monitoringExpanded.set(!monitoringExpanded())" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
+        <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
+          @for(view of views; track view.key) {<a class="dashboard-nav-link" [href]="'#monitoring/' + view.key" (click)="link($event, 'monitoring/' + view.key)" [class.active]="isMonitoring() && activeView() === view.key" [attr.aria-current]="isMonitoring() && activeView() === view.key ? 'page' : null"><i [class]="'bi bi-' + view.icon"></i><span>{{view.label}}</span></a>}
+        </div>
+      </div>
+    </nav>
+    <div class="sidebar-footer"><span class="connection" role="status" [class.connected]="connected()"><i class="bi" [class.bi-plug-fill]="connected()" [class.bi-plug]="!connected()" aria-hidden="true"></i>{{connected() ? 'Connected' : 'Disconnected'}}</span><dev-theme-menu [theme]="themePreference()"/></div>
+  </aside>
+  <main>
+
+    @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
+    @if(route() === 'projects') {<dev-projects [status]="status()" [environments]="environments()" [currentProject]="status()?.projectDirectory || ''"/>}
+    @if(route() === 'environment') {<dev-environment [status]="status()"/>}
+    <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">
+      <header class="monitoring-heading">
+        <h1 id="monitoring-title">{{viewLabel()}}</h1>
+        <p>{{status()?.project}}</p>
+      </header>
+      @if(!status()?.monitoring?.enabled) {<div class="monitoring-empty"><h2>Monitoring is not configured</h2><p>Configure monitoring in this environment to explore its messages, logs and traces.</p></div>}
+      @if(frameSource) {<iframe #frame name="dev-monitoring" [title]="viewLabel()" [src]="frameSource" (load)="frameLoaded()"></iframe>}
+    </section>
+  </main>
+</div>

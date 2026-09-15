@@ -315,6 +315,8 @@ final class CompilePipeline {
     private record SourceOutput(Path sourceRoot, Path classesDirectory) {
     }
 
+    BuildSnapshot activeSnapshot() { return activeSnapshot; }
+
     void activate(BuildSnapshot snapshot) {
         activate(snapshot, Set.of(snapshot.buildNumber()));
     }

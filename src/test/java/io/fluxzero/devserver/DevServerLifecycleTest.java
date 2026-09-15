@@ -40,6 +40,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -52,6 +53,104 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerLifecycleTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void consoleUpdatesCountsFromReportsDuringRun(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external", "--no-watch", "--no-compile-on-start"});
+        new DevSessionStore(project).writeTestStatus(TestStatus.completed(List.of(), "baseline", 0, "done").withCounts(new TestCounts(4, 0, 0)));
+        try (DevServer server = new DevServer(config).start(); HttpClient http = HttpClient.newHttpClient()) {
+            var update = DevServer.class.getDeclaredMethod("updateTestStatus", String.class, TestStatus.class);
+            update.setAccessible(true);
+            update.invoke(server, config.projects().getFirst().id(), TestStatus.running(List.of(), "progress check"));
+            String base = server.session().gateway().url();
+            var initial = awaitConsoleStatus(http, base, status -> status.path("testResults").path("running").asBoolean())
+                    .path("testResults");
+            assertTrue(initial.path("running").asBoolean());
+            assertEquals(0, initial.path("total").asInt());
+            assertEquals(4, initial.path("expectedTotal").asInt());
+            Path reports = Files.createDirectories(project.resolve("target/surefire-reports"));
+            Files.writeString(reports.resolve("TEST-first.xml"), "<testsuite><testcase name='a'/></testsuite>");
+            var partial = awaitConsoleStatus(http, base, status -> status.path("testResults").path("passed").asInt() == 1)
+                    .path("testResults");
+            assertEquals(1, partial.path("passed").asInt());
+            assertEquals(4, partial.path("expectedTotal").asInt());
+            Files.writeString(reports.resolve("TEST-second.xml"), "<testsuite><testcase name='b'><failure/></testcase></testsuite>");
+            var later = awaitConsoleStatus(http, base, status -> status.path("testResults").path("total").asInt() == 2)
+                    .path("testResults");
+            assertEquals(2, later.path("total").asInt());
+            assertEquals(1, later.path("failed").asInt());
+            assertTrue(later.path("running").asBoolean());
+        }
+    }
+
+    @Test
+    void restoredIncompleteTestResultIsReplacedByANewCompletedRun(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external",
+                "--no-watch", "--no-compile-on-start"});
+        new DevSessionStore(project).writeTestStatus(TestStatus.incomplete(List.of(), "previous build failed", Map.of(),
+                1, "packaging failed", 100).withCounts(new TestCounts(2, 0, 0)));
+        try (DevServer server = new DevServer(config).start(); HttpClient http = HttpClient.newHttpClient()) {
+            String base = server.session().gateway().url();
+            var restored = awaitConsoleStatus(http, base, status -> status.path("testResults").path("available").asBoolean())
+                    .path("testResults");
+            assertEquals("incomplete", restored.path("state").asText());
+            assertTrue(restored.path("incomplete").asBoolean());
+            assertFalse(restored.path("running").asBoolean());
+            assertEquals(2, restored.path("passed").asInt());
+            assertEquals(2, restored.path("total").asInt());
+
+            var update = DevServer.class.getDeclaredMethod("updateTestStatus", String.class, TestStatus.class);
+            update.setAccessible(true);
+            update.invoke(server, config.projects().getFirst().id(),
+                    TestStatus.completed(List.of(), "new run", 0, "done").withCounts(new TestCounts(3, 0, 0)));
+            var completed = awaitConsoleStatus(http, base, status -> status.path("testResults").path("total").asInt() == 3)
+                    .path("testResults");
+            assertEquals("passed", completed.path("state").asText());
+            assertFalse(completed.path("incomplete").asBoolean());
+            assertFalse(completed.path("running").asBoolean());
+            assertEquals(3, completed.path("passed").asInt());
+        }
+    }
+
+    @Test
+    void truncatesDataWithoutReplacingRuntimeOrProxy(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external", "--no-watch", "--no-compile-on-start"});
+        new DevSessionStore(project).writeTestStatus(TestStatus.incomplete(List.of(), "build failed after tests", Map.of(),
+                1, "packaging failed", 100).withCounts(new TestCounts(2, 0, 0)));
+        try (DevServer server = new DevServer(config).start(); HttpClient http = HttpClient.newHttpClient()) {
+            DevSession original = server.session();
+            String base = original.gateway().url();
+            var request = HttpRequest.newBuilder(URI.create(base + DevConsole.ROOT + "actions/truncate-testserver-data"))
+                    .header("Origin", base).header("X-Fluxzero-Console", "1").POST(HttpRequest.BodyPublishers.noBody()).build();
+            var before = awaitConsoleStatus(http, base, status -> status.path("testResults").path("available").asBoolean());
+            assertEquals("incomplete", before.path("testResults").path("state").asText());
+            assertEquals(2, before.path("testResults").path("total").asInt());
+            if (!before.path("maintenance").path("resetSupported").asBoolean()) {
+                assertEquals(409, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+                return; // Older selected SDKs remain supported, with the optional reset capability disabled.
+            }
+            assertEquals(202, http.send(request, HttpResponse.BodyHandlers.ofString()).statusCode());
+            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            JsonNode status;
+            do {
+                status = objectMapper.readTree(http.send(HttpRequest.newBuilder(URI.create(base + DevConsole.ROOT + "status.json")).GET().build(), HttpResponse.BodyHandlers.ofString()).body());
+                if (!status.path("maintenance").path("busy").asBoolean()) break;
+                Thread.sleep(25);
+            } while (System.nanoTime() < deadline);
+            assertFalse(status.path("maintenance").path("busy").asBoolean());
+            assertEquals("", status.path("maintenance").path("error").asText());
+            assertEquals(original.runtime().pid(), server.session().runtime().pid());
+            assertTrue(ProcessUtils.isAlive(original.runtime().pid()));
+            assertEquals(original.runtime().port(), server.session().runtime().port());
+            assertEquals(original.proxy().port(), server.session().proxy().port());
+            assertEquals(original.gateway().url(), server.session().gateway().url());
+            assertEquals(200, healthStatus(server.session().proxy().url()));
+            assertTrue(status.path("components").get(0).path("memoryBytes").asLong() > 0);
+        }
+    }
 
     @Test
     void startsAgentControlPlaneAndDefersCompilationInEmptyGreenfieldWorkspace(@TempDir Path projectDirectory)
@@ -202,7 +301,7 @@ class DevServerLifecycleTest {
             assertEquals("ws://localhost:" + session.runtime().port(), session.runtime().url());
             assertEquals("http://localhost:" + session.proxy().port(), session.proxy().url());
             assertEquals("http://127.0.0.1:" + session.mcp().port() + DevMcpServer.ENDPOINT, session.mcp().url());
-            assertEquals(session.proxy().url(), session.idp().url());
+            assertEquals(session.gateway().url() + DevGateway.BACKEND_PREFIX, session.idp().url());
             assertEquals("streamable-http", session.mcp().metadata().get("transport"));
             assertTrue(Files.isRegularFile(mcpTokenFile));
             assertEquals(200, healthStatus(session.proxy().url()));
@@ -260,9 +359,9 @@ class DevServerLifecycleTest {
 
         try (DevServer devServer = new DevServer(config).start()) {
             DevSession session = devServer.session();
-            assertEquals(port, session.proxy().port());
-            assertEquals("http://localhost:" + port, session.proxy().url());
-            assertEquals("skipped", session.gateway().state());
+            assertEquals(port, session.gateway().port());
+            assertEquals("http://localhost:" + port, session.gateway().url());
+            assertEquals("running", session.gateway().state());
             assertEquals(200, healthStatus(session.proxy().url()));
         }
     }
@@ -280,7 +379,7 @@ class DevServerLifecycleTest {
                 assertNotEquals(configuredPort, session.proxy().port());
                 assertTrue(session.proxy().port() > 0);
                 assertEquals("http://localhost:" + session.proxy().port(), session.proxy().url());
-                assertEquals("skipped", session.gateway().state());
+                assertEquals("running", session.gateway().state());
                 assertEquals(200, healthStatus(session.proxy().url()));
             }
         }
@@ -410,7 +509,7 @@ class DevServerLifecycleTest {
                 FrontendConfig.none(), null);
 
         try (DevServer devServer = new DevServer(config).start()) {
-            String proxyUrl = devServer.session().proxy().url();
+            String proxyUrl = devServer.session().gateway().url() + DevGateway.BACKEND_PREFIX;
             JsonNode discovery = awaitJson(proxyUrl + "/.well-known/openid-configuration");
             assertEquals(proxyUrl, discovery.path("issuer").asText());
             assertEquals(proxyUrl + "/oauth2/token", discovery.path("token_endpoint").asText());
@@ -519,6 +618,22 @@ class DevServerLifecycleTest {
 
     private static Path testClassesDirectory() throws Exception {
         return Path.of(DevServerLifecycleTest.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    }
+
+    private JsonNode awaitConsoleStatus(HttpClient http, String base, Predicate<JsonNode> condition) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(base + DevConsole.ROOT + "status.json"))
+                .timeout(Duration.ofSeconds(5)).GET().build();
+        long deadline = System.nanoTime() + Duration.ofSeconds(5).toNanos();
+        JsonNode lastStatus;
+        do {
+            var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            lastStatus = objectMapper.readTree(response.body());
+            if (condition.test(lastStatus)) return lastStatus;
+            // The console serves the shared asynchronous projection used by its push channel.
+            Thread.sleep(25);
+        } while (System.nanoTime() < deadline);
+        throw new AssertionError("Console status did not reach the expected state: " + lastStatus.path("testResults"));
     }
 
     private JsonNode awaitJson(String url) throws Exception {

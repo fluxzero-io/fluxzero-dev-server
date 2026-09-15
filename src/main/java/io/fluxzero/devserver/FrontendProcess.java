@@ -206,6 +206,20 @@ final class FrontendProcess implements AutoCloseable {
         return ready.get();
     }
 
+    boolean managed() { return config.mode() == FrontendConfig.Mode.COMMAND; }
+
+    synchronized void requestRestart() throws IOException {
+        if (!managed() || closed.get()) return;
+        restartGeneration++;
+        Process current = process;
+        process = null;
+        ready.set(false);
+        managedUpdatePending.set(false);
+        recoveryReason = RecoveryReason.NONE;
+        if (current != null) ProcessUtils.forceStopTree(current);
+        launchProcess(output == null ? ignored -> {} : output);
+    }
+
     void managedUpdateDetected() {
         if (config.mode() == FrontendConfig.Mode.COMMAND && !closed.get()
             && managedUpdatePending.compareAndSet(false, true)) {

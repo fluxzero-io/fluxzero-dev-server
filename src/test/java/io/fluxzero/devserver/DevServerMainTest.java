@@ -89,6 +89,40 @@ class DevServerMainTest {
     }
 
     @Test
+    void restartsManagedEnvironmentOnTheSamePublicPort(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            long runtimePid = before.path("runtime").path("pid").asLong();
+            var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/restart-devserver"))
+                    .header("Origin", base).header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            com.fasterxml.jackson.databind.JsonNode after = before;
+            while (System.nanoTime() < deadline) {
+                try { after = mapper.readTree(sessionFile(projectDirectory).toFile()); }
+                catch (IOException ignored) { }
+                if (!before.path("sessionId").equals(after.path("sessionId")) && "running".equals(after.path("status").asText())) break;
+                Thread.sleep(25);
+            }
+            assertFalse(before.path("sessionId").equals(after.path("sessionId")), "new session expected");
+            assertEquals("running", after.path("status").asText());
+            assertEquals(base, after.path("gateway").path("url").asText());
+            assertEquals(process.pid(), after.path("pid").asLong());
+            assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
+            assertTrue(after.path("runtime").path("pid").asLong() != runtimePid);
+            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json")).build(),
+                                        java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+        } finally {
+            runControl(projectDirectory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
     void controlMainReportsAndStopsDetachedServer(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         Process logs = null;

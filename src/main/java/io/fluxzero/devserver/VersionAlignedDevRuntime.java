@@ -42,6 +42,30 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
     private final CompletableFuture<Ready> ready = new CompletableFuture<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Process process;
+    private volatile boolean resetSupported;
+    private final java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<Void>> resets = new java.util.concurrent.ConcurrentHashMap<>();
+
+    boolean resetSupported() { return resetSupported; }
+
+    void truncateData(Duration timeout) {
+        if (!resetSupported || closed.get()) throw new IllegalStateException("Testserver reset is unavailable.");
+        String id = java.util.UUID.randomUUID().toString();
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        resets.put(id, completed);
+        try {
+            writeControl("truncate-data " + id);
+            completed.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new IllegalStateException("Testserver reset did not complete: " + oneLine(e.getMessage()), e);
+        } finally { resets.remove(id); }
+    }
+
+    private synchronized void writeControl(String command) throws IOException {
+        if (process == null || !process.isAlive()) throw new IOException("Testserver is stopped.");
+        BufferedWriter writer = process.outputWriter(StandardCharsets.UTF_8);
+        writer.write(command); writer.newLine(); writer.flush();
+    }
 
     static VersionAlignedDevRuntime start(
             DevServerConfig config,
@@ -109,16 +133,17 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
+        resets.values().forEach(future -> future.completeExceptionally(new IllegalStateException("Testserver stopped")));
         Process current = process;
         process = null;
         if (current == null || !current.isAlive()) {
             return;
         }
         try {
-            BufferedWriter writer = current.outputWriter(StandardCharsets.UTF_8);
-            writer.write("stop");
-            writer.newLine();
-            writer.flush();
+            synchronized (this) {
+                BufferedWriter writer = current.outputWriter(StandardCharsets.UTF_8);
+                writer.write("stop"); writer.newLine(); writer.flush();
+            }
             if (!current.waitFor(CONTROLLED_STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 ProcessUtils.forceStopTree(current);
             }
@@ -182,6 +207,14 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
         String[] fields = control.split("\\t", -1);
         try {
             switch (fields[0]) {
+                case "CAPABILITY" -> resetSupported = "truncate-data".equals(DevRuntimeProcessMain.decode(fields[1]));
+                case "RESET", "RESET_ERROR" -> {
+                    CompletableFuture<Void> reset = resets.get(DevRuntimeProcessMain.decode(fields[1]));
+                    if (reset != null) {
+                        if ("RESET".equals(fields[0])) reset.complete(null);
+                        else reset.completeExceptionally(new IllegalStateException(DevRuntimeProcessMain.decode(fields[2])));
+                    }
+                }
                 case "READY" -> ready.complete(new Ready(
                         Integer.parseInt(DevRuntimeProcessMain.decode(fields[1])),
                         Integer.parseInt(DevRuntimeProcessMain.decode(fields[2])),

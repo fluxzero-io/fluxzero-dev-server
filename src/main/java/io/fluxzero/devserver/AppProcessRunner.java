@@ -85,6 +85,10 @@ final class AppProcessRunner {
     }
 
     AppInstance start(BuildSnapshot snapshot, ApplicationBuild application) throws IOException {
+        return start(snapshot, application, clientId(snapshot, application));
+    }
+
+    AppInstance start(BuildSnapshot snapshot, ApplicationBuild application, String clientId) throws IOException {
         String mainClass = application.mainClass() == null || application.mainClass().isBlank()
                 ? MainClassDetector.detect(application.classesDirectory()) : application.mainClass();
         List<String> command = new ArrayList<>();
@@ -102,7 +106,6 @@ final class AppProcessRunner {
         }
         command.addAll(config.appArgs());
 
-        String clientId = clientId(snapshot, application);
         Map<String, String> resolvedApplicationEnvironment = placeholderResolver.resolve(application.environment());
         output.accept(application.applicationName(), clientId, "lifecycle",
                       "configuration " + application.launchId() + ", module " + application.module()

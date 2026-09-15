@@ -1,0 +1,462 @@
+import {TestBed, ComponentFixture} from '@angular/core/testing';
+import {provideHttpClient} from '@angular/common/http';
+import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
+import {AppComponent} from './app.component';
+import {monitoringPath, Status, Environment} from './models';
+import {ConsoleConnection, ConsoleState} from './console-connection';
+
+describe('Dev console navigation', () => {
+  let fixture: ComponentFixture<AppComponent>;
+  let push: (state: ConsoleState) => void;
+  let connected: (value: boolean) => void;
+  const originalLocation = location.href;
+  const originalConfirmation = localStorage.getItem('devConfirmTruncate');
+  const originalTheme = localStorage.getItem('dashboardTheme');
+  beforeEach(async () => {
+    // A legacy opt-out must never suppress confirmation, even after startup.
+    localStorage.setItem('devConfirmTruncate', 'false');
+    history.replaceState(null, '', location.pathname);
+    TestBed.configureTestingModule({imports: [AppComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
+      {provide: ConsoleConnection, useValue: {initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
+    fixture = TestBed.createComponent(AppComponent);
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    const status: Status = {resourceHistory: [], project: 'repair-cafe', projectDirectory: '/projects/repair-cafe', state: 'running',
+      runtime: 'running', applications: 'running', tests: 'passed', frontend: 'stopped', monitoring: {enabled: false},
+      maintenance: {busy: false, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},
+      components: [{id: 'devserver', name: 'Fluxzero Dev Server', state: 'running', memoryBytes: 20971520, application: false, port: 4200, url: 'http://localhost:4200/_fluxzero/dev/#projects'}, {id: 'testserver', name: 'Fluxzero Testserver & Proxy', state: 'running', memoryBytes: 104857600, application: false},
+        {id: 'app', name: 'Repair Café', state: 'running', memoryBytes: 52428800, application: true, port: 4200, url: 'http://localhost:4200/'}],
+      testResults: {available: true, passed: 8, failed: 2, skipped: 1, total: 11, label: 'Latest completed run per module'}};
+    const environments: Environment[] = [
+      {id: 'a'.repeat(64), directoryExists: true, projectName: 'repair-cafe', projectDirectory: '/projects/repair-cafe', status: 'running', port: 4200, consoleUrl: 'http://localhost:4200/_fluxzero/dev/'},
+      {id: 'b'.repeat(64), directoryExists: false, projectName: 'orders', projectDirectory: '/projects/orders', status: 'stopped', port: 4300, consoleUrl: null}
+    ];
+    push({status, environments});
+    connected(true);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    http.verify();
+  });
+  afterEach(() => {
+    fixture.destroy();
+    if (originalConfirmation == null) localStorage.removeItem('devConfirmTruncate');
+    else localStorage.setItem('devConfirmTruncate', originalConfirmation);
+    history.replaceState(null, '', originalLocation);
+    if (originalTheme == null) localStorage.removeItem('dashboardTheme');
+    else localStorage.setItem('dashboardTheme', originalTheme);
+  });
+  it('shows all known folders at the top level, with links only for active environments', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('nav a')?.textContent?.trim()).toBe('Projects');
+    expect(root.querySelector('nav a')?.getAttribute('aria-current')).toBe('page');
+    expect(root.querySelector('nav a[href="#environment"]')).toBeNull();
+    expect(root.querySelector('h1')?.textContent).toBe('Projects');
+    expect(root.textContent).toContain('/projects/orders');
+    expect(root.textContent).toContain('gestopt');
+    const rows = root.querySelectorAll('.table-card tbody tr');
+    expect(rows.length).toBe(1);
+    expect(rows[0].textContent).toContain('orders');
+    expect(rows[0].querySelector('a')).toBeNull();
+    const current = root.querySelector('.current-project')!;
+    expect(current.textContent).toContain('/projects/repair-cafe');
+    expect(current.textContent).not.toContain('4200');
+    expect(current.textContent).toContain('passed');
+    expect(current.textContent).toContain('Fluxzero dev server');
+    expect(current.compareDocumentPosition(root.querySelector('.table-card table')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+  it('updates tests and server history from push without polling, and replaces history on reconnect', () => {
+    const state = fixture.componentInstance.status()!;
+    const sample = {at:5000,applicationMemory:100,devserverMemory:200,monitoringStorage:50};
+    push({status:{...state,resourceHistory:[sample],testResults:{available:true,running:true,passed:3,failed:0,skipped:0,total:3,expectedTotal:10,label:''}},environments:[]});
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.test-bar').getAttribute('aria-label')).toContain('3 passed');
+    expect(fixture.componentInstance.status()?.resourceHistory).toEqual([sample]);
+    connected(false); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.sidebar-footer').textContent).toBe('Disconnected');
+    expect(fixture.componentInstance.status()?.resourceHistory?.length).toBe(1);
+    push({status:{...state,resourceHistory:[sample,{...sample,at:10000}]},environments:[]});
+    connected(true); fixture.detectChanges();
+    expect(fixture.componentInstance.status()?.resourceHistory?.length).toBe(2);
+    TestBed.inject(HttpTestingController).expectNone('status.json');
+    TestBed.inject(HttpTestingController).expectNone('environments.json');
+  });
+  it('shows pushed test output as text and keeps long lines inside the mobile layout', async () => {
+    push({status:{...fixture.componentInstance.status()!,testOutput:[{sequence:1,module:'customer',text:'<script>example</script>'+ 'x'.repeat(500)}]},environments:[]});
+    fixture.detectChanges();
+    await fixture.whenStable();fixture.detectChanges();
+    expect((fixture.nativeElement.querySelector('dev-test-output') as HTMLElement).hidden).toBeFalse();
+    const output=fixture.nativeElement.querySelector('.test-output pre') as HTMLElement;
+    expect(output.textContent).toContain('<script>example</script>');
+    expect(output.querySelector('script')).toBeNull();
+    expect(output.scrollWidth).toBeLessThanOrEqual(output.clientWidth+1);
+  });
+  it('pauses and resumes scrolling and clears output through its DOM command', async () => {
+    const state=fixture.componentInstance.status()!;
+    push({status:{...state,testOutput:[{sequence:1,module:'app',text:'example'}]},environments:[]});
+    fixture.detectChanges();await fixture.whenStable();
+    const root:HTMLElement=fixture.nativeElement;
+    (root.querySelector('[aria-label="Pause scrolling"]') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Resume scrolling"]')).not.toBeNull();
+    (root.querySelector('[aria-label="Resume scrolling"]') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Pause scrolling"]')).not.toBeNull();
+    (root.querySelector('[aria-label="Clear test output"]') as HTMLButtonElement).click();fixture.detectChanges();
+    const request=TestBed.inject(HttpTestingController).expectOne('actions/clear-test-output');
+    expect(request.request.method).toBe('POST');expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush(null);await fixture.whenStable();
+    push({status:{...state,testOutput:[]},environments:[]});fixture.detectChanges();
+    expect(root.querySelector('pre')?.textContent).toContain('No test output.');
+    expect((root.querySelector('[aria-label="Clear test output"]') as HTMLButtonElement).disabled).toBeTrue();
+    expect(fixture.componentInstance.status()?.testResults).toEqual(state.testResults);
+  });
+  it('starts tests through the dev server with output always visible', async () => {
+    const state=fixture.componentInstance.status()!;
+    push({status:{...state,testResults:{...state.testResults!,runnable:true},testOutput:[{sequence:1,module:'app',text:'retained'}]},environments:[]});
+    fixture.detectChanges();await fixture.whenStable();
+    const root:HTMLElement=fixture.nativeElement;
+    expect(root.querySelector('.page-heading .count')).toBeNull();
+    expect(root.querySelector('.test-output summary')).toBeNull();
+    expect(root.querySelector('[aria-label="Hide test output"]')).toBeNull();
+    expect(root.querySelector('[aria-label="Run tests"] .bi-rocket-takeoff')).not.toBeNull();
+    expect((root.querySelector('dev-test-output') as HTMLElement).hidden).toBeFalse();
+    expect(root.querySelector('.test-output pre')?.textContent).toContain('retained');
+    (root.querySelector('[aria-label="Run tests"]') as HTMLButtonElement).click();fixture.detectChanges();
+    const request=TestBed.inject(HttpTestingController).expectOne('actions/run-tests');
+    expect(request.request.method).toBe('POST');expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush(null);await fixture.whenStable();
+    push({status:{...state,testResults:{...state.testResults!,runnable:true,running:true}},environments:[]});fixture.detectChanges();
+    expect((root.querySelector('[aria-label="Run tests"]') as HTMLButtonElement).disabled).toBeTrue();
+    expect(root.querySelector('.test-counts')?.textContent).toContain('/');
+  });
+  it('keeps the projects page when selecting the current environment through the DOM', async () => {
+    (fixture.nativeElement.querySelector('.current-project-title a') as HTMLAnchorElement).click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(location.hash).toBe('#projects');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Projects');
+    expect(fixture.nativeElement.textContent).toContain('/projects/orders');
+  });
+  it('keeps monitoring views in the left navigation even without a configured backend', async () => {
+    const link = fixture.nativeElement.querySelector('nav a[href="#monitoring/logs"]') as HTMLAnchorElement;
+    link.click();
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(location.hash).toBe('#monitoring/logs');
+    expect(link.getAttribute('aria-current')).toBe('page');
+    expect(fixture.nativeElement.textContent).toContain('Monitoring is not configured');
+  });
+  it('opens known folders and forgets stopped projects through DOM commands', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    (fixture.nativeElement.querySelector('.current-project .folder-button') as HTMLButtonElement).click();
+    const open = http.expectOne('projects/' + 'a'.repeat(64) + '/open-folder');
+    expect(open.request.method).toBe('POST');
+    expect(open.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    open.flush(null);
+    (fixture.nativeElement.querySelector('tbody .remove-project') as HTMLButtonElement).click();
+    http.expectOne('projects/' + 'b'.repeat(64) + '/forget').flush(null);
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('/projects/orders');
+    expect(fixture.nativeElement.textContent).toContain('/projects/repair-cafe');
+    http.verify();
+  });
+  it('keeps a project visible when the backend rejects removal', async () => {
+    (fixture.nativeElement.querySelector('tbody .remove-project') as HTMLButtonElement).click();
+    TestBed.inject(HttpTestingController).expectOne('projects/' + 'b'.repeat(64) + '/forget')
+      .flush({error: 'Project is running.'}, {status: 409, statusText: 'Conflict'});
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('/projects/orders');
+    expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Project is running.');
+  });
+  it('shows measured component memory, the application link and actual test counts', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('.cards')).toBeNull();
+    expect(Array.from(root.querySelectorAll('.component-table thead th')).map(th => th.textContent)).toEqual(['Component', 'Status', 'Memory', 'Storage', '', '']);
+    expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
+    expect(root.querySelector('.component-actions .application-link')?.getAttribute('href')).toBe('http://localhost:4200/');
+    expect(root.querySelector('.component-table')?.textContent).toContain('120.0 MiB');
+    expect(root.querySelector('.component-actions .application-link')?.getAttribute('aria-label')).toBe('Open Repair Café');
+    const componentRows = root.querySelectorAll('.component-table tbody tr');
+    expect(componentRows[0].children[4].querySelector('button')?.getAttribute('aria-label')).toBe('Restart application');
+    expect(componentRows[1].children[4].querySelector('button')?.getAttribute('aria-label')).toBe('Restart dev server');
+    expect(componentRows[0].children[5].querySelector('a')?.getAttribute('title')).toBe('Open application');
+    expect(componentRows[1].children[5].querySelector('button')?.getAttribute('aria-label')).toBe('Truncate data');
+    expect(root.querySelector('.test-bar')?.getAttribute('aria-label')).toBe('8 passed, 2 failed, 11 total, 1 skipped');
+    expect(root.querySelector('.test-counts [title]')?.getAttribute('title')).toBe('1 skipped');
+    expect(root.querySelector('.test-summary > small')).toBeNull();
+  });
+  it('keeps chart baselines and memory labels aligned during resource updates', async () => {
+    const desktop = matchMedia('(min-width:1201px)').matches;
+    const root: HTMLElement = fixture.nativeElement;
+    const state = fixture.componentInstance.status()!;
+    for (let i = 0; i < 8; i++) {
+      const memory = (298 + i / 10) * 1048576;
+      push({status: {...state, components: state.components!.map(c => c.application ? {...c, memoryBytes: memory} : c),
+        resourceHistory: Array.from({length: 60}, (_, n) => ({at: 5000 * (i + n + 1), applicationMemory: memory + n * 1048576, devserverMemory: 125829120 + n * 1048576, monitoringStorage: 100 + n}))
+      }, environments: []});
+      fixture.detectChanges();
+      await fixture.whenStable();
+      await new Promise<void>(resolve => requestAnimationFrame(() => resolve()));
+      for (const row of root.querySelectorAll('.component-table tbody tr')) {
+        const cell = row.querySelector('.component-memory')!;
+        const cellRect = cell.getBoundingClientRect();
+        const rowRect = row.querySelector('.component-restart')!.getBoundingClientRect();
+        const chartRect = cell.querySelector('dev-resource-chart')!.getBoundingClientRect();
+        const valueRect = cell.querySelector('.resource-value')!.getBoundingClientRect();
+        expect(chartRect.height).toBeGreaterThan(0);
+        expect(chartRect.bottom).withContext('chart bottom after update ' + i).toBeCloseTo(cellRect.bottom, 1);
+        if (desktop) {
+          expect(cellRect.bottom).withContext('cell bottom after update ' + i).toBeCloseTo(rowRect.bottom, 1);
+          expect(valueRect.top + valueRect.height / 2).withContext('label center after update ' + i)
+            .toBeCloseTo(rowRect.top + rowRect.height / 2 + 0.5, 1);
+        }
+      }
+    }
+  });
+  it('keeps resource columns equal while adapting to longer formatted values', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    const cells = root.querySelector('.component-table tbody tr')!.children;
+    const initialWidth = cells[2].getBoundingClientRect().width;
+    expect(initialWidth).toBeGreaterThan(0);
+    expect(cells[3].getBoundingClientRect().width).toBe(initialWidth);
+    fixture.componentInstance.status.update(s => s ? {...s, monitoring:{enabled:true, resources:{
+      storageDiskBytes:512 * 1048576, diskRetentionThresholdBytes:1099511627776
+    }}} : s);
+    fixture.detectChanges();
+    const expandedWidth = cells[2].getBoundingClientRect().width;
+    expect(cells[3].getBoundingClientRect().width).toBe(expandedWidth);
+    if (matchMedia('(min-width:1201px)').matches) expect(expandedWidth).toBeGreaterThan(initialWidth);
+    else expect(expandedWidth).toBeLessThanOrEqual(root.clientWidth);
+    expect(root.querySelectorAll('.component-storage')[1].textContent).toContain('512.0 MiB / 1.0 TiB');
+  });
+  it('fits long project names and paths without horizontal scroll in the compact layout', () => {
+    if (matchMedia('(min-width:1201px)').matches) return;
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.status.update(s => s ? {...s, project:'customer-'.repeat(15), projectDirectory:'/projects/'+'nested-folder/'.repeat(15),
+      components:s.components!.map(c => c.application ? {...c,name:'CustomerApplication'.repeat(10)} : c)} : s);
+    fixture.componentInstance.environments.update(projects => projects.map((p, index) => ({...p,projectName:'OtherProject'.repeat(20),projectDirectory:'/projects/'+'long-folder/'.repeat(15)+index})));
+    fixture.detectChanges();
+    for (const element of root.querySelectorAll('.current-project,.component-table-scroll,.project-table,.page')) {
+      expect(element.scrollWidth).withContext(element.className).toBeLessThanOrEqual(element.clientWidth + 1);
+    }
+  });
+  it('confirms maintenance before dispatching the protected DOM command', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectNone('actions/truncate-data');
+    expect(root.querySelector('.maintenance-confirm')?.textContent).toContain('Delete application and monitoring data');
+    (root.querySelector('.maintenance-confirm button') as HTMLButtonElement).click();
+    const request = http.expectOne('actions/truncate-data');
+    expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush(null);
+    await fixture.whenStable(); fixture.detectChanges();
+    expect((root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).disabled).toBeTrue();
+  });
+  it('cancels the mandatory modal without deleting data', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const dialog = root.querySelector('dialog')!;
+    expect(dialog.open).toBeTrue();
+    expect(document.activeElement).toBe(dialog.querySelector('[autofocus]'));
+    expect(dialog.querySelector('input')).toBeNull();
+    (dialog.querySelector('.secondary-button') as HTMLButtonElement).click();
+    expect(dialog.open).toBeFalse();
+    TestBed.inject(HttpTestingController).expectNone('actions/truncate-data');
+  });
+  it('requires confirmation on every truncate, including with a legacy opt-out', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    const http = TestBed.inject(HttpTestingController);
+    expect(localStorage.getItem('devConfirmTruncate')).toBe('false');
+    for (let attempt = 0; attempt < 2; attempt++) {
+      (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
+      fixture.detectChanges();
+      expect(root.querySelector('dialog')!.open).toBeTrue();
+      expect(root.querySelector('dialog input')).toBeNull();
+      http.expectNone('actions/truncate-data');
+      (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+      http.expectOne('actions/truncate-data').flush(null);
+      await fixture.whenStable();
+      expect(root.querySelector('dialog')!.open).toBeFalse();
+      fixture.componentInstance.status.update(s => s ? {...s, maintenance: {...s.maintenance, busy:false, error:''}} : s);
+      fixture.detectChanges();
+    }
+  });
+  it('changes themes through the footer DOM command and marks the current preference', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.setTheme('light'); fixture.detectChanges();
+    expect(root.querySelector('nav a[href="#settings"]')).toBeNull();
+    const trigger = root.querySelector('.theme-trigger') as HTMLButtonElement;
+    expect(trigger.querySelector('.bi-sun')).not.toBeNull();
+    trigger.click(); fixture.detectChanges();
+    const items = root.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+    expect(Array.from(items, item => item.textContent?.trim())).toEqual(['Light', 'Dark', 'System']);
+    expect(items[0].getAttribute('aria-checked')).toBe('true');
+    expect(items[1].getAttribute('aria-checked')).toBe('false');
+    items[1].click(); fixture.detectChanges();
+    expect(document.documentElement.getAttribute('data-bs-theme')).toBe('dark');
+    expect(localStorage.getItem('dashboardTheme')).toBe('dark');
+    expect(root.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(trigger.querySelector('.bi-moon-stars')).not.toBeNull();
+    trigger.click(); fixture.detectChanges();
+    expect(root.querySelector('[role="menuitemradio"][aria-checked="true"]')?.textContent?.trim()).toBe('Dark');
+    (root.querySelectorAll('[role="menuitemradio"]')[2] as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(localStorage.getItem('dashboardTheme')).toBe('system');
+    expect(trigger.querySelector('.bi-display')).not.toBeNull();
+  });
+  it('supports keyboard theme navigation, Escape and dismissal outside the menu', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.setTheme('light'); fixture.detectChanges();
+    const trigger = root.querySelector('.theme-trigger') as HTMLButtonElement;
+    trigger.click(); fixture.detectChanges();
+    const items = root.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]');
+    expect(document.activeElement).toBe(items[0]);
+    items[0].dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
+    expect(document.activeElement).toBe(items[1]);
+    items[1].dispatchEvent(new KeyboardEvent('keydown', {key:'End',bubbles:true}));
+    expect(document.activeElement).toBe(items[2]);
+    items[2].dispatchEvent(new KeyboardEvent('keydown', {key:'Escape',bubbles:true})); fixture.detectChanges();
+    expect(root.querySelector('[role="menu"]')).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    trigger.click(); fixture.detectChanges();
+    (root.querySelector('h1') as HTMLElement).click(); fixture.detectChanges();
+    expect(root.querySelector('[role="menu"]')).toBeNull();
+    expect(fixture.componentInstance.themePreference()).toBe('light');
+    trigger.click(); fixture.detectChanges();
+    window.dispatchEvent(new Event('blur')); fixture.detectChanges();
+    expect(root.querySelector('[role="menu"]')).toBeNull();
+  });
+  it('redirects old Settings bookmarks to Projects', () => {
+    history.replaceState(null, '', '#settings');
+    fixture.componentInstance.readRoute(); fixture.detectChanges();
+    expect(location.hash).toBe('#projects');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Projects');
+  });
+  it('updates the test bar while a run is in progress without a total status pill', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.status.update(s => s ? {...s, testResults: {available:true, running:true, passed:2, failed:1, skipped:0, total:10, totalKnown:true, expectedTotal:3, label:'Running'}} : s);
+    fixture.detectChanges();
+    expect((root.querySelector('.test-passed') as HTMLElement).style.width).toBe('20%');
+    expect((root.querySelector('.test-failed') as HTMLElement).style.width).toBe('10%');
+    expect(root.querySelector('.test-heading .badge')).toBeNull();
+    expect(root.querySelector('.current-project-meta')).toBeNull();
+    fixture.componentInstance.status.update(s => s ? {...s, testResults: {...s.testResults!, passed:6, total:10}} : s);
+    fixture.detectChanges();
+    expect((root.querySelector('.test-passed') as HTMLElement).style.width).toBe('60%');
+    expect(root.querySelector('.test-bar .test-counts')?.textContent).toContain('6 passed');
+    expect(root.querySelector('.test-counts')?.textContent).toContain('10 total');
+    expect(root.querySelector('.test-counts')?.textContent).toContain('total');
+  });
+  it('uses one confirmation for application and monitoring data', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.status.update(s => s ? {...s, monitoring: {enabled:true, storage:'victorialogs'}, components:[{id:'storage',name:'Monitoring database',state:'running',application:false,memoryBytes:0}]} : s);
+    fixture.detectChanges();
+    (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(root.querySelector('dialog')!.open).toBeTrue();
+    expect(root.querySelector('dialog input')).toBeNull();
+    (root.querySelector('dialog .secondary-button') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(root.querySelector('dialog')!.open).toBeTrue();
+    TestBed.inject(HttpTestingController).expectNone('actions/truncate-data');
+    (root.querySelector('dialog .primary-button') as HTMLButtonElement).click();
+    TestBed.inject(HttpTestingController).expectOne('actions/truncate-data').flush(null);
+    await fixture.whenStable();
+    expect(root.querySelector('dialog')!.open).toBeFalse();
+  });
+  it('keeps a stopped customer application separate from a running development environment', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.status.update(s => s ? {...s, project:'fluxzero-dev-server-monitoring',
+      maintenance:{busy:false, error:'', restartSupported:true, applicationRestartSupported:false}, components:[
+        {id:'app',name:'fluxzero-dev-server-monitoring',state:'stopped',application:true,memoryBytes:null,runningProcesses:0,totalProcesses:1},
+        {id:'devserver',name:'Fluxzero Dev Server',state:'running',application:false,memoryBytes:20971520,runningProcesses:1,totalProcesses:1},
+        {id:'testserver',name:'Fluxzero Testserver & Proxy',state:'running',application:false,memoryBytes:104857600,runningProcesses:1,totalProcesses:1}
+      ]} : s);
+    fixture.detectChanges();
+    const rows = root.querySelectorAll('.component-table tbody tr');
+    expect(rows.length).toBe(2);
+    expect(rows[0].querySelector('th')?.textContent).toContain('fluxzero-dev-server-monitoring');
+    expect(rows[0].querySelector('.badge')?.textContent).toBe('stopped');
+    expect(rows[0].querySelector('dev-resource-detail')).toBeNull();
+    expect(rows[0].querySelector('.application-link')).toBeNull();
+    expect((rows[0].querySelector('button') as HTMLButtonElement).disabled).toBeTrue();
+    expect(rows[1].querySelector('.badge')?.textContent).toBe('running');
+    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB / —');
+  });
+  it('groups processes and exposes component counts and memory in tooltips', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    fixture.componentInstance.status.update(s => s ? {...s, resourceHistory:[{at:5000,applicationMemory:1048576,devserverMemory:2097152,monitoringStorage:0,componentMemory:{devserver:2097152,storage:0}}], components: [
+      {id:'app', name:'Customer', state:'running', application:true, memoryBytes:1048576, runningProcesses:2, totalProcesses:2},
+      {id:'devserver', name:'Supervisor', state:'running', application:false, memoryBytes:2097152, memoryUsedBytes:1048576, memoryMaxBytes:4194304, runningProcesses:1, totalProcesses:1},
+      {id:'storage', name:'Monitoring database', state:'failed', application:false, memoryBytes:null, runningProcesses:0, totalProcesses:2}
+    ]} : s);
+    fixture.detectChanges();
+    const rows = root.querySelectorAll('.component-table tbody tr');
+    expect(rows.length).toBe(2);
+    expect(rows[0].querySelector('th')?.textContent).toContain('Customer');
+    expect(rows[1].querySelector('.badge')?.textContent).toBe('failed');
+    const statusDetail = rows[1].querySelector('dev-resource-detail')!;
+    statusDetail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
+    expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('Monitoring database');
+    expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('failed');
+    statusDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
+    expect(statusDetail.querySelector('[role=tooltip]')).toBeNull();
+    const memoryDetail = rows[1].querySelector('.component-memory dev-resource-detail')!;
+    expect(memoryDetail.querySelector(':scope > dev-resource-chart')).not.toBeNull();
+    memoryDetail.dispatchEvent(new FocusEvent('focus')); fixture.detectChanges();
+    expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('Supervisor');
+    expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('1.0 MiB / 4.0 MiB');
+    expect(memoryDetail.querySelectorAll('[role=tooltip] dev-resource-chart .resource-chart-line').length).toBe(2);
+    memoryDetail.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'})); fixture.detectChanges();
+    expect(memoryDetail.querySelector('[role=tooltip]')).toBeNull();
+    expect(rows[1].querySelector('.component-storage [title]')).toBeNull();
+    fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.map(c => ({...c, memoryBytes:null, memoryUsedBytes:null}))} : s);
+    fixture.detectChanges();
+    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('— / 4.0 MiB');
+  });
+  for (const [label, action] of [['Restart application','restart-application'], ['Restart dev server','restart-devserver']]) {
+    it('dispatches ' + action + ' without the truncate confirmation', async () => {
+      (fixture.nativeElement.querySelector('[aria-label="' + label + '"]') as HTMLButtonElement).click();
+      const request = TestBed.inject(HttpTestingController).expectOne('actions/' + action);
+      expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+      request.flush(null);
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('dialog').open).toBeFalse();
+    });
+  }
+  it('follows system appearance changes while preserving the system preference', () => {
+    const system = window.matchMedia('(prefers-color-scheme: dark)');
+    const previous = system.matches;
+    fixture.componentInstance.setTheme('system');
+    expect(fixture.componentInstance.dark()).toBe(previous);
+    // Notify the registered listener using the same MediaQueryList instance.
+    const media = (fixture.componentInstance as any).systemTheme as MediaQueryList;
+    Object.defineProperty(media, 'matches', {configurable:true, value:!previous});
+    media.dispatchEvent(new Event('change'));
+    expect(fixture.componentInstance.dark()).toBe(!previous);
+    expect(localStorage.getItem('dashboardTheme')).toBe('system');
+    fixture.componentInstance.setTheme('light');
+    media.dispatchEvent(new Event('change'));
+    expect(fixture.componentInstance.dark()).toBeFalse();
+    delete (media as any).matches;
+  });
+  it('shows connection health and the theme menu in the sidebar without a top bar', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    expect(root.querySelector('.dashboard-topbar')).toBeNull();
+    expect(root.querySelector('.sidebar-footer .theme-trigger')).not.toBeNull();
+    expect(root.querySelector('.sidebar-footer')?.textContent).toBe('Connected');
+    fixture.componentInstance.error.set('Connection lost');
+    fixture.detectChanges();
+    expect(root.querySelector('.sidebar-footer')?.textContent).toBe('Disconnected');
+    expect(root.querySelector('.error-banner')).toBeNull();
+    expect(root.querySelector('.sidebar-footer .bi-plug')).not.toBeNull();
+    fixture.componentInstance.error.set('');
+    fixture.detectChanges();
+    expect(root.querySelector('.sidebar-footer')?.textContent).toBe('Connected');
+  });
+  it('restricts iframe navigation to known local monitoring views', () => {
+    expect(monitoringPath('/messages?term=RegisterTicket')).toBe('/messages?term=RegisterTicket');
+    for (const path of ['//example.org', 'https://example.org', '/unknown', '/messages-bad', null]) expect(monitoringPath(path)).toBeNull();
+  });
+});

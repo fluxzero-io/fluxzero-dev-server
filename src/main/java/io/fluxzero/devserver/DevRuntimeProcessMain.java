@@ -56,8 +56,9 @@ public final class DevRuntimeProcessMain {
             Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("fluxzero-dev-runtime-shutdown").unstarted(
                     () -> close(resources, closed)));
             monitorParent(arguments.parentPid());
+            if (resetMethod(loader) != null) control("CAPABILITY", "truncate-data");
             control("READY", Integer.toString(runtimePort), Integer.toString(proxyPort), arguments.version());
-            awaitStop();
+            awaitStop(loader, resources[1]);
             close(resources, closed);
         } catch (Throwable e) {
             control("ERROR", message(e));
@@ -151,12 +152,29 @@ public final class DevRuntimeProcessMain {
         return (int) connector.getClass().getMethod("getLocalPort").invoke(connector);
     }
 
-    private static void awaitStop() throws Exception {
+    private static Method resetMethod(ClassLoader loader) {
+        try {
+            return loader.loadClass("io.fluxzero.testserver.TestServer").getMethod(
+                    "truncateData", loader.loadClass("org.eclipse.jetty.server.Server"));
+        } catch (ReflectiveOperationException e) { return null; }
+    }
+
+    private static void awaitStop(ClassLoader loader, Object server) throws Exception {
         try (BufferedReader input = new BufferedReader(new InputStreamReader(System.in, StandardCharsets.UTF_8))) {
             while (true) {
                 String line = input.readLine();
                 if (line == null || "stop".equalsIgnoreCase(line.strip())) {
                     return;
+                }
+                if (line.startsWith("truncate-data ")) {
+                    String id = line.substring("truncate-data ".length());
+                    try {
+                        Method reset = resetMethod(loader);
+                        if (reset == null) throw new IllegalStateException("This SDK does not support truncating data.");
+                        reset.invoke(null, server);
+                        System.gc(); // Best effort; the VM decides whether and how much memory to return to the OS.
+                        control("RESET", id);
+                    } catch (Exception e) { control("RESET_ERROR", id, message(e)); }
                 }
             }
         }

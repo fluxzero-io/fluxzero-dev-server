@@ -108,6 +108,7 @@ final class DevCommandPipeline implements AutoCloseable {
     }
 
     void requestRun() {
+        if (executor.isShutdown()) return;
         rerunRequested.set(true);
         if (running.compareAndSet(false, true)) {
             executor.submit(this::runLoop);
@@ -120,12 +121,12 @@ final class DevCommandPipeline implements AutoCloseable {
 
     private void runLoop() {
         try {
-            while (rerunRequested.getAndSet(false)) {
+            while (!executor.isShutdown() && rerunRequested.getAndSet(false)) {
                 runOnce();
             }
         } finally {
             running.set(false);
-            if (rerunRequested.get() && running.compareAndSet(false, true)) {
+            if (!executor.isShutdown() && rerunRequested.get() && running.compareAndSet(false, true)) {
                 executor.submit(this::runLoop);
             }
         }
@@ -652,6 +653,11 @@ final class DevCommandPipeline implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    void awaitStopped(Duration timeout) throws InterruptedException {
+        if (!executor.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS))
+            throw new IllegalStateException("Initial commands did not stop; data was not truncated.");
     }
 
     private record CommandFile(String path, String hash, String type, SerializedMessage message) {

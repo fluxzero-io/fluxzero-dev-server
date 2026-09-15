@@ -48,7 +48,7 @@ class DevEnvironmentRegistryTest {
         assertEquals(java.util.List.of("orders"), environment.applications());
         assertEquals("http://localhost:4200", environment.url());
         try (var registrations = java.nio.file.Files.list(directory.resolve("registry"))) {
-            var registration = new ObjectMapper().readTree(registrations.findFirst().orElseThrow().toFile());
+            var registration = new ObjectMapper().readTree(registrations.filter(java.nio.file.Files::isRegularFile).findFirst().orElseThrow().toFile());
             assertFalse(registration.has("url"));
             assertFalse(registration.has("applications"));
             assertFalse(registration.has("mcp"));
@@ -59,6 +59,69 @@ class DevEnvironmentRegistryTest {
         registry.unregister(session);
 
         assertTrue(registry.list().isEmpty());
+        assertEquals(1, registry.listKnown().size(), "UI history survives CLI unregister");
+    }
+
+    @Test
+    void overviewRetainsStoppedProjectsAndLastPortWithoutMutatingSessions(@TempDir Path directory) throws Exception {
+        Path project = directory.resolve("orders");
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        DevSession session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public"));
+        var store = new DevSessionStore(project);
+        store.writeSession(session);
+        registry.register(session);
+        assertEquals("http://localhost:4200/_fluxzero/dev/", registry.listKnown().getFirst().consoleUrl());
+        store.writeSession(session.withStatus("stopped"));
+        registry.unregister(session);
+        String before = java.nio.file.Files.readString(project.resolve(".fluxzero/dev/session.json"));
+        var stopped = registry.listKnown().getFirst();
+        assertEquals("stopped", stopped.status());
+        assertEquals(4200, stopped.port());
+        assertEquals(null, stopped.consoleUrl());
+        assertEquals(before, java.nio.file.Files.readString(project.resolve(".fluxzero/dev/session.json")));
+
+        var restarted = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4300", 4300, null, "public"));
+        store.writeSession(restarted);
+        registry.register(restarted);
+        assertEquals(1, registry.listKnown().size());
+        assertEquals(4300, registry.listKnown().getFirst().port());
+        registry.unregister(restarted);
+        java.nio.file.Files.delete(project.resolve(".fluxzero/dev/session.json"));
+        assertEquals("stopped", registry.listKnown().getFirst().status());
+        assertEquals(4300, registry.listKnown().getFirst().port());
+    }
+
+    @Test
+    void overviewSeparatesSameNamedFoldersAndDoesNotExposeUntrustedUrls(@TempDir Path directory) {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        for (String parent : java.util.List.of("first", "second")) {
+            Path project = directory.resolve(parent).resolve("orders");
+            var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                    .withGateway(DevSession.ServiceStatus.running("gateway", "http://example.com:4200", 4200, null, "public"));
+            new DevSessionStore(project).writeSession(session);
+            registry.register(session);
+        }
+        assertEquals(2, registry.listKnown().size());
+        assertTrue(registry.listKnown().stream().allMatch(e -> e.consoleUrl() == null));
+    }
+
+    @Test
+    void overviewNeverOffersLinkToDeadOrUnresponsiveEnvironment(@TempDir Path directory) {
+        Path project = directory.resolve("orders");
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public"));
+        var store = new DevSessionStore(project);
+        store.writeSession(withProcess(session, session.pid(), session.startedAt(), Instant.now().minusSeconds(30).toEpochMilli()));
+        registry.register(session);
+        assertEquals("running", registry.listKnown().getFirst().status());
+        assertEquals("Not responding", registry.listKnown().getFirst().detail());
+        assertEquals(null, registry.listKnown().getFirst().consoleUrl());
+        store.writeSession(withProcess(session, Long.MAX_VALUE, session.startedAt(), session.heartbeatAt()));
+        assertEquals("stopped", registry.listKnown().getFirst().status());
+        assertEquals(null, registry.listKnown().getFirst().consoleUrl());
     }
 
     @Test
@@ -95,6 +158,45 @@ class DevEnvironmentRegistryTest {
         assertEquals("unresponsive", environment.status());
         assertFalse(environment.active());
         assertTrue(environment.detail().contains("heartbeat"));
+    }
+
+    @Test
+    void forgetsOnlyStoppedProjectsWithoutChangingFilesAndRestoresOnRestart(@TempDir Path directory) throws Exception {
+        Path project = directory.resolve("orders");
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var store = new DevSessionStore(project);
+        var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running");
+        store.writeSession(session);
+        registry.register(session);
+        String id = registry.listKnown().getFirst().id();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> registry.forget(id));
+        store.writeSession(session.withStatus("stopped"));
+        String before = java.nio.file.Files.readString(project.resolve(".fluxzero/dev/session.json"));
+        registry.forget(id);
+        assertTrue(registry.listKnown().isEmpty());
+        assertEquals(before, java.nio.file.Files.readString(project.resolve(".fluxzero/dev/session.json")));
+        assertEquals(1, registry.list().size(), "Forgetting does not erase CLI ownership records");
+        var otherProject = directory.resolve("other");
+        var other = DevSession.empty(DevServerConfig.defaults(otherProject)).withStatus("running");
+        new DevSessionStore(otherProject).writeSession(other);
+        registry.register(other);
+        assertTrue(registry.findKnown(id).isEmpty(), "Importing legacy registrations must not resurrect a forgotten project");
+        var restarted = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running");
+        store.writeSession(restarted);
+        registry.register(restarted);
+        assertTrue(registry.findKnown(id).isPresent());
+        assertTrue(registry.findKnown(id).orElseThrow().directoryExists());
+    }
+
+    @Test
+    void forgetsMissingFoldersAndPersistsAcrossRegistryInstances(@TempDir Path directory) throws Exception {
+        Path project = directory.resolve("gone");
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        registry.register(DevSession.empty(DevServerConfig.defaults(project)).withStatus("stopped"));
+        var known = registry.listKnown().getFirst();
+        assertFalse(known.directoryExists());
+        registry.forget(known.id());
+        assertTrue(new DevEnvironmentRegistry(directory.resolve("registry")).listKnown().isEmpty());
     }
 
     private static DevSession withProcess(DevSession session, long pid, long startedAt, long heartbeatAt) {

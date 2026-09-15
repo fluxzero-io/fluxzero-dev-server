@@ -110,6 +110,8 @@ final class DevServerBootstrap implements AutoCloseable {
         if (Runtime.version().feature() >= 24) command.add("--sun-misc-unsafe-memory-access=allow");
         ManagementFactory.getRuntimeMXBean().getInputArguments().stream().filter(a -> a.startsWith("-D"))
                 .forEach(command::add);
+        String registry = System.getProperty(DevEnvironmentRegistry.DIRECTORY_PROPERTY);
+        if (registry != null) command.add("-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registry);
         command.addAll(List.of("-cp", Arrays.stream(System.getProperty("java.class.path").split(
                 java.util.regex.Pattern.quote(File.pathSeparator))).map(p -> Path.of(p).toAbsolutePath().normalize().toString())
                 .collect(Collectors.joining(File.pathSeparator)), main));

@@ -36,14 +36,27 @@ public final class DevServerMain {
             return;
         }
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
+        Integer restartPort = null;
+        do {
+            String[] launchArguments = args;
+            if (restartPort != null) {
+                launchArguments = java.util.Arrays.copyOf(args, args.length + 2);
+                launchArguments[args.length] = "--port";
+                launchArguments[args.length + 1] = restartPort.toString();
+            }
+            restartPort = run(launchArguments);
+        } while (restartPort != null);
+    }
+
+    private static Integer run(String[] args) throws Exception {
         DevServer server;
         try {
             String[] launchArguments = args.clone();
             server = new DevServer(DevServerConfig.fromArgs(launchArguments),
-                                   () -> DevServerConfig.fromArgs(launchArguments));
+                                   () -> DevServerConfig.fromArgs(launchArguments)).withRestartSupport();
         } catch (IllegalArgumentException | LinkageError e) {
             reportStartupFailure(e);
-            return;
+            return null;
         }
         DevEnvironmentRegistry registry = DevEnvironmentRegistry.global();
         AtomicBoolean registered = new AtomicBoolean();
@@ -73,7 +86,10 @@ public final class DevServerMain {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         try {
             server.start();
-            server.shutdownRequested().thenRun(() -> System.exit(0));
+            server.shutdownRequested().thenAccept(reason -> {
+                if (DevServer.RESTART_REQUESTED.equals(reason)) shutdown.countDown();
+                else System.exit(0);
+            });
             try {
                 registry.register(server.session());
                 registered.set(true);
@@ -84,9 +100,18 @@ public final class DevServerMain {
             removeShutdownHook(shutdownHook);
             server.close();
             reportStartupFailure(e);
-            return;
+            return null;
         }
         shutdown.await();
+        if (!DevServer.RESTART_REQUESTED.equals(server.shutdownRequested().getNow(null))) return null;
+        Integer port = server.session().gateway().port();
+        try {
+            if (registered.compareAndSet(true, false)) registry.unregister(server.session());
+        } finally {
+            server.close();
+            removeShutdownHook(shutdownHook);
+        }
+        return port;
     }
 
     private static void removeShutdownHook(Thread shutdownHook) {

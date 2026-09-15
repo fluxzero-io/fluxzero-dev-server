@@ -125,6 +125,43 @@ class TestPipelineTest {
     }
 
     @Test
+    void manualRunExecutesWholeModuleDespiteUnchangedInputs(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.writeString(projectDirectory.resolve("pom.xml"), "v1");
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        List<TestStatus> statuses = new CopyOnWriteArrayList<>();
+        try (TestPipeline pipeline = new TestPipeline(config(projectDirectory), store, statuses::add, ignored -> {})) {
+            pipeline.requestInitial();
+            assertTrue(awaitBaseline(store, projectDirectory));
+            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            statuses.clear();
+            pipeline.requestFullRun();
+            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            assertEquals("manual test run", statuses.getLast().reason());
+            assertEquals("2", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+        }
+    }
+
+    @Test
+    void changedCodeRunReplacesPreemptedManualRun(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.createFile(projectDirectory.resolve("wait"));
+        List<TestStatus> statuses = new CopyOnWriteArrayList<>();
+        try (MavenBuildCoordinator coordinator = new MavenBuildCoordinator();
+             TestPipeline pipeline = new TestPipeline(config(projectDirectory), new DevSessionStore(projectDirectory), coordinator, statuses::add, ignored -> {})) {
+            pipeline.requestFullRun();
+            assertTrue(awaitFile(projectDirectory.resolve("started-1")));
+            coordinator.withCompileLock(() -> {Files.createFile(projectDirectory.resolve("release"));return null;});
+            assertTrue(awaitStatus(statuses, "incomplete", List.of()));
+            assertEquals("1", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+            pipeline.request(Set.of(projectDirectory.resolve("src/test/java/com/acme/OrderHandlerTest.java")));
+            assertTrue(awaitStatus(statuses, "passed", List.of("com.acme.OrderHandlerTest")));
+            assertTrue(statuses.stream().noneMatch(status -> "queued".equals(status.state())));
+        }
+        assertEquals("2", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+    }
+
+    @Test
     void coalescesRequestsWithoutBlockingActiveRun(@TempDir Path projectDirectory) throws Exception {
         installFakeMaven(projectDirectory);
         Files.createFile(projectDirectory.resolve("wait"));

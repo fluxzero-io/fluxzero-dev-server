@@ -37,9 +37,10 @@ final class TestReports {
         LinkedHashSet<String> selectors = new LinkedHashSet<>();
         List<String> summaries = new ArrayList<>();
         boolean[] failureFound = {false};
+        int[] counts = new int[4];
         reportDirectories(projectDirectory, buildTool).forEach(
-                reports -> readReportDirectory(reports, startedAt, selectors, summaries, failureFound));
-        return new Result(Set.copyOf(selectors), summaries.isEmpty() ? null : summaries.getFirst(), failureFound[0]);
+                reports -> readReportDirectory(reports, startedAt, selectors, summaries, failureFound, counts));
+        return new Result(Set.copyOf(selectors), summaries.isEmpty() ? null : summaries.getFirst(), failureFound[0], counts[3] == 0 ? null : new TestCounts(counts[0], counts[1], counts[2]));
     }
 
     private static void clearReportDirectory(Path reports) {
@@ -60,13 +61,13 @@ final class TestReports {
     }
 
     private static void readReportDirectory(Path reports, long startedAt, Set<String> selectors,
-                                            List<String> summaries, boolean[] failureFound) {
+                                            List<String> summaries, boolean[] failureFound, int[] counts) {
         if (!Files.isDirectory(reports)) {
             return;
         }
         try (var files = Files.walk(reports, 4)) {
             files.filter(TestReports::isXmlReport).filter(file -> modifiedAfter(file, startedAt))
-                    .sorted().forEach(file -> readReport(file, selectors, summaries, failureFound));
+                    .sorted().forEach(file -> readReport(file, selectors, summaries, failureFound, counts));
         } catch (Exception ignored) {
             // An absent or unreadable report cannot prove that a test failed.
         }
@@ -122,19 +123,25 @@ final class TestReports {
     }
 
     private static void readReport(Path file, Set<String> selectors, List<String> summaries,
-                                   boolean[] failureFound) {
+                                   boolean[] failureFound, int[] counts) {
         try {
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-            var testCases = factory.newDocumentBuilder().parse(file.toFile()).getElementsByTagName("testcase");
+            var builder = factory.newDocumentBuilder();
+            // A live build can still be writing this report; skip incomplete XML quietly and retry next poll.
+            builder.setErrorHandler(new org.xml.sax.helpers.DefaultHandler());
+            var testCases = builder.parse(file.toFile()).getElementsByTagName("testcase");
+            counts[3]++;
             for (int i = 0; i < testCases.getLength(); i++) {
                 Element testCase = (Element) testCases.item(i);
                 if (testCase.getElementsByTagName("failure").getLength() == 0
                     && testCase.getElementsByTagName("error").getLength() == 0) {
+                    counts[testCase.getElementsByTagName("skipped").getLength() > 0 ? 2 : 0]++;
                     continue;
                 }
+                counts[1]++;
                 failureFound[0] = true;
                 String className = testCase.getAttribute("classname");
                 String methodName = selectorMethod(testCase.getAttribute("name"));
@@ -191,9 +198,9 @@ final class TestReports {
         }
     }
 
-    record Result(Set<String> failingSelectors, String firstFailure, boolean failureFound) {
+    record Result(Set<String> failingSelectors, String firstFailure, boolean failureFound, TestCounts counts) {
         static Result empty() {
-            return new Result(Set.of(), null, false);
+            return new Result(Set.of(), null, false, null);
         }
     }
 }

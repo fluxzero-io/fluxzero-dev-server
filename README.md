@@ -38,11 +38,31 @@ On Windows:
 .\mvnw.cmd -B clean install
 ```
 
+The build also installs a pinned Node.js runtime to build the Angular console.
+Node.js is not required when running the packaged dev server.
+
 The build creates both the regular Maven artifact and an executable standalone JAR under `target/`.
 
 The build uses an exact published Fluxzero SDK version. It deliberately does not locate or build a sibling SDK
 checkout. Override `-Dfluxzero.version=...` only when verifying against another installed or published SDK
 version.
+
+## Develop the dev server itself
+
+Run the test application `DevServerPreview` from this repository:
+
+```shell
+fz dev --main-class io.fluxzero.devserver.DevServerPreview --no-frontend --idp external
+```
+
+The supervising dev server builds the sources, runs tests and replaces the preview application after Java changes.
+The application link opens the preview console. The preview runs its own Testserver and Proxy, but disables watching,
+compilation, tests and frontend/application launches, so it cannot recursively start another dev server.
+Each preview gets free ports and an isolated workspace under `target/dev-previews/`; rolling replacement can start the
+new instance before stopping the previous one. These disposable workspaces are not added to project discovery.
+Their files remain under `target/` for diagnostics and are removed by a normal clean build while the environment is stopped.
+The supervisor owns preview restarts; use its application restart button. The preview does not offer an independent
+full-server restart. Rebuilding the console bundles still follows the normal Maven frontend build.
 
 ## Test
 
@@ -64,6 +84,9 @@ running:
 ```shell
 ./mvnw -B verify -Pdev-server-e2e
 ```
+
+The test-runner telemetry scenarios in this profile exercise both Maven and Gradle. If Gradle is not on `PATH`,
+pass `-Dfluxzero.dev.gradleExecutable=/absolute/path/to/gradle` (or `gradle.bat` on Windows).
 
 Run the real Vite and Angular gateway, websocket, and hot-reload tests:
 
@@ -366,6 +389,116 @@ the implemented architecture, phases, and verification scenarios.
 ## License
 
 Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
+
+## Development console
+
+Open `/_fluxzero/dev/` on the public development URL for **Projects**, the landing
+page listing local dev servers. Switching projects keeps this page open on the
+selected server. The sidebar also provides current environment status and optional **Monitoring**. See [local monitoring](docs/local-monitoring.md) for
+Auditlog setup, native VictoriaLogs, the testserver adapter and resource limits.
+
+Monitoring uses the dashboard's section navigation and page layout. The current view title and project name
+sit above the embedded page, sharing its background and content gutters in light and dark themes.
+The embedded application keeps its existing filters, trace navigation and per-view state when switching screens.
+
+### Component resources and maintenance
+
+Projects shows two rows: the customer application (including its managed frontends), followed by the Fluxzero dev
+server and its supporting processes. A stopped customer application stays visible. Both status badges show only
+the status text, without process counts. The customer row has no popovers. Immediate hover/focus popovers on the dev-server
+row break down status and memory by component and follow the selected theme. Hovering the total memory chart
+also opens the memory popover. Each component has its own memory chart.
+Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
+VictoriaLogs reports Go-managed memory (Sys minus HeapReleased) and its exported Go memory limit. The dev server
+reads its own heap directly and samples managed Java processes through local JMX. Attach and sampling run in a
+bounded background pool; unavailable or stale measurements remain unknown. Existing RSS fields stay available
+in the console API for compatibility. The charts keep one color and scale memory to its limit at each sample.
+The dev server retains at most 60 five-second samples in memory, including usage and limits per component ID,
+even with no browsers connected. Missing samples leave gaps. Navigation, reload and reconnect restore the same
+history; restarting the dev server starts a new history. Monitoring storage shows its on-disk size
+and configured retention threshold. Its chart scales to that threshold (1 GiB by default), retained with each sample,
+rather than the observed storage peak. Totals, limits and component details automatically use IEC units (B, KiB,
+MiB, GiB and larger). Memory and Storage columns share the width required by the wider value, without a fixed
+pixel width. On narrow screens, component rows reflow into labeled blocks with status, resource usage and
+actions. Memory and storage stack on phones; other projects also stack and omit their port number. Long names
+and paths wrap, and component popovers stay within the visible viewport.
+
+The trash icon (`title="truncate data"`) stops the command runner and customer backends, truncates all Testserver data
+through the optional public `TestServer.truncateData(Server)` SDK API, and clears the project's monitoring storage.
+Monitoring and customer processes reconnect with fresh caches. The dev server then reruns its configured initial
+commands (`commands` in `.fluxzero/dev.yaml` and `src/test/resources/fluxzero/dev/commands`) when their handlers are
+available. These are dev-server seed commands, not application startup hooks. External databases are not cleared.
+Older SDK versions keep working, with truncate disabled. Garbage collection need not reduce OS memory immediately.
+The existing per-store HTTP actions remain available for compatibility; the UI offers only the combined action.
+
+Application restart reuses the last ready build and replaces managed frontend processes while retaining their ports.
+Without an available build it is disabled. Dev-server restart replaces the managed environment within the standalone
+launcher JVM, retaining the public port. Customer processes reconnect too because the in-memory Testserver is new;
+initial commands run again, while on-disk monitoring history is retained. The launcher PID itself remains unchanged.
+All maintenance actions require a same-origin loopback POST. Truncate always requires confirmation in the console.
+
+The test bar includes left-aligned passed / failed / total counts using the table status colors. Total represents the
+known project inventory, independent of the run selection. A selective run temporarily clears the previous outcomes
+of its selected tests, preserving other results, then updates each outcome live. Errors count as failures; skipped
+and pending tests remain neutral. Unknown inventories display `?` instead of substituting the number executed.
+The bounded inventory and latest outcomes are stored in `.fluxzero/dev/test-inventory.json` and survive reconnects
+and dev-server restarts. Missing results and interrupted tests never become synthetic passes.
+
+### Console preferences
+
+The theme icon beside the connection status opens a vertical menu for Light, Dark and System.
+It shows the current preference (System follows operating-system appearance changes), and the selected option
+is highlighted. Theme preferences are saved in browser local storage for the current dev-server address.
+
+Truncating data always opens a confirmation dialog covering both application and monitoring data.
+Cancel or Escape dismisses it without deleting anything. Confirmation cannot be disabled, including by
+preferences saved in earlier versions. Old Settings links redirect to Projects.
+
+### Live test progress and output
+
+The dev server automatically adds a small listener to Maven/JUnit Platform test runs and callbacks to Gradle
+`Test` tasks. Customer source files and build configuration do not need changes. Each completed invocation
+updates the test bar through the console WebSocket, including parameterized, dynamic and forked tests.
+JUnit Platform discovers the test classes in the runner's test output directory without executing unselected tests.
+Parameterized and dynamic invocations can change the inventory during execution. Gradle learns the inventory from
+completed full runs and uses stable testcase identities during selective runs. Newly discovered cases start pending;
+removed cases are pruned when a fresh inventory or a completed full run establishes their absence.
+When events are unavailable, XML remains the fallback for run diagnostics; incomplete telemetry does not invent
+per-test outcomes. An interrupted run keeps its valid reported outcomes and leaves unfinished tests pending.
+
+The rocket button beside the test bar runs the full suite for each test-enabled module, even with unchanged
+inputs. Runs use the existing test pipeline. A newer code-change run supersedes a queued manual run;
+a manual run interrupted for compilation is not automatically resumed. Gradle manual runs use
+`--rerun-tasks` to bypass up-to-date checks and cached task results. Output is always visible at a default and minimum height of 80 pixels; drag the lower-right corner to resize
+it vertically. The pause/play button inside the output area
+stops or resumes automatic scrolling; scrolling up also pauses it. The trash button clears the shared
+output history, including on reconnect, while keeping test results and application data. The dev server retains the latest 200 lines, limited to 2,000 characters each,
+in memory and restores this tail on reconnect. Output is escaped as text and terminal colors are stripped.
+
+The listener uses an authenticated, run-scoped loopback connection, bounded queues and a Java 8 compatible
+helper JAR; it does not package another JUnit runtime into the customer application. Gradle callbacks disable
+configuration caching for that test invocation, but leave up-to-date checks and the test result cache intact.
+Telemetry is best-effort and cannot change a test result. The build command's exit status and fresh test
+reports remain authoritative for completion, including failures outside individual test methods.
+
+### Console push protocol
+
+`/_fluxzero/dev/updates` is a local, same-origin WebSocket endpoint (protocol version 1). Like Dashboard, the
+UI publishes incoming updates to its DOM handlers; commands and queries remain HTTP requests behind their
+existing DOM handlers. Opening a connection returns `{type: "snapshot", version, sequence, status, environments}`;
+`status.resourceHistory` contains the bounded resource history. Subsequent `{type: "update", ...}` frames carry
+only changed top-level status fields, an optional changed environments list, and an optional new `sample`.
+Test output uses `output: {firstSequence, lines}` with only newly appended lines; clients evict older lines
+using `firstSequence`; zero clears the output. Snapshots include the complete retained `status.testOutput` tail.
+Status objects within a changed field are replacements, not recursive patches. Heartbeats carry the current
+sequence. Reconnect always returns a fresh snapshot; clients replace old state and reconnect on sequence gaps.
+
+Sampling is shared across all clients and continues without a browser. Test run state transitions request an
+coalesced refresh within 100 ms; OS memory is sampled at most every five seconds. The UI no longer polls status or environments.
+The server accepts at most 32 sockets and disconnects stalled clients with bounded outgoing queues (16 frames,
+1 MiB of text) and a ten-second send deadline. The UI detects silent connections within 30 seconds and retries
+with exponential backoff up to 30 seconds. The channel accepts no commands; lifecycle actions retain the
+same-origin HTTP protections and flush their acceptance before a gateway restart.
 
 
 ---
