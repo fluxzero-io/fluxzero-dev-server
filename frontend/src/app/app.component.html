@@ -4,7 +4,7 @@
   <aside class="dashboard-sidebar" [class.open]="menuOpen()">
     <a class="dashboard-brand" href="#projects" (click)="link($event, 'projects')" aria-label="Fluxzero dev server home">
       <img class="brand-mark" src="assets/fluxzero-devserver-logo.svg" alt="">
-      <span class="brand-title">Fluxzero dev server</span>
+      <span class="brand-title">Fluxzero<span> dev server</span></span>
     </a>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <nav aria-label="Dev server navigation">
