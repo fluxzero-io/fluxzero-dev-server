@@ -6,7 +6,7 @@ import {Status} from './models';
 import {ResourceDetailComponent} from './resource-detail.component';
 import {ResourceChartComponent} from './resource-chart.component';
 import {TestOutputComponent} from './test-output.component';
-import {totalMemory} from './resource-history';
+import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
@@ -22,7 +22,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div></div>
     <ng-template #componentCard let-component>
     <div class="component-table-scroll"><table role="table" class="component-table" [attr.aria-label]="component.application ? 'Application resources' : 'Infrastructure resources'">
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}<th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th></tr></thead>
+      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}@if(!component.application) {<th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th>}</tr></thead>
       <tbody role="rowgroup">
         <tr role="row" [class.application-component]="component.application">
           <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i>{{component.name}}
@@ -32,7 +32,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
           <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
-            @if(component.application) {<dev-resource-chart [samples]="state.resourceHistory || []" metric="applicationMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
+            @if(component.application) {<dev-resource-chart [samples]="state.resourceHistory || []" metric="applicationMemory" [componentId]="component.id"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
             @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><dev-resource-chart [samples]="state.resourceHistory || []" metric="devserverMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span></dev-resource-detail>}
           </td>
           @if(!component.application) {<td role="cell" class="component-storage" data-label="Monitoring storage">
@@ -42,20 +42,18 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
             } @else {—}
           </td>}
-          <td role="cell" class="component-restart">
-            @let restartAction = component.application ? 'restart-application' : 'restart-devserver';
-            <button class="icon-button" type="button" [attr.aria-label]="component.application ? 'Restart application' : 'Restart dev server'" title="Restart" [attr.aria-busy]="maintenanceAction() === restartAction" [disabled]="busy() || !(component.application ? state.maintenance?.applicationRestartSupported : state.maintenance?.restartSupported)" (click)="maintain(restartAction)">
-              @if(maintenanceAction() === restartAction) {<span class="spinner-border spinner-border-sm" role="status" [attr.aria-label]="component.application ? 'Restarting application' : 'Restarting dev server'"></span>}
+          @if(!component.application) {<td role="cell" class="component-restart">
+            <button class="icon-button" type="button" aria-label="Restart dev server" title="Restart" [attr.aria-busy]="maintenanceAction() === 'restart-devserver'" [disabled]="busy() || !state.maintenance?.restartSupported" (click)="maintain('restart-devserver')">
+              @if(maintenanceAction() === 'restart-devserver') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting dev server"></span>}
               @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart</span>
             </button>
           </td>
           <td role="cell" class="component-actions">
-            @if(component.application && component.url) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" [attr.aria-label]="'Open ' + component.name" title="Open application"><span>App preview</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>}
-            @if(!component.application) {<button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
+            <button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
               @if(maintenanceAction() === 'truncate-data') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Truncating data"></span>}
               @else {<i class="bi bi-trash" aria-hidden="true"></i>}
-            </button>}
-          </td>
+            </button>
+          </td>}
         </tr>
       </tbody>
     </table></div>
@@ -68,12 +66,24 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
-    <div class="application-workspace" aria-label="Application workspace">
-      <section class="application-overview" aria-label="Application">
-        <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: groups()[0]}"/>
-      </section>
+    <section class="applications-section" aria-labelledby="applications-title">
+      <header class="applications-heading"><h2 id="applications-title">Applications</h2>
+        <div class="application-actions">
+          <button class="icon-button" type="button" aria-label="Restart all applications" [attr.aria-busy]="maintenanceAction() === 'restart-application'" [disabled]="busy() || !state.maintenance?.applicationRestartSupported" (click)="maintain('restart-application')">
+            @if(maintenanceAction() === 'restart-application') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting applications"></span>}
+            @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart all</span>
+          </button>
+          @if(applicationUrl()) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" aria-label="Open app preview"><span>App preview</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>}
+        </div>
+      </header>
+      <div class="application-overview">
+        @for(application of applications(); track application.id) {
+          <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: application}"/>
+        } @empty {<p class="applications-empty">No applications configured for this environment.</p>}
+      </div>
+    </section>
     <section class="environment-tests" aria-label="Tests"><div class="test-summary">
-      <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Feedback from your latest changes.</p></div></div>
+      <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Test results for this workspace.</p></div></div>
       <div class="test-controls">
         <button class="icon-button" type="button" aria-label="Run tests" title="Run tests"
           [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-rocket-takeoff" aria-hidden="true"></i></button>
@@ -99,11 +109,10 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
     <dev-test-output [lines]="state.testOutput || []"/></section>
-    </div>
     <section class="infrastructure-section" aria-labelledby="infrastructure-title">
       <header><h2 id="infrastructure-title">Development infrastructure</h2>
         <p>Combined usage of the dev server, Fluxzero runtime, monitoring and supporting services.</p></header>
-      <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: groups()[1]}"/>
+      <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
       @if(r.error || r.auditlog?.storage?.retentionError) {<p role="alert">{{r.error || r.auditlog.storage.retentionError}}</p>}
@@ -115,26 +124,19 @@ export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   status = input<Status>();
   displayName = input('');
-  readonly groups = computed(() => {
-    const state = this.status();
-    if (!state) return [];
-    return [true, false].map(application => {
-      const components = (state.components || []).filter(c => c.application === application);
-      const count = (c: NonNullable<Status['components']>[number]) => ({
-        running: c.runningProcesses ?? (c.state === 'running' ? 1 : 0), total: c.totalProcesses ?? 1
-      });
-      const running = components.reduce((sum, c) => sum + count(c).running, 0);
-      const total = components.reduce((sum, c) => sum + count(c).total, 0);
-      return {
-        id: application ? 'application' : 'devserver', application, components,
-        name: application ? components.find(c => !c.id.startsWith('frontend-'))?.name || state.project : 'All services',
-        runningProcesses: running, totalProcesses: total,
-        state: running > 0 && running < total ? 'degraded' : components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
-        memoryBytes: totalMemory(components),
-        memoryMaxBytes: totalMemory(components, true),
-        url: components.find(c => c.url)?.url
-      };
-    });
+  readonly applications = computed(() => (this.status()?.components || []).filter(c => c.application).map(c => ({
+    ...c, memoryBytes: usedMemory(c)
+  })));
+  readonly applicationUrl = computed(() => this.applications().find(c => c.url)?.url);
+  readonly infrastructure = computed(() => {
+    const components = (this.status()?.components || []).filter(c => !c.application);
+    const running = components.reduce((sum, c) => sum + (c.runningProcesses ?? (c.state === 'running' ? 1 : 0)), 0);
+    const total = components.reduce((sum, c) => sum + (c.totalProcesses ?? 1), 0);
+    return {
+      id: 'devserver', application: false, components, name: 'All services',
+      state: running > 0 && running < total ? 'degraded' : components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
+      memoryBytes: totalMemory(components), memoryMaxBytes: totalMemory(components, true)
+    };
   });
   embedded = input(false);
   port = input<number | null>(null);
