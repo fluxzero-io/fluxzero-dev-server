@@ -522,14 +522,18 @@ public record DevServerConfig(
             service.ports().forEach((name, value) -> ports.put(
                     name, "dynamic".equalsIgnoreCase(value.strip()) ? 0 : Integer.parseInt(value.strip())));
             DevProjectConfig.Readiness configuredReadiness = service.readiness();
-            String readinessHttp = configuredReadiness.http() == null && configuredReadiness.tcp() == null
+            String readinessHttp = !configuredReadiness.configured()
                     ? service.url() : configuredReadiness.http();
             Duration timeout = lifecycleDuration(
                     configuredReadiness.timeout(), DevServiceConfig.DEFAULT_STARTUP_TIMEOUT,
                     "services." + id + ".readiness.timeout");
             result.put(id, new DevServiceConfig(
                     service.command(), service.stopCommand(), service.url(), service.directory(), ports, service.env(),
-                    new DevServiceConfig.Readiness(readinessHttp, configuredReadiness.tcp(), timeout)));
+                    new DevServiceConfig.Readiness(readinessHttp, configuredReadiness.tcp(),
+                            DevServiceConfig.compilePattern(configuredReadiness.log(),
+                                                            "services." + id + ".readiness.log"), timeout),
+                    service.output().redact().stream().map(pattern -> DevServiceConfig.compilePattern(
+                            pattern, "services." + id + ".output.redact")).toList()));
         });
         return Collections.unmodifiableMap(result);
     }

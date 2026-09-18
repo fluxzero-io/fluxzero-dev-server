@@ -366,8 +366,41 @@ Use `services` for databases, emulators, log stores, or other local dependencies
 by the dev server; a service with only `url` is external and is never stopped. Named ports accept a fixed number or
 `dynamic`. Service-local fields reference a named allocated port as `{servicePort.<name>}`. The resolved URL and ports
 are available to application and frontend configuration as
-`{services.<id>.url}` and `{services.<id>.ports.<name>}`. HTTP or TCP readiness participates in startup, while service
-health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the same session.
+`{services.<id>.url}` and `{services.<id>.ports.<name>}`. HTTP, TCP or explicit log readiness participates in startup,
+while service health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the
+same session.
+
+Services without a local HTTP/TCP endpoint can opt into startup readiness from process output:
+
+```yaml
+services:
+  stripe-webhooks:
+    command: >-
+      stripe listen --skip-update --color off
+      --config .fluxzero/stripe/config.toml
+      --forward-to http://localhost:4242/api/checkout/webhook
+    readiness:
+      log: 'Ready!'
+      timeout: 30s
+    output:
+      redact:
+        - 'whsec_[A-Za-z0-9]+'
+```
+
+`readiness.log` is a Java regular expression searched on each stdout and stderr line after ANSI formatting is
+removed. It requires a managed service with `command` and is mutually exclusive with `readiness.http` and
+`readiness.tcp`. With no explicit readiness variant, `url` still supplies HTTP readiness. The startup timeout
+defaults to two minutes. The matcher is installed before process launch, so immediate output is recognized.
+Timeout or exit before readiness fails startup; exit afterwards makes the service unavailable. A log match is a
+one-time startup signal: it does not establish continuing connectivity to a remote provider.
+
+`output.redact` is an ordered list of Java regular expressions. Matches become `[REDACTED]` before output reaches
+the terminal, stored logs, diagnostics, or MCP, including output from `stopCommand`. When redaction is configured,
+ANSI formatting is removed before replacement so styling cannot split a sensitive value. Readiness matches the
+original ANSI-free line inside the process adapter; that unredacted line is neither retained nor published.
+Patterns are compiled once before launch; invalid or blank patterns reject configuration. They are literal regexes,
+without placeholder expansion. Matching is line-based and does not retain an output history. Configure patterns
+for the sensitive values the command emits. Frontend readiness is unchanged.
 
 See [`docs/developer/composed-environment-contract.md`](docs/developer/composed-environment-contract.md) for a full
 Dashboard/Auditlog example that combines named profiles, independent build projects, multiple frontends, and

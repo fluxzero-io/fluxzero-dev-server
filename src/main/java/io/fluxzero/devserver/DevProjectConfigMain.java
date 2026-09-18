@@ -104,8 +104,23 @@ public final class DevProjectConfigMain {
             #     readiness:
             #       http: "{url}/health"
             #       timeout: 3m
+            #   webhookListener:
+            #     command: webhook-listener --forward-to http://localhost:4242/api/webhook
+            #     readiness:
+            #       log: 'Ready!'
+            #       timeout: 30s
+            #     output:
+            #       redact: ['whsec_[A-Za-z0-9]+']
             #   sharedMail:
             #     url: http://127.0.0.1:8025
+            #
+            # Readiness chooses one of http, tcp (host:port), or log (Java regular expression).
+            # With no explicit probe, url supplies HTTP readiness. Log readiness requires command and searches
+            # each ANSI-free stdout/stderr line once during startup; afterwards only process exit is monitored.
+            # It does not prove ongoing connectivity to a remote service. Timeout defaults to 2m.
+            # output.redact patterns replace matches with [REDACTED] before terminal, logs, diagnostics or MCP.
+            # Redaction strips ANSI and also applies to stopCommand output; readiness sees the original line.
+            # Patterns are compiled before startup, are not placeholders, and cannot be blank or invalid.
             #
             # Use resolved service values in an application flavor:
             # applicationConfig:

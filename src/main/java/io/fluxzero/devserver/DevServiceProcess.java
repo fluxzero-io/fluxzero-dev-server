@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 final class DevServiceProcess implements AutoCloseable {
     private static final Duration PROBE_TIMEOUT = Duration.ofSeconds(1);
@@ -38,6 +39,13 @@ final class DevServiceProcess implements AutoCloseable {
     private static final long PROBE_INTERVAL_MILLIS = 200;
     private static final int UNAVAILABLE_PROBES = 3;
 
+    // Strip CSI styling, OSC (including hyperlinks), and single-character escape sequences before matching.
+    private static final Pattern ANSI = Pattern.compile(
+            "\\x1B\\][^\\x07\\x1B]*(?:\\x07|\\x1B\\\\)|(?:\\x1B\\[|\\x9B)[0-?]*[ -/]*[@-~]|\\x1B[@-_]");
+
+    private final Object lifecycle = new Object();
+    private final AtomicBoolean started = new AtomicBoolean();
+    private final AtomicBoolean logReady = new AtomicBoolean();
     private final String id;
     private final DevServiceConfig config;
     private final String ownershipMarker;
@@ -91,7 +99,7 @@ final class DevServiceProcess implements AutoCloseable {
             environment = processEnvironment(id, sessionId, url, ports, environment);
             DevServiceConfig.Readiness readiness = new DevServiceConfig.Readiness(
                     resolver.resolve(config.readiness().http()), resolver.resolve(config.readiness().tcp()),
-                    config.readiness().timeout());
+                    config.readiness().log(), config.readiness().timeout());
             return new DevServiceProcess(
                     id, config, projectDirectory, sessionId + "-service-" + id, ports, url,
                     resolver.resolve(config.command()), resolver.resolve(config.stopCommand()), workingDirectory,
@@ -125,37 +133,79 @@ final class DevServiceProcess implements AutoCloseable {
     }
 
     void start() {
-        if (closed.get()) {
-            return;
-        }
-        if (!Files.isDirectory(workingDirectory)) {
-            fail("service directory does not exist: " + workingDirectory);
-            throw new DevServerStartupException("Service " + id + " directory does not exist: " + workingDirectory);
-        }
-        detail = config.managed() ? "starting managed service" : "waiting for external service";
-        publishStatus();
-        if (config.managed()) {
-            try {
-                Process started = ProcessUtils.startWithStreams(
-                        ProcessUtils.shellCommand(command, ownershipMarker), workingDirectory, environment,
-                        outputConsumer);
-                process = started;
-                publishStatus();
-                started.onExit().thenRun(() -> processExited(started));
-            } catch (IOException e) {
-                fail("could not start service command: " + oneLine(e.getMessage()));
-                throw new DevServerStartupException("Could not start service " + id + ": " + e.getMessage(), e);
+        synchronized (lifecycle) {
+            if (closed.get() || !started.compareAndSet(false, true)) {
+                return;
+            }
+            if (!Files.isDirectory(workingDirectory)) {
+                fail("service directory does not exist: " + workingDirectory);
+                throw new DevServerStartupException("Service " + id + " directory does not exist: " + workingDirectory);
+            }
+            detail = config.managed() ? "starting managed service" : "waiting for external service";
+            publishStatus();
+            if (config.managed()) {
+                try {
+                    // This adapter is single-use. Install its matcher before starting either output reader.
+                    Process launched = ProcessUtils.startWithStreams(
+                            ProcessUtils.shellCommand(command, ownershipMarker), workingDirectory, environment,
+                            this::processOutput);
+                    process = launched;
+                    publishStatus();
+                    launched.onExit().thenRun(() -> processExited(launched));
+                } catch (IOException e) {
+                    String failure = "could not start service command: " + redact(oneLine(e.getMessage()));
+                    fail(failure);
+                    throw new DevServerStartupException("Could not start service " + id + ": " + failure);
+                }
             }
         }
         awaitReadiness();
-        if (closed.get()) {
-            return;
+        synchronized (lifecycle) {
+            if (closed.get()) {
+                return;
+            }
+            if ("failed".equals(state) || (config.managed() && !process.isAlive())) {
+                fail("service process exited before readiness");
+                throw new DevServerStartupException("Service " + id + " process exited before readiness");
+            }
+            ready.set(true);
+            state = "running";
+            detail = config.managed() ? "managed service ready" : "external service ready";
+            publishStatus();
+            // A log match proves startup only. onExit remains the lifetime monitor.
+            if (readiness.log() == null) {
+                startReadinessMonitor();
+            }
         }
-        ready.set(true);
-        state = "running";
-        detail = config.managed() ? "managed service ready" : "external service ready";
-        publishStatus();
-        startReadinessMonitor();
+    }
+
+    private void processOutput(ProcessUtils.ProcessOutput output) {
+        if (readiness.log() != null && !logReady.get() && !closed.get() && "starting".equals(state)) {
+            String line = ANSI.matcher(output.line()).replaceAll("");
+            if (readiness.log().matcher(line).find()) {
+                synchronized (lifecycle) {
+                    if (!closed.get() && "starting".equals(state)) {
+                        logReady.set(true);
+                    }
+                }
+            }
+        }
+        publishOutput(output);
+    }
+
+    private void publishOutput(ProcessUtils.ProcessOutput output) {
+        outputConsumer.accept(new ProcessUtils.ProcessOutput(output.stream(), redact(output.line())));
+    }
+
+    private String redact(String line) {
+        if (config.redact().isEmpty()) {
+            return line;
+        }
+        String result = ANSI.matcher(line).replaceAll("");
+        for (Pattern pattern : config.redact()) {
+            result = pattern.matcher(result).replaceAll("[REDACTED]");
+        }
+        return result;
     }
 
     boolean ready() {
@@ -193,15 +243,18 @@ final class DevServiceProcess implements AutoCloseable {
 
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
+        Process current;
+        synchronized (lifecycle) {
+            if (!closed.compareAndSet(false, true)) {
+                return;
+            }
+            ready.set(false);
+            current = process;
+            process = null;
         }
-        ready.set(false);
         if (config.managed() && stopCommand != null) {
             runStopCommand();
         }
-        Process current = process;
-        process = null;
         if (current != null && current.isAlive()) {
             ProcessUtils.forceStopTree(current);
         }
@@ -218,7 +271,7 @@ final class DevServiceProcess implements AutoCloseable {
                 fail("service process exited before readiness");
                 throw new DevServerStartupException("Service " + id + " process exited before readiness");
             }
-            if (probe()) {
+            if (readiness.log() != null ? logReady.get() : probe()) {
                 return;
             }
             sleep(PROBE_INTERVAL_MILLIS);
@@ -242,17 +295,22 @@ final class DevServiceProcess implements AutoCloseable {
                     return;
                 }
                 boolean observedReady = probe();
-                if (observedReady) {
-                    failedProbes = 0;
-                    if (!ready.getAndSet(true)) {
-                        state = "running";
-                        detail = "service recovered";
+                synchronized (lifecycle) {
+                    if (closed.get() || "failed".equals(state)) {
+                        return;
+                    }
+                    if (observedReady) {
+                        failedProbes = 0;
+                        if (!ready.getAndSet(true)) {
+                            state = "running";
+                            detail = "service recovered";
+                            publishStatus();
+                        }
+                    } else if (++failedProbes >= UNAVAILABLE_PROBES && ready.getAndSet(false)) {
+                        state = "degraded";
+                        detail = "service unavailable" + (probeFailure == null ? "" : ": " + probeFailure);
                         publishStatus();
                     }
-                } else if (++failedProbes >= UNAVAILABLE_PROBES && ready.getAndSet(false)) {
-                    state = "degraded";
-                    detail = "service unavailable" + (probeFailure == null ? "" : ": " + probeFailure);
-                    publishStatus();
                 }
                 sleep(PROBE_INTERVAL_MILLIS);
             }
@@ -305,11 +363,12 @@ final class DevServiceProcess implements AutoCloseable {
     }
 
     private void processExited(Process exited) {
-        if (closed.get() || process != exited) {
-            return;
+        synchronized (lifecycle) {
+            if (closed.get() || process != exited) {
+                return;
+            }
+            fail("service process exited unexpectedly with code " + exited.exitValue());
         }
-        ready.set(false);
-        fail("service process exited unexpectedly with code " + exited.exitValue());
     }
 
     private void runStopCommand() {
@@ -317,12 +376,12 @@ final class DevServiceProcess implements AutoCloseable {
         try {
             cleanup = ProcessUtils.startWithStreams(
                     ProcessUtils.shellCommand(stopCommand, ownershipMarker), workingDirectory, environment,
-                    outputConsumer);
+                    this::publishOutput);
             if (!cleanup.waitFor(STOP_COMMAND_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 ProcessUtils.forceStopTree(cleanup);
             }
         } catch (IOException e) {
-            outputConsumer.accept(new ProcessUtils.ProcessOutput(
+            publishOutput(new ProcessUtils.ProcessOutput(
                     "stderr", "cleanup command could not start: " + oneLine(e.getMessage())));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -333,10 +392,15 @@ final class DevServiceProcess implements AutoCloseable {
     }
 
     private void fail(String failure) {
-        state = "failed";
-        detail = failure;
-        ready.set(false);
-        publishStatus();
+        synchronized (lifecycle) {
+            if (closed.get()) {
+                return;
+            }
+            state = "failed";
+            detail = redact(failure);
+            ready.set(false);
+            publishStatus();
+        }
     }
 
     private void publishStatus() {
