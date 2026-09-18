@@ -33,7 +33,7 @@ class DevEnvironmentRegistryTest {
         Path project = directory.resolve("orders");
         DevSession session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
                 .withGateway(DevSession.ServiceStatus.running(
-                        "gateway", "http://localhost:4200", 4200, null, "public"))
+                        "gateway", "http://localhost:4200", 4200, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")))
                 .withApp(DevSession.ServiceStatus.running("app", null, null, null, "running")
                                  .withMetadata(Map.of("application.orders.pid", "123")));
         new DevSessionStore(project).writeSession(session);
@@ -67,7 +67,7 @@ class DevEnvironmentRegistryTest {
         Path project = directory.resolve("orders");
         var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
         DevSession session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public"));
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
         var store = new DevSessionStore(project);
         store.writeSession(session);
         registry.register(session);
@@ -82,7 +82,7 @@ class DevEnvironmentRegistryTest {
         assertEquals(before, java.nio.file.Files.readString(project.resolve(".fluxzero/dev/session.json")));
 
         var restarted = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4300", 4300, null, "public"));
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4300", 4300, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
         store.writeSession(restarted);
         registry.register(restarted);
         assertEquals(1, registry.listKnown().size());
@@ -94,12 +94,31 @@ class DevEnvironmentRegistryTest {
     }
 
     @Test
+    void doesNotInventDashboardRoutesForOlderRunningServers(@TempDir Path directory) {
+        Path project = directory.resolve("legacy");
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4242", 4242, null, "public"));
+        var store = new DevSessionStore(project);
+        store.writeSession(session);
+        registry.register(session);
+        var legacy = registry.listKnown().getFirst();
+        assertEquals("running", legacy.status());
+        assertEquals(4242, legacy.port());
+        assertEquals(null, legacy.consoleUrl());
+        assertTrue(legacy.detail().contains("Dashboard unavailable"));
+        store.writeSession(session.withGateway(session.gateway().withMetadata(Map.of(DevConsole.CAPABILITY, "1"))));
+        assertEquals("http://localhost:4242/_fluxzero/dev/", registry.listKnown().getFirst().consoleUrl());
+        assertEquals(null, registry.listKnown().getFirst().detail());
+    }
+
+    @Test
     void overviewSeparatesSameNamedFoldersAndDoesNotExposeUntrustedUrls(@TempDir Path directory) {
         var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
         for (String parent : java.util.List.of("first", "second")) {
             Path project = directory.resolve(parent).resolve("orders");
             var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                    .withGateway(DevSession.ServiceStatus.running("gateway", "http://example.com:4200", 4200, null, "public"));
+                    .withGateway(DevSession.ServiceStatus.running("gateway", "http://example.com:4200", 4200, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
             new DevSessionStore(project).writeSession(session);
             registry.register(session);
         }
@@ -112,7 +131,7 @@ class DevEnvironmentRegistryTest {
         Path project = directory.resolve("orders");
         var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
         var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public"));
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
         var store = new DevSessionStore(project);
         store.writeSession(withProcess(session, session.pid(), session.startedAt(), Instant.now().minusSeconds(30).toEpochMilli()));
         registry.register(session);

@@ -33,6 +33,7 @@ import {sendCommand} from './dom-handlers';
               } @else {
                 <div class="server-option" aria-disabled="true">
                   <ng-container [ngTemplateOutlet]="entry"/>
+                  @if(environment.detail) {<span class="server-detail">{{environment.detail}}</span>}
                 </div>
               }
             }
@@ -71,6 +72,7 @@ import {sendCommand} from './dom-handlers';
   .server-options {overflow-y:auto;overscroll-behavior:contain;min-height:0;}
   .server-group + .server-group {margin-top:6px;}
   .server-group-title {margin:0;padding:8px 10px;font-size:12px;font-weight:700;color:var(--dashboard-muted);}
+  .server-detail {grid-column:1/-1;font-size:12px;color:var(--dashboard-muted);white-space:normal;}
   .server-option {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;width:100%;padding:10px;border:0;border-radius:5px;
     background:transparent;color:var(--dashboard-text);text-align:left;text-decoration:none;font:inherit;}
   a.server-option:hover, button.server-option:hover {background:var(--dashboard-active-soft);}

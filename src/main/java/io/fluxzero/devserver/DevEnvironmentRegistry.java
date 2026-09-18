@@ -188,6 +188,7 @@ final class DevEnvironmentRegistry {
         boolean running = current != null && !current.status().startsWith("stopped")
                 && ProcessUtils.isAlive(current.pid(), current.startedAt());
         boolean responsive = running && Instant.now().toEpochMilli() - current.heartbeatAt() <= HEARTBEAT_TIMEOUT.toMillis();
+        boolean dashboardSupported = current != null && "1".equals(current.gateway().metadata().get(DevConsole.CAPABILITY));
         String address = current != null && current.gateway().url() != null ? current.gateway().url() : known.url();
         String consoleUrl = null;
         Integer port = null;
@@ -198,14 +199,15 @@ final class DevEnvironmentRegistry {
             if (java.util.Set.of("localhost", "127.0.0.1", "[::1]", "::1").contains(host)
                     && "http".equals(uri.getScheme()) && uri.getRawUserInfo() == null && uri.getPort() > 0) {
                 port = uri.getPort();
-                if (responsive && "running".equals(current.gateway().state())) {
+                if (responsive && dashboardSupported && "running".equals(current.gateway().state())) {
                     consoleUrl = "http://" + host + ":" + port + DevConsole.ROOT;
                 }
             }
         } catch (RuntimeException ignored) { /* No usable public local URL. */ }
         return new ConsoleEnvironment(hash(project.toString()), Files.isDirectory(project), displayName(project),
                 project.toString(), running ? "running" : "stopped", port, consoleUrl,
-                running && !responsive ? "Not responding" : null);
+                running && !responsive ? "Not responding" : running && !dashboardSupported
+                        ? "Dashboard unavailable. Restart with a dashboard-enabled dev server." : null);
     }
 
     record KnownProject(int version, String projectDirectory, String url, boolean hidden) { }

@@ -21,6 +21,11 @@ replacing the MCP session. Non-empty directories without a build root remain inv
 For independent full suites and dependency changes while using a frontend watcher, see
 [external verification and build isolation](docs/external-verification.md).
 
+The dashboard's dev server selector only links to sessions whose gateway advertises
+`metadata.devConsoleVersion: "1"` in `.fluxzero/dev/session.json`. Older servers remain
+listed with a dashboard-unavailable message instead of routing into the customer app.
+Restart those environments with a dashboard-enabled Dev Server build to switch to them.
+
 ## Requirements
 
 - JDK 25 for building and running the dev server

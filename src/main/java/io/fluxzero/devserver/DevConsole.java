@@ -29,6 +29,7 @@ import java.util.function.Supplier;
 
 /** Local console shell. Modules own their assets and API; the shell only hosts and navigates them. */
 final class DevConsole implements AutoCloseable {
+    static final String CAPABILITY = "devConsoleVersion";
     static final String ROOT = "/_fluxzero/dev/";
     static final String UPDATES = ROOT + "updates";
     static final String MONITORING = ROOT + "monitoring/";

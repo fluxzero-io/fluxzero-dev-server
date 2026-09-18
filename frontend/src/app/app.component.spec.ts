@@ -192,6 +192,17 @@ describe('Dev console navigation', () => {
     expect(root.querySelectorAll('.server-group').length).toBe(0);
     expect(root.querySelector('.server-empty')?.textContent).toBe('No matching dev servers');
   });
+  it('explains unavailable dashboards without linking into the customer application', () => {
+    fixture.componentInstance.environments.update(list => [...list, {...list[1], id:'c'.repeat(64),
+      projectName:'Legacy ticketing',status:'running',consoleUrl:null,
+      detail:'Dashboard unavailable. Restart with a dashboard-enabled dev server.'}]);
+    openPicker();
+    const root: HTMLElement = fixture.nativeElement;
+    const unavailable = root.querySelector('.server-option[aria-disabled="true"]')!;
+    expect(unavailable.textContent).toContain('Legacy ticketing');
+    expect(unavailable.textContent).toContain('Dashboard unavailable');
+    expect(unavailable.querySelector('a,button')).toBeNull();
+  });
   it('offers only validated console URLs for navigation', () => {
     const current = fixture.componentInstance.environments()[0];
     expect(environmentConsoleUrl(current)).toBe('http://localhost:4200/_fluxzero/dev/#application');

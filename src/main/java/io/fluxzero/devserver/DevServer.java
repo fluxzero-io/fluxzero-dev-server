@@ -922,7 +922,7 @@ public class DevServer implements AutoCloseable {
                   + " and pass-through paths " + config.frontend().backendPaths()
                 : "public dev URL; all application traffic routed to the frontend";
         updateGatewayStatus(DevSession.ServiceStatus.running(
-                "gateway", publicUrl, devGateway.port(), null, detail));
+                "gateway", publicUrl, devGateway.port(), null, detail).withMetadata(Map.of(DevConsole.CAPABILITY, "1")));
     }
 
     private void cleanupPreviousSessionIfStale() {

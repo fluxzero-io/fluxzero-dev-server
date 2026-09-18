@@ -43,7 +43,7 @@ class DevConsoleProjectStarterTest {
             entered.countDown();
             assertTrue(release.await(5, TimeUnit.SECONDS));
             store.writeSession(DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                    .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public")));
+                    .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public").withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1"))));
             return 0;
         })) {
             var first = starter.start(known.id());
