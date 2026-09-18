@@ -44,7 +44,9 @@ public final class DevProjectConfigMain {
             # fastCompiler: false
             # frontendOnly: false # true skips the local runtime, proxy, IDP, applications, compilation and tests
 
-            # Optional local monitoring at /_fluxzero/dev/ (see docs/local-monitoring.md).
+            # Local monitoring inherits ~/.fluxzero/dev/monitoring.yaml when present.
+            # Set monitoring: {enabled: false} to disable it in this project/profile.
+            # Explicit artifact paths replace user defaults (see docs/local-monitoring.md).
             # monitoring:
             #   auditlogJar: ../fluxzero-auditlog/backend/target/auditlog.jar
             #   uiDirectory: ../fluxzero-auditlog/frontend/dist/fluxzero-auditlog/browser

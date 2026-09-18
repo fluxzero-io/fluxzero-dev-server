@@ -331,6 +331,7 @@
                 <configuration>
                     <systemPropertyVariables>
                         <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                        <fluxzero.dev.monitoringDefaults>${project.build.directory}/dev-test-environments/monitoring.yaml</fluxzero.dev.monitoringDefaults>
                         <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                         <fluxzero.maven.enabled>true</fluxzero.maven.enabled>
                         <logback.statusListenerClass>ch.qos.logback.core.status.NopStatusListener</logback.statusListenerClass>
@@ -427,6 +428,7 @@
                             </includes>
                             <systemPropertyVariables>
                                 <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                                <fluxzero.dev.monitoringDefaults>${project.build.directory}/dev-test-environments/monitoring.yaml</fluxzero.dev.monitoringDefaults>
                                 <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                                 <fluxzero.devserver.e2e>true</fluxzero.devserver.e2e>
                                 <fluxzero.project.version>${fluxzero.version}</fluxzero.project.version>
@@ -467,6 +469,7 @@
                             </includes>
                             <systemPropertyVariables>
                                 <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                                <fluxzero.dev.monitoringDefaults>${project.build.directory}/dev-test-environments/monitoring.yaml</fluxzero.dev.monitoringDefaults>
                                 <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                                 <fluxzero.devserver.frontend.e2e>true</fluxzero.devserver.frontend.e2e>
                                 <logback.statusListenerClass>ch.qos.logback.core.status.NopStatusListener</logback.statusListenerClass>

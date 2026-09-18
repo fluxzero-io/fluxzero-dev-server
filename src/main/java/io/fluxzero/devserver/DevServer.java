@@ -301,7 +301,8 @@ public class DevServer implements AutoCloseable {
 
     private void startMonitoring() {
         if (config.backendEnabled()) {
-            DevMonitoringConfig monitoringConfig = DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config().monitoring();
+            DevMonitoringConfig monitoringConfig = DevMonitoringDefaults.resolve(
+                    DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config());
             if (monitoringConfig != null) {
                 monitoring = new DevMonitoring(monitoringConfig, config.projectDirectory(), session.sessionId(),
                                                this::updateServiceStatus, this::print);

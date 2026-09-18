@@ -76,6 +76,33 @@ that field retain their previous behavior.
 
 ## Enable monitoring
 
+Monitoring is a development setting. To enable it by default for every local backend
+project on this machine, configure it once in `~/.fluxzero/dev/monitoring.yaml`:
+
+```yaml
+enabled: true
+auditlogJar: /absolute/path/to/auditlog.jar
+uiDirectory: /absolute/path/to/auditlog-ui
+storage: victorialogs
+retention: P1D
+maxDiskBytes: 1073741824
+```
+
+The file contains the monitoring fields directly, without `version` or a `monitoring`
+wrapper. Relative paths in this file resolve beside the file. The selected project's
+`monitoring` configuration replaces these defaults completely; its paths still resolve
+from the project directory. Put `monitoring: {enabled: false}` in a project or selected
+profile to opt out without specifying artifact paths. Frontend-only environments never
+inherit local monitoring. Changes take effect on the next environment start/restart.
+With no user defaults and no project monitoring block, monitoring remains disabled.
+Malformed defaults fail startup with the filename rather than silently disabling monitoring.
+The optional JVM property `fluxzero.dev.monitoringDefaults` selects another defaults file;
+automated tests use an isolated path so user settings never launch services in test fixtures.
+
+These defaults reuse already-built Auditlog artifacts; they do not download or build the
+private Auditlog repository. Install compatible artifacts once before enabling them.
+Each dev environment still owns separate monitoring processes and storage.
+
 Build the local Auditlog checkout once (Java 25 and its Node/npm version):
 
 ```sh

@@ -407,6 +407,8 @@ default is the folder name; **Use folder name** restores it. These local display
 and survive server restarts. They do not rename project directories or applications. Inactive servers can be
 removed using the trash button in the dialog shown when selecting them, without deleting project files.
 
+Configure `~/.fluxzero/dev/monitoring.yaml` once to enable Auditlog by default for local backend projects.
+A project's `monitoring` block overrides it; `monitoring: {enabled: false}` opts out.
 See [local monitoring](docs/local-monitoring.md) for Auditlog setup, native VictoriaLogs, the testserver adapter
 and resource limits.
 

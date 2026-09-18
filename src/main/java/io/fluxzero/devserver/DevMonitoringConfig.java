@@ -18,12 +18,20 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Set;
 
-/** Opt-in local Auditlog artifacts; both storage implementations use the same UI and backend. */
+/** Local Auditlog artifacts; both storage implementations use the same UI and backend. */
 public record DevMonitoringConfig(String auditlogJar, String uiDirectory, String storage,
                                   String victoriaLogsBinary, Long maxRecords, Long maxBytes,
-                                  String retention, String javaExecutable, Long maxDiskBytes) {
+                                  String retention, String javaExecutable, Long maxDiskBytes, Boolean enabled) {
+    public DevMonitoringConfig(String auditlogJar, String uiDirectory, String storage,
+                               String victoriaLogsBinary, Long maxRecords, Long maxBytes,
+                               String retention, String javaExecutable, Long maxDiskBytes) {
+        this(auditlogJar, uiDirectory, storage, victoriaLogsBinary, maxRecords, maxBytes,
+             retention, javaExecutable, maxDiskBytes, true);
+    }
+
     public DevMonitoringConfig {
-        if (auditlogJar == null || auditlogJar.isBlank() || uiDirectory == null || uiDirectory.isBlank()) {
+        enabled = enabled == null || enabled;
+        if (enabled && (auditlogJar == null || auditlogJar.isBlank() || uiDirectory == null || uiDirectory.isBlank())) {
             throw new IllegalArgumentException("monitoring requires auditlogJar and uiDirectory");
         }
         storage = storage == null ? "victorialogs" : storage;

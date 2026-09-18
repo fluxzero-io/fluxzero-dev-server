@@ -77,7 +77,7 @@ record DevProjectConfig(
         validateMonitoringServices(monitoring, services);
         validateFrontendOnly(frontendOnly, mainClass, applicationName, namespace, apps, applicationConfig,
                              projects, idp, fastCompiler, backendPaths, frontend, frontends, commands);
-        if (monitoring != null && Boolean.TRUE.equals(frontendOnly)) {
+        if (monitoring != null && monitoring.enabled() && Boolean.TRUE.equals(frontendOnly)) {
             throw new IllegalArgumentException("monitoring requires a local backend");
         }
         profiles = profiles == null ? Map.of()
@@ -502,7 +502,7 @@ record DevProjectConfig(
     }
 
     private static void validateMonitoringServices(DevMonitoringConfig monitoring, Map<String, Service> services) {
-        if (monitoring != null && services != null && services.keySet().stream().anyMatch(id -> id.startsWith("monitoring-"))) {
+        if (monitoring != null && monitoring.enabled() && services != null && services.keySet().stream().anyMatch(id -> id.startsWith("monitoring-"))) {
             throw new IllegalArgumentException("Service names starting with monitoring- are reserved for local monitoring");
         }
     }
