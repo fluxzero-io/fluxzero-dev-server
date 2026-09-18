@@ -1,4 +1,5 @@
 import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorRef, computed, DestroyRef, effect} from '@angular/core';
+import {NgTemplateOutlet} from '@angular/common';
 import {ProjectPathComponent} from './project-path.component';
 import {EnvironmentNameComponent} from './environment-name.component';
 import {Status} from './models';
@@ -9,7 +10,7 @@ import {totalMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [NgTemplateOutlet, EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading"><div>
     <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
     <div class="project-title-row">
@@ -19,27 +20,28 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
     </div></div>
-    <div class="component-table-scroll"><table role="table" class="component-table" aria-label="Environment components">
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th><th role="columnheader" scope="col">Storage</th><th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th></tr></thead>
-      <tbody role="rowgroup">@for(component of groups(); track component.id) {
-        <tr role="row">
+    <ng-template #componentCard let-component>
+    <div class="component-table-scroll"><table role="table" class="component-table" [attr.aria-label]="component.application ? 'Application resources' : 'Infrastructure resources'">
+      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}<th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th></tr></thead>
+      <tbody role="rowgroup">
+        <tr role="row" [class.application-component]="component.application">
           <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i>{{component.name}}
           </th>
           <td role="cell" class="component-status">
             @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
-          <td role="cell" class="component-memory" data-label="Memory">
+          <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
             @if(component.application) {<dev-resource-chart [samples]="state.resourceHistory || []" metric="applicationMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
             @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><dev-resource-chart [samples]="state.resourceHistory || []" metric="devserverMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span></dev-resource-detail>}
           </td>
-          <td role="cell" class="component-storage" data-label="Storage">
+          @if(!component.application) {<td role="cell" class="component-storage" data-label="Monitoring storage">
             @if(component.id === 'devserver' && state.monitoring.resources) {
               <dev-resource-chart [samples]="state.resourceHistory || []" metric="monitoringStorage"/>
               <span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}} / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}</span>
 
             } @else {—}
-          </td>
+          </td>}
           <td role="cell" class="component-restart">
             @let restartAction = component.application ? 'restart-application' : 'restart-devserver';
             <button class="icon-button" type="button" [attr.aria-label]="component.application ? 'Restart application' : 'Restart dev server'" title="Restart" [attr.aria-busy]="maintenanceAction() === restartAction" [disabled]="busy() || !(component.application ? state.maintenance?.applicationRestartSupported : state.maintenance?.restartSupported)" (click)="maintain(restartAction)">
@@ -55,8 +57,9 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             </button>}
           </td>
         </tr>
-      }</tbody>
+      </tbody>
     </table></div>
+    </ng-template>
     <dialog #confirmation class="maintenance-confirm" aria-labelledby="maintenance-title" aria-describedby="maintenance-description" (cancel)="cancelConfirmation()">
     @if(confirmAction(); as action) {
       <h2 id="maintenance-title">Truncate data?</h2>
@@ -65,6 +68,10 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
+    <div class="application-workspace" aria-label="Application workspace">
+      <section class="application-overview" aria-label="Application">
+        <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: groups()[0]}"/>
+      </section>
     <section class="environment-tests" aria-label="Tests"><div class="test-summary">
       <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Feedback from your latest changes.</p></div></div>
       <div class="test-controls">
@@ -92,12 +99,17 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
     <dev-test-output [lines]="state.testOutput || []"/></section>
+    </div>
+    <section class="infrastructure-section" aria-labelledby="infrastructure-title">
+      <header><h2 id="infrastructure-title">Development infrastructure</h2>
+        <p>Combined usage of the dev server, Fluxzero runtime, monitoring and supporting services.</p></header>
+      <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: groups()[1]}"/>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
       @if(r.error || r.auditlog?.storage?.retentionError) {<p role="alert">{{r.error || r.auditlog.storage.retentionError}}</p>}
     }
     @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
-    </section>}`})
+    </section></section>}`})
 @Handler()
 export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -115,7 +127,7 @@ export class EnvironmentComponent {
       const total = components.reduce((sum, c) => sum + count(c).total, 0);
       return {
         id: application ? 'application' : 'devserver', application, components,
-        name: application ? components.find(c => !c.id.startsWith('frontend-'))?.name || state.project : 'Fluxzero dev server',
+        name: application ? components.find(c => !c.id.startsWith('frontend-'))?.name || state.project : 'All services',
         runningProcesses: running, totalProcesses: total,
         state: running > 0 && running < total ? 'degraded' : components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
         memoryBytes: totalMemory(components),

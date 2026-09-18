@@ -208,7 +208,7 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table-scroll {overflow:visible;margin:20px 0;}
 .component-table {display:block;width:100%;}
 .component-table thead {display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
-.component-table tbody {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
+.component-table tbody {display:grid;grid-template-columns:minmax(0,1fr);gap:20px;}
 .component-table tbody tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:22px;gap:14px 16px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
 .component-table tbody tr:hover>* {background:transparent;}
 .component-table tbody th,.component-table tbody td {display:flex;align-items:center;border:0;padding:0;min-width:0;}
@@ -234,3 +234,33 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .maintenance-confirm {border-radius:16px;}
 @media(max-width:1100px) {.component-table tbody {grid-template-columns:1fr;}}
 @media(max-width:650px) {.current-project > .page-heading,.environment-tests {padding:20px;}.component-table tbody tr {padding:18px;}.current-project .project-title-row h1 {padding-left:0;}}
+
+/* Customer work and shared infrastructure have separate visual scopes. */
+.application-workspace {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px;margin-top:20px;}
+.application-overview {min-width:0;}
+.application-overview .component-table-scroll {margin:0;}
+.application-overview .component-memory {grid-column:1/-1;}
+.application-workspace .environment-tests {min-width:0;}
+.infrastructure-section {margin-top:32px;padding-top:24px;border-top:1px solid var(--dashboard-border);}
+.infrastructure-section header {margin-bottom:16px;}
+.infrastructure-section h2 {font-size:17px;}
+.infrastructure-section header p {font-size:12px;margin-top:6px;}
+.infrastructure-section .component-table-scroll {margin:0;}
+.infrastructure-section .component-table tbody tr {grid-template-columns:minmax(150px,1.2fr) repeat(2,minmax(0,1fr)) auto auto;gap:12px 20px;box-shadow:none;background:var(--dashboard-panel-soft);border-radius:14px;}
+.infrastructure-section .component-table tbody .component-name {grid-column:1;grid-row:1;font-size:14px;}
+.infrastructure-section .component-name > i {flex-basis:32px;height:32px;font-size:17px;border-radius:10px;}
+.infrastructure-section .component-table tbody .component-status {grid-column:1;grid-row:2;margin-bottom:0;}
+.infrastructure-section .component-table tbody .component-memory {grid-column:2;grid-row:1/3;border-top:0;justify-content:center;}
+.infrastructure-section .component-table tbody .component-storage {grid-column:3;grid-row:1/3;border-top:0;justify-content:center;}
+.infrastructure-section .component-table tbody .component-restart {grid-column:4;grid-row:1/3;}
+.infrastructure-section .component-table tbody .component-actions {grid-column:5;grid-row:1/3;}
+@media(max-width:1100px) {
+  .application-workspace {grid-template-columns:minmax(0,1fr);}
+  .infrastructure-section .component-table tbody tr {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .infrastructure-section .component-table tbody .component-name {grid-column:1/-1;grid-row:1;}
+  .infrastructure-section .component-table tbody .component-status {grid-column:1/-1;grid-row:2;}
+  .infrastructure-section .component-table tbody .component-memory {grid-column:1;grid-row:3;}
+  .infrastructure-section .component-table tbody .component-storage {grid-column:2;grid-row:3;}
+  .infrastructure-section .component-table tbody .component-restart {grid-column:1;grid-row:4;}
+  .infrastructure-section .component-table tbody .component-actions {grid-column:2;grid-row:4;}
+}

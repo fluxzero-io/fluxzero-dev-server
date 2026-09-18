@@ -426,22 +426,25 @@ describe('Dev console navigation', () => {
   it('shows measured component memory, the application link and actual test counts', () => {
     const root: HTMLElement = fixture.nativeElement;
     expect(root.querySelector('.cards')).toBeNull();
-    expect(Array.from(root.querySelectorAll('.component-table thead th')).map(th => th.textContent)).toEqual(['Component', 'Status', 'Memory', 'Storage', '', '']);
+    expect(root.querySelector('.application-overview .component-storage')).toBeNull();
+    expect(root.querySelector('.application-overview')?.textContent).not.toContain('Storage');
+    expect(root.querySelector('.infrastructure-section h2')?.textContent).toBe('Development infrastructure');
+    expect(root.querySelector('.infrastructure-section')?.contains(root.querySelectorAll('.component-table')[1])).toBeTrue();
+    expect(root.querySelector('.application-workspace')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
     expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
     expect(root.querySelector('.component-actions .application-link')?.getAttribute('href')).toBe('#application');
-    expect(root.querySelector('.component-table')?.textContent).toContain('120.0 MiB');
+    expect(root.querySelector('.infrastructure-section .component-table')?.textContent).toContain('120.0 MiB');
     expect(root.querySelector('.component-actions .application-link')?.getAttribute('aria-label')).toBe('Open Repair Café');
     const componentRows = root.querySelectorAll('.component-table tbody tr');
-    expect(componentRows[0].children[4].querySelector('button')?.getAttribute('aria-label')).toBe('Restart application');
+    expect(componentRows[0].querySelector('.component-restart button')?.getAttribute('aria-label')).toBe('Restart application');
     expect(componentRows[1].children[4].querySelector('button')?.getAttribute('aria-label')).toBe('Restart dev server');
-    expect(componentRows[0].children[5].querySelector('a')?.getAttribute('title')).toBe('Open application');
+    expect(componentRows[0].querySelector('.component-actions a')?.getAttribute('title')).toBe('Open application');
     expect(componentRows[1].children[5].querySelector('button')?.getAttribute('aria-label')).toBe('Truncate data');
     expect(root.querySelector('.test-bar')?.getAttribute('aria-label')).toBe('8 passed, 2 failed, 11 total, 1 skipped');
     expect(root.querySelector('.test-counts [title]')?.getAttribute('title')).toBe('1 skipped');
     expect(root.querySelector('.test-summary > small')).toBeNull();
   });
-  it('keeps chart baselines and memory labels aligned during resource updates', async () => {
-    const desktop = matchMedia('(min-width:1201px)').matches;
+  it('keeps chart baselines aligned and memory labels within their cells during resource updates', async () => {
     const root: HTMLElement = fixture.nativeElement;
     const state = fixture.componentInstance.status()!;
     for (let i = 0; i < 8; i++) {
@@ -455,22 +458,18 @@ describe('Dev console navigation', () => {
       for (const row of root.querySelectorAll('.component-table tbody tr')) {
         const cell = row.querySelector('.component-memory')!;
         const cellRect = cell.getBoundingClientRect();
-        const rowRect = row.querySelector('.component-restart')!.getBoundingClientRect();
         const chartRect = cell.querySelector('dev-resource-chart')!.getBoundingClientRect();
         const valueRect = cell.querySelector('.resource-value')!.getBoundingClientRect();
         expect(chartRect.height).toBeGreaterThan(0);
         expect(chartRect.bottom).withContext('chart bottom after update ' + i).toBeCloseTo(cellRect.bottom, 1);
-        if (desktop) {
-          expect(cellRect.bottom).withContext('cell bottom after update ' + i).toBeCloseTo(rowRect.bottom, 1);
-          expect(valueRect.top + valueRect.height / 2).withContext('label center after update ' + i)
-            .toBeCloseTo(rowRect.top + rowRect.height / 2 + 0.5, 1);
-        }
+        expect(valueRect.top).toBeGreaterThanOrEqual(cellRect.top);
+        expect(valueRect.bottom).toBeLessThanOrEqual(cellRect.bottom);
       }
     }
   });
   it('keeps resource columns equal while adapting to longer formatted values', () => {
     const root: HTMLElement = fixture.nativeElement;
-    const cells = root.querySelector('.component-table tbody tr')!.children;
+    const cells = root.querySelector('.infrastructure-section .component-table tbody tr')!.children;
     const initialWidth = cells[2].getBoundingClientRect().width;
     expect(initialWidth).toBeGreaterThan(0);
     expect(cells[3].getBoundingClientRect().width).toBe(initialWidth);
@@ -480,9 +479,8 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     const expandedWidth = cells[2].getBoundingClientRect().width;
     expect(cells[3].getBoundingClientRect().width).toBe(expandedWidth);
-    if (matchMedia('(min-width:1201px)').matches) expect(expandedWidth).toBeGreaterThan(initialWidth);
-    else expect(expandedWidth).toBeLessThanOrEqual(root.clientWidth);
-    expect(root.querySelectorAll('.component-storage')[1].textContent).toContain('512.0 MiB / 1.0 TiB');
+    expect(expandedWidth).toBeLessThanOrEqual(root.clientWidth);
+    expect(root.querySelector('.infrastructure-section .component-storage')!.textContent).toContain('512.0 MiB / 1.0 TiB');
   });
   it('fits long project names and paths without horizontal scroll in the compact layout', () => {
     if (matchMedia('(min-width:1201px)').matches) return;

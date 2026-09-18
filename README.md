@@ -427,11 +427,13 @@ Embedded previews without restart support display the active profile without all
 
 ### Component resources and maintenance
 
-Dev environment shows two cards: the customer application (including its managed frontends), followed by the Fluxzero dev
-server and its supporting processes. A stopped customer application stays visible. Both status badges show only
-the status text, without process counts. The customer card has no popovers. Immediate hover/focus popovers on the dev-server
-card break down status and memory by component and follow the selected theme. Hovering the total memory chart
-also opens the memory popover. Each component has its own memory chart.
+Dev environment groups the customer application (including its managed frontends) with its tests.
+Customer applications show memory, status and application actions, but no storage metric.
+A separate **Development infrastructure** section below shows combined usage of the dev server, Fluxzero runtime,
+monitoring and other supporting services. Monitoring storage is reported only in that infrastructure section.
+A stopped customer application stays visible. Status badges show the status text without process counts.
+The customer card has no popovers; infrastructure status and memory offer hover/focus breakdowns by component.
+Hovering the total memory chart also opens the memory popover. Each component has its own memory chart.
 Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
 VictoriaLogs reports Go-managed memory (Sys minus HeapReleased) and its exported Go memory limit. The dev server
 reads its own heap directly and samples managed Java processes through local JMX. Attach and sampling run in a
