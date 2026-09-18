@@ -323,12 +323,39 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.textContent).toContain('/projects/orders');
     expect(fixture.nativeElement.querySelector('[role="alert"]').textContent).toContain('Project is running.');
   });
+  it('opens the app in a persistent iframe and retains it across console navigation and status updates', () => {
+    const app = fixture.componentInstance;
+    const status = {...app.status()!, components: [{id: 'app', name: 'Home', state: 'running',
+      application: true, memoryBytes: null, url: location.origin + '/?preview=1'}]};
+    push({status, environments: app.environments()}); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBeNull();
+    fixture.nativeElement.querySelector('.application-link').click(); fixture.detectChanges();
+    expect(location.hash).toBe('#application');
+    const frame = fixture.nativeElement.querySelector('iframe[name="dev-application"]') as HTMLIFrameElement;
+    expect(frame.src).toBe(location.origin + '/?preview=1');
+    const source = app.applicationSource();
+    app.navigate('projects'); fixture.detectChanges();
+    expect(frame.closest('section')!.hidden).toBeTrue();
+    push({status: {...status}, environments: app.environments()}); fixture.detectChanges();
+    app.navigate('application'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    expect(app.applicationSource()).toBe(source);
+    expect(frame.closest('section')!.hidden).toBeFalse();
+    expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBeNull();
+  });
+  it('handles direct app routes and shows an unavailable state without a frame URL', () => {
+    history.replaceState(null, '', '#application');
+    fixture.componentInstance.readRoute(); fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('application');
+    expect(fixture.nativeElement.querySelector('.application-empty').textContent).toContain('not available yet');
+    expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBeNull();
+  });
   it('shows measured component memory, the application link and actual test counts', () => {
     const root: HTMLElement = fixture.nativeElement;
     expect(root.querySelector('.cards')).toBeNull();
     expect(Array.from(root.querySelectorAll('.component-table thead th')).map(th => th.textContent)).toEqual(['Component', 'Status', 'Memory', 'Storage', '', '']);
     expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
-    expect(root.querySelector('.component-actions .application-link')?.getAttribute('href')).toBe('http://localhost:4200/');
+    expect(root.querySelector('.component-actions .application-link')?.getAttribute('href')).toBe('#application');
     expect(root.querySelector('.component-table')?.textContent).toContain('120.0 MiB');
     expect(root.querySelector('.component-actions .application-link')?.getAttribute('aria-label')).toBe('Open Repair Café');
     const componentRows = root.querySelectorAll('.component-table tbody tr');

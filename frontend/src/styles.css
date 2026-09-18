@@ -239,3 +239,13 @@ dev-projects {display:block;container-type:inline-size;}
 .project-page > .page-heading h1 {font-size:32px;font-weight:800;line-height:1.2;margin:0;}
 @container (max-width:991.98px) {.project-page {width:calc(100% - 32px);}}
 @container (max-width:575.98px) {.project-page {width:calc(100% - 24px);}}
+
+.application-page { display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
+.application-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 32px; border-bottom: 1px solid var(--dashboard-border); }
+.application-heading h1 { margin-bottom: 4px; }
+.application-heading p { overflow-wrap: anywhere; }
+.application-tools { display: flex; gap: 8px; flex-shrink: 0; }
+.application-page iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: #fff; }
+.application-empty { padding: 32px; }
+.application-empty h2 { margin-bottom: 8px; }
+@media(max-width: 650px) { .application-heading { padding: 24px 16px; }.application-empty { padding: 24px 16px; } }

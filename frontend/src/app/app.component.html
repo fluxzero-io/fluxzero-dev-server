@@ -9,6 +9,7 @@
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <nav aria-label="Dev server navigation">
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Project</span></a>
+      <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>Application</span></a>
       <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="monitoringExpanded.set(!monitoringExpanded())" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
         <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
@@ -23,6 +24,22 @@
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
     @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
+    <section class="application-page" [hidden]="route() !== 'application'" aria-labelledby="application-title">
+      <header class="application-heading">
+        <div><h1 id="application-title">Application</h1><p>{{currentName()}}</p></div>
+        @if(applicationUrl(); as url) {
+          <div class="application-tools">
+            <button class="icon-button" (click)="reloadApplication()" aria-label="Reload application" title="Reload application"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+            <a class="icon-button" [href]="url" aria-label="Open application full page" title="Open application full page"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
+          </div>
+        }
+      </header>
+      @if(applicationSource(); as source) {
+        <iframe #applicationFrame name="dev-application" [title]="currentName() + ' application'" [src]="source"></iframe>
+      } @else {
+        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Project page.</p></div>
+      }
+    </section>
     <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">
       <header class="monitoring-heading">
         <h1 id="monitoring-title">{{viewLabel()}}</h1>

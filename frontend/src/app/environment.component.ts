@@ -47,7 +47,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             </button>
           </td>
           <td role="cell" class="component-actions">
-            @if(component.application && component.url) {<a class="icon-button application-link" [href]="component.url" target="_blank" rel="noopener" [attr.aria-label]="'Open ' + component.name" title="Open application"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+            @if(component.application && component.url) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" [attr.aria-label]="'Open ' + component.name" title="Open application"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
             @if(!component.application) {<button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
               @if(maintenanceAction() === 'truncate-data') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Truncating data"></span>}
               @else {<i class="bi bi-trash" aria-hidden="true"></i>}
@@ -188,6 +188,11 @@ export class EnvironmentComponent {
     return results.totalKnown === false ? '?' : String(results.total);
   }
   percentage(value: number, total: number) { return total > 0 ? value * 100 / total : 0; }
+  openApplication(event: MouseEvent) {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    sendCommand(event.currentTarget as Element, 'navigate', 'application');
+  }
   openProjects(event: MouseEvent) {
     if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();

@@ -50,3 +50,21 @@ export function environmentConsoleUrl(environment: Environment): string | null {
     return url.href;
   } catch { return null; }
 }
+
+/** Preview the current gateway's application, never another origin or the console itself. */
+export function applicationUrl(status: Status | undefined, origin = location.origin): string | null {
+  const components = status?.components || [];
+  const frontends = components.filter(component => component.application && component.id.startsWith('frontend-'));
+  // The backend can be running before the gateway can serve the UI.
+  if (frontends.length && status?.frontend !== 'running') return null;
+  for (const component of components) {
+    if (!component.application || !component.url) continue;
+    try {
+      const url = new URL(component.url);
+      if (url.origin !== origin || !['http:', 'https:'].includes(url.protocol) || url.username || url.password
+        || decodeURIComponent(url.pathname).startsWith('/_fluxzero/')) continue;
+      return url.href;
+    } catch { /* Invalid or incomplete status cannot become a frame URL. */ }
+  }
+  return null;
+}

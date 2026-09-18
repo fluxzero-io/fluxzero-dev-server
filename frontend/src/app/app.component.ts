@@ -3,7 +3,7 @@ import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
-import {Environment, environmentConsoleUrl, monitoringPath, monitoringViews, Status} from './models';
+import {Environment, environmentConsoleUrl, applicationUrl, monitoringPath, monitoringViews, Status} from './models';
 import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
 import {ThemeMenuComponent} from './theme-menu.component';
@@ -24,6 +24,17 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly error = signal('');
   readonly actionError = signal('');
   readonly route = signal('projects');
+  readonly applicationOpened = signal(false);
+  readonly applicationUrl = computed(() => applicationUrl(this.status()));
+  readonly applicationSource = computed(() => {
+    const url = this.applicationUrl();
+    return this.applicationOpened() && url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : undefined;
+  });
+  @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
+  reloadApplication() {
+    const url = this.applicationUrl();
+    if (url && this.applicationFrame) this.applicationFrame.nativeElement.src = url;
+  }
   readonly dark = signal(false);
   readonly themePreference = signal('system');
   private readonly systemTheme = matchMedia('(prefers-color-scheme: dark)');
@@ -78,7 +89,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!path) return;
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
-    } else if (!['projects', 'environment'].includes(route)) return;
+    } else if (!['projects', 'environment', 'application'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
@@ -152,8 +163,9 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (route === 'monitoring') route = 'monitoring/messages';
     if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !['projects', 'environment'].includes(route)) route = 'projects';
+    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application'].includes(route)) route = 'projects';
     this.route.set(route);
+    if (route === 'application') this.applicationOpened.set(true);
     if (this.isMonitoring()) {
       this.monitoringExpanded.set(true);
       this.wantedPath = route.substring('monitoring'.length);

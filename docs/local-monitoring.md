@@ -47,6 +47,19 @@ bootstrap child processes. Existing historical test entries can be removed with
 the same trash button. A stale heartbeat is shown as not responding and disables the link. The overview
 endpoint exposes only display fields, never MCP credentials or session metadata.
 
+## Application preview
+
+Choose **Application** in the sidebar or the application's open button on the Project page
+to use the active environment's UI inside the dev console. The iframe uses the public
+application URL on the current gateway, so application routes, API calls, login and frontend
+hot reload use their normal origin. The app stays mounted when switching to Project or
+Monitoring, preserving its navigation and form state. A reload button resets the preview;
+**Open application full page** opens the app in the current tab without relying on pop-ups.
+If no application URL is available, the console shows an unavailable state.
+
+The console only embeds application URLs on its own origin and rejects its reserved routes.
+It does not remove an application's framing policies or alter application authentication.
+
 ## Console frontend
 
 `frontend/` contains the standalone Angular shell. The Maven build installs a
