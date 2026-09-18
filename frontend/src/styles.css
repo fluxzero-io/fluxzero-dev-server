@@ -212,7 +212,7 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table tbody tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:22px;gap:14px 16px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
 .component-table tbody tr:hover>* {background:transparent;}
 .component-table tbody th,.component-table tbody td {display:flex;align-items:center;border:0;padding:0;min-width:0;}
-.component-table tbody .component-name {display:flex;align-items:center;text-transform:none;letter-spacing:normal;background:transparent;color:var(--dashboard-text);grid-column:1/-1;white-space:normal;gap:12px;font-size:16px;}
+.component-table tbody .component-name {display:flex;align-items:center;text-transform:none;letter-spacing:normal;background:transparent;color:var(--dashboard-text);grid-column:1/-1;white-space:normal;overflow-wrap:anywhere;gap:12px;font-size:16px;}
 .component-name > i {display:flex;align-items:center;justify-content:center;flex:0 0 40px;height:40px;border-radius:12px;background:var(--dashboard-active-soft);color:var(--dashboard-active);font-size:20px;}
 .component-table tbody .component-status {grid-column:1/-1;justify-content:flex-start !important;margin-bottom:6px;}
 .component-table .badge {border-radius:20px;}
