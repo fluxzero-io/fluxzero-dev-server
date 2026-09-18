@@ -4,7 +4,7 @@ import {EnvironmentComponent} from './environment.component';
 
 @Component({selector: 'dev-projects', standalone: true, imports: [EnvironmentComponent], template: `
   <section class="page project-page">
-    <header class="page-heading"><h1>Project</h1></header>
+    <header class="page-heading"><h1>Dev environment</h1></header>
     @if(status()) {
       <dev-environment [status]="status()" [embedded]="true" [displayName]="current()?.projectName || ''"
         [projectId]="current()?.id || ''" [directoryExists]="current()?.directoryExists || false"/>

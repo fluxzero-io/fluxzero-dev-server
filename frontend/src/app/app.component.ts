@@ -23,7 +23,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly environments = signal<Environment[]>([]);
   readonly error = signal('');
   readonly actionError = signal('');
-  readonly route = signal('projects');
+  readonly route = signal('application');
   readonly applicationOpened = signal(false);
   readonly applicationUrl = computed(() => applicationUrl(this.status()));
   readonly applicationSource = computed(() => {
@@ -97,7 +97,7 @@ export class AppComponent implements OnInit, OnDestroy {
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {
     const url = environmentConsoleUrl(environment);
     if (!url) return;
-    if (environment.projectDirectory === this.status()?.projectDirectory) this.navigate('projects');
+    if (environment.projectDirectory === this.status()?.projectDirectory) this.navigate('application');
     else location.assign(url);
   }
   @HandleCommand('startEnvironment') async startEnvironment(id: string) {
@@ -156,7 +156,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   @HostListener('window:hashchange') @HostListener('window:popstate') readRoute() {
-    let route = location.hash.substring(1) || 'projects';
+    let route = location.hash.substring(1) || 'application';
     if (route === 'overview' || route === 'settings') {
       route = 'projects';
       history.replaceState(null, '', '#projects');

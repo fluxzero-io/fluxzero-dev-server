@@ -2,17 +2,17 @@
 
 The dev server serves its console at `/_fluxzero/dev/` on the public application
 port, including projects without a separate frontend and frontend-only projects.
-The reserved console route remains local in frontend-only mode. **Project** is the first menu item and landing
-page, showing only the selected dev server's application, components, resources and tests. The sidebar selector
+The reserved console route remains local in frontend-only mode. **App preview** is the first menu item and default landing
+page. **Dev environment**, immediately below it, shows the selected dev server's components, resources and tests. The sidebar selector
 groups results as **Current**, **Running** and **Stopped**. The whole result row is clickable. Search by server name or
-project folder. Choosing an active server opens its Project page. Choosing an inactive server with an existing
+project folder. Choosing an active server opens its App preview. Choosing an inactive server with an existing
 folder offers a confirmation to start it using its project configuration and the current dev-server distribution.
 Startup is bounded to two minutes, coalesces duplicate attempts and switches the browser only when a local
 console URL is ready. A failed start leaves the user on the current server. Temporary CLI overrides from a previous
 launch are not restored. The dialog also offers a trash button to remove an inactive server from the selector
-without deleting project files. Folder links are available on the Project page.
+without deleting project files. Folder links are available on the Dev environment page.
 
-Use the pencil next to the server title on the Project page to rename the current server. The folder name is the
+Use the pencil next to the server title on the Dev environment page to rename the current server. The folder name is the
 default and can be restored with **Use folder name**. Names are stored per canonical project path in the global registry's `names/`
 directory, independently of session registrations, so restarts and older server registrations do not overwrite
 them. Application names and project files are unchanged. **Monitoring** uses the same Auditlog UI as the dashboard,
@@ -49,10 +49,10 @@ endpoint exposes only display fields, never MCP credentials or session metadata.
 
 ## Application preview
 
-Choose **Application** in the sidebar or the application's open button on the Project page
+Choose **App preview** in the sidebar or the application's open button on the Dev environment page
 to use the active environment's UI inside the dev console. The iframe uses the public
 application URL on the current gateway, so application routes, API calls, login and frontend
-hot reload use their normal origin. The app stays mounted when switching to Project or
+hot reload use their normal origin. The app stays mounted when switching to Dev environment or
 Monitoring, preserving its navigation and form state. A reload button resets the preview;
 **Open application full page** opens the app in the current tab without relying on pop-ups.
 If no application URL is available, the console shows an unavailable state.

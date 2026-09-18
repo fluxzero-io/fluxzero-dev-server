@@ -2,14 +2,14 @@
   <button class="mobile-menu icon-button" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list"></i></button>
   @if(menuOpen()) {<button class="nav-backdrop" (click)="menuOpen.set(false)" aria-label="Close navigation"></button>}
   <aside class="dashboard-sidebar" [class.open]="menuOpen()">
-    <a class="dashboard-brand" href="#projects" (click)="link($event, 'projects')" aria-label="Fluxzero dev server home">
+    <a class="dashboard-brand" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero dev server home">
       <img class="brand-mark" src="assets/fluxzero-devserver-logo.svg" alt="">
       <span class="brand-title">Fluxzero<span> dev server</span></span>
     </a>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <nav aria-label="Dev server navigation">
-      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Project</span></a>
-      <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>Application</span></a>
+      <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
+      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Dev environment</span></a>
       <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="monitoringExpanded.set(!monitoringExpanded())" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
         <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
@@ -26,7 +26,7 @@
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="application-page" [hidden]="route() !== 'application'" aria-labelledby="application-title">
       <header class="application-heading">
-        <div><h1 id="application-title">Application</h1><p>{{currentName()}}</p></div>
+        <div><h1 id="application-title">App preview</h1><p>{{currentName()}}</p></div>
         @if(applicationUrl(); as url) {
           <div class="application-tools">
             <button class="icon-button" (click)="reloadApplication()" aria-label="Reload application" title="Reload application"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
@@ -37,7 +37,7 @@
       @if(applicationSource(); as source) {
         <iframe #applicationFrame name="dev-application" [title]="currentName() + ' application'" [src]="source"></iframe>
       } @else {
-        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Project page.</p></div>
+        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Dev environment page.</p></div>
       }
     </section>
     <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">

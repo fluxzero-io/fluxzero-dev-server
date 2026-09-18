@@ -46,7 +46,7 @@ export function environmentConsoleUrl(environment: Environment): string | null {
     const url = new URL(environment.consoleUrl);
     if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
       || url.username || url.password || url.pathname !== '/_fluxzero/dev/' || url.search) return null;
-    url.hash = 'projects';
+    url.hash = 'application';
     return url.href;
   } catch { return null; }
 }

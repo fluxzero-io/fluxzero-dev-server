@@ -17,7 +17,7 @@ describe('Dev console navigation', () => {
   beforeEach(async () => {
     // A legacy opt-out must never suppress confirmation, even after startup.
     localStorage.setItem('devConfirmTruncate', 'false');
-    history.replaceState(null, '', location.pathname);
+    history.replaceState(null, '', location.pathname + '#projects');
     TestBed.configureTestingModule({imports: [AppComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
       {provide: ConsoleConnection, useValue: {initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
     fixture = TestBed.createComponent(AppComponent);
@@ -51,12 +51,22 @@ describe('Dev console navigation', () => {
     (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
+  it('opens App preview by default and from the home link while honoring explicit environment bookmarks', () => {
+    history.replaceState(null, '', location.pathname);
+    fixture.componentInstance.readRoute(); fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('application');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('App preview');
+    fixture.componentInstance.navigate('projects'); fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Dev environment');
+    fixture.nativeElement.querySelector('.dashboard-brand').click(); fixture.detectChanges();
+    expect(location.hash).toBe('#application');
+  });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(root.querySelector('nav a')?.textContent?.trim()).toBe('Project');
-    expect(root.querySelector('nav a')?.getAttribute('aria-current')).toBe('page');
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Dev environment']);
+    expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
-    expect(root.querySelector('h1')?.textContent).toBe('Project');
+    expect(root.querySelector('h1')?.textContent).toBe('Dev environment');
     expect(root.querySelector('main')?.textContent).not.toContain('Other projects');
     expect(root.querySelector('main')?.textContent).not.toContain('/projects/orders');
     expect(root.querySelector('.current-project')?.textContent).toContain('/projects/repair-cafe');
@@ -84,7 +94,7 @@ describe('Dev console navigation', () => {
     expect(document.activeElement).toBe(search);
     search.value = 'workshop'; search.dispatchEvent(new Event('input')); fixture.detectChanges();
     const option = root.querySelector('a.server-option') as HTMLAnchorElement;
-    expect(option.href).toBe('http://localhost:4500/_fluxzero/dev/#projects');
+    expect(option.href).toBe('http://localhost:4500/_fluxzero/dev/#application');
     (option.querySelector('.server-path') as HTMLElement).click(); fixture.detectChanges();
     expect(navigate).toHaveBeenCalledTimes(1);
     expect(navigate.calls.mostRecent().args[0]).toEqual(destination);
@@ -121,7 +131,7 @@ describe('Dev console navigation', () => {
   });
   it('offers only validated console URLs for navigation', () => {
     const current = fixture.componentInstance.environments()[0];
-    expect(environmentConsoleUrl(current)).toBe('http://localhost:4200/_fluxzero/dev/#projects');
+    expect(environmentConsoleUrl(current)).toBe('http://localhost:4200/_fluxzero/dev/#application');
     for (const consoleUrl of ['https://example.org', 'http://localhost:4200/other', 'http://user@localhost:4200/_fluxzero/dev/', 'javascript:alert(1)', 'invalid']) {
       expect(environmentConsoleUrl({...current, consoleUrl})).toBeNull();
     }
@@ -284,7 +294,7 @@ describe('Dev console navigation', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Project');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Dev environment');
     expect(fixture.nativeElement.querySelector('main').textContent).not.toContain('/projects/orders');
   });
   it('keeps monitoring views in the left navigation even without a configured backend', async () => {
@@ -515,7 +525,7 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', '#settings');
     fixture.componentInstance.readRoute(); fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Project');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Dev environment');
   });
   it('updates the test bar while a run is in progress without a total status pill', () => {
     const root: HTMLElement = fixture.nativeElement;
