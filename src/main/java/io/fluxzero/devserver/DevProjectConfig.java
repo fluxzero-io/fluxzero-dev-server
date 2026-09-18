@@ -220,7 +220,8 @@ record DevProjectConfig(
             String directory,
             Map<String, String> ports,
             Map<String, String> env,
-            Readiness readiness
+            Readiness readiness,
+            ServiceOutput output
     ) {
         private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
         private static final Pattern PORT_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
@@ -232,7 +233,11 @@ record DevProjectConfig(
             directory = normalize(directory);
             ports = ports == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(ports));
             env = env == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
-            readiness = readiness == null ? new Readiness(null, null, null) : readiness;
+            readiness = readiness == null ? new Readiness(null, null, null, null) : readiness;
+            output = output == null ? new ServiceOutput(null) : output;
+            if (command == null && readiness.log() != null) {
+                throw new IllegalArgumentException("service readiness.log requires service.command");
+            }
             if (command == null && url == null) {
                 throw new IllegalArgumentException("service must configure command or url");
             }
@@ -279,22 +284,31 @@ record DevProjectConfig(
         }
     }
 
-    record Readiness(String http, String tcp, String timeout) {
+    record Readiness(String http, String tcp, String log, String timeout) {
         Readiness {
             http = normalize(http);
             tcp = normalize(tcp);
             timeout = normalize(timeout);
-            if (http != null && tcp != null) {
-                throw new IllegalArgumentException("service readiness must configure either http or tcp");
+            if (log != null && log.isBlank()) {
+                throw new IllegalArgumentException("service readiness.log must not be blank");
+            }
+            if ((http == null ? 0 : 1) + (tcp == null ? 0 : 1) + (log == null ? 0 : 1) > 1) {
+                throw new IllegalArgumentException("service readiness must configure only one of http, tcp or log");
             }
         }
 
         boolean configured() {
-            return http != null || tcp != null;
+            return http != null || tcp != null || log != null;
         }
 
         private static String normalize(String value) {
             return value == null || value.isBlank() ? null : value.strip();
+        }
+    }
+
+    record ServiceOutput(List<String> redact) {
+        ServiceOutput {
+            redact = redact == null ? List.of() : List.copyOf(redact);
         }
     }
 

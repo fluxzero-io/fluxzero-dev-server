@@ -33,6 +33,26 @@ public class DevServiceFixtureServer {
         if ("exit".equals(args[0])) {
             System.exit(7);
         }
+        if ("log".equals(args[0])) {
+            var output = "stderr".equals(args[1]) ? System.err : System.out;
+            Path control = Path.of(args[2]);
+            output.println("fixture started");
+            if ("delayed".equals(args[3])) {
+                awaitFile(control.resolve("ready"));
+            }
+            output.println("\u001b]8;;https://example.invalid\u001b\\\u001b[32mRea\u001b[0mdy! whsec_\u001b[31mFake123\u001b[0m token_456\u001b]8;;\u0007");
+            output.println("ERROR fixture diagnostic whsec_Fake123 token_456");
+            output.flush();
+            Files.writeString(control.resolve("ready-emitted"), "output flushed");
+            awaitFile(control.resolve("exit"));
+            return;
+        }
+        if ("stop-log".equals(args[0])) {
+            System.out.println("Ready! whsec_Stop123");
+            System.err.println("Ready! whsec_Stop456");
+            Files.writeString(Path.of(args[1]).resolve("ready"), "release late startup output");
+            return;
+        }
         int port = Integer.parseInt(args[0]);
         try (ServerSocket server = new ServerSocket()) {
             server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
@@ -63,6 +83,12 @@ public class DevServiceFixtureServer {
                     }
                 });
             }
+        }
+    }
+
+    private static void awaitFile(Path path) throws Exception {
+        while (!Files.exists(path)) {
+            Thread.sleep(10);
         }
     }
 }

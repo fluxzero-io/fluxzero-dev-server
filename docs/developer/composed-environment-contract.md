@@ -81,6 +81,15 @@ profiles:
   fields may use `{services.<id>.url}` and `{services.<id>.ports.<name>}`.
 - A command service is stopped with its bounded `stopCommand` when configured, followed by forced process-tree
   cleanup. An external URL service participates in readiness but is never stopped.
+- `services.<id>.readiness` selects one of `http`, `tcp` or `log`; if none is present, `url` is the HTTP fallback.
+  `log` requires `command` and is a Java regex searched on ANSI-free stdout and stderr lines. The matcher is installed
+  before launch. A match establishes startup readiness once; subsequent health tracks process lifetime, not remote
+  connectivity. Timeout (default `2m`) and early exit fail startup. Shutdown, late output and previous instances cannot
+  restore readiness. This option does not change frontend readiness.
+- `services.<id>.output.redact` lists Java regexes applied in order, replacing matches with `[REDACTED]` on ANSI-free
+  output before terminal, log, diagnostic and MCP publication. This includes `stopCommand` output. Readiness matches
+  the original ANSI-free line privately; no raw output history is stored. Patterns are compiled once before launch,
+  cannot be blank or invalid, and are not expanded as placeholders. See the [service example](../../README.md).
 - Every project compiles, reloads, watches, and tests independently. A failure in one project keeps the last ready apps
   from every project running.
 - All application processes receive the same runtime and public proxy URLs. An application configuration can override

@@ -734,6 +734,60 @@ class DevServerConfigTest {
     }
 
     @Test
+    void loadsLogReadinessAndOutputRedactionWithoutUrlFallback(@TempDir Path directory) throws Exception {
+        Path file = directory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, """
+                version: 1
+                services:
+                  listener:
+                    command: start-listener
+                    url: http://localhost:1234
+                    readiness:
+                      log: ' Ready! [0-9]{3} '
+                      timeout: 30s
+                    output:
+                      redact: ['whsec_[A-Za-z0-9]+', 'token_[0-9]+']
+                """);
+        DevServiceConfig config = DevServerConfig.fromArgs(
+                new String[]{"--project-dir", directory.toString()}).services().get("listener");
+        assertEquals(" Ready! [0-9]{3} ", config.readiness().log().pattern());
+        assertEquals(Duration.ofSeconds(30), config.readiness().timeout());
+        assertEquals(null, config.readiness().http());
+        assertEquals(null, config.readiness().tcp());
+        assertEquals(List.of("whsec_[A-Za-z0-9]+", "token_[0-9]+"),
+                     config.redact().stream().map(java.util.regex.Pattern::pattern).toList());
+        // Regex braces and whitespace are literal configuration, not service placeholders.
+        try (DevServiceProcess service = DevServiceProcess.prepare(
+                "listener", config, directory, "session", ignored -> {}, ignored -> {})) {
+            assertFalse(service.ready());
+        }
+    }
+
+    @Test
+    void rejectsInvalidReadinessAndRedactionBeforeLaunchingCommands(@TempDir Path directory) throws Exception {
+        Path file = directory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(file.getParent());
+        Map<String, String> invalid = new java.util.LinkedHashMap<>();
+        invalid.put("{command: start, readiness: {log: '['}}", "services.listener.readiness.log");
+        invalid.put("{command: start, readiness: {log: ' '}}", "readiness.log must not be blank");
+        invalid.put("{command: start, readiness: {log: Ready, http: 'http://localhost'}}", "only one");
+        invalid.put("{command: start, readiness: {log: Ready, tcp: 'localhost:1234'}}", "only one");
+        invalid.put("{command: start, readiness: {http: 'http://localhost', tcp: 'localhost:1234'}}", "only one");
+        invalid.put("{url: 'http://localhost', readiness: {log: Ready}}", "requires service.command");
+        invalid.put("{command: start, readiness: {log: Ready}, output: {redact: ['[']}}",
+                    "services.listener.output.redact");
+        invalid.put("{command: start, readiness: {log: Ready}, output: {redact: ['']}}",
+                    "services.listener.output.redact");
+        for (var entry : invalid.entrySet()) {
+            Files.writeString(file, "version: 1\nservices:\n  listener: " + entry.getKey() + "\n");
+            DevServerStartupException error = assertThrows(DevServerStartupException.class,
+                    () -> DevServerConfig.fromArgs(new String[]{"--project-dir", directory.toString()}));
+            assertTrue(error.getMessage().contains(entry.getValue()), error.getMessage());
+        }
+    }
+
+    @Test
     void keepsServicesProfileScopedAndRejectsInvalidServiceShapes(@TempDir Path projectDirectory) throws Exception {
         Path configFile = projectDirectory.resolve(DevProjectConfig.FILE);
         Files.createDirectories(configFile.getParent());
