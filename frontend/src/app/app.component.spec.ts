@@ -470,14 +470,14 @@ describe('Dev console navigation', () => {
     expect(Array.from(cards, c => c.querySelector('.component-name')!.textContent!.trim())).toEqual(['Orders','Billing']);
     expect(Array.from(cards, c => c.querySelector('.badge')!.textContent)).toEqual(['running','failed']);
     expect(Array.from(cards, c => c.querySelector('.resource-value')!.textContent)).toEqual(['1.0 MiB / —','2.0 MiB / —']);
-    expect(root.querySelectorAll('.application-overview .resource-chart-line').length).toBe(2);
+    expect(root.querySelectorAll('.application-overview dev-resource-graph').length).toBe(2);
     expect(root.querySelector('.infrastructure-section .resource-value')!.textContent).toBe('12.0 MiB / —');
     const detail = root.querySelector('.infrastructure-section dev-resource-detail')!;
     detail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(detail.querySelector('[role=tooltip]')!.textContent).toContain('Frontend (store)');
     expect(detail.querySelector('[role=tooltip]')!.textContent).not.toContain('Orders');
     detail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
-    expect(root.querySelectorAll('.application-overview button,.application-overview .component-storage').length).toBe(0);
+    expect(root.querySelectorAll('.application-overview .component-restart,.application-overview .component-storage').length).toBe(0);
     expect(root.querySelectorAll('[aria-label="Restart all applications"]').length).toBe(1);
     const applications = root.querySelector('.applications-section')!;
     const tests = root.querySelector('.environment-tests')!;
@@ -503,7 +503,7 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.application-link').getAttribute('href')).toBe('#application');
     expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB / —');
   });
-  it('keeps chart baselines aligned and memory labels within their cells during resource updates', async () => {
+  it('keeps memory readings and graph controls visible during resource updates', async () => {
     const root: HTMLElement = fixture.nativeElement;
     const state = fixture.componentInstance.status()!;
     for (let i = 0; i < 8; i++) {
@@ -517,13 +517,35 @@ describe('Dev console navigation', () => {
       for (const row of root.querySelectorAll('.component-table tbody tr')) {
         const cell = row.querySelector('.component-memory')!;
         const cellRect = cell.getBoundingClientRect();
-        const chartRect = cell.querySelector('dev-resource-chart')!.getBoundingClientRect();
+        expect(cell.querySelector('dev-resource-chart')).toBeNull();
+        const graphRect = cell.querySelector('dev-resource-graph button')!.getBoundingClientRect();
         const valueRect = cell.querySelector('.resource-value')!.getBoundingClientRect();
-        expect(chartRect.height).toBeGreaterThan(0);
-        expect(chartRect.bottom).withContext('chart bottom after update ' + i).toBeCloseTo(cellRect.bottom, 1);
+        expect(graphRect.width).toBeGreaterThan(0);
+        expect(graphRect.right).toBeLessThanOrEqual(cellRect.right + 1);
         expect(valueRect.top).toBeGreaterThanOrEqual(cellRect.top);
         expect(valueRect.bottom).toBeLessThanOrEqual(cellRect.bottom);
       }
+    }
+  });
+  it('keeps a single application card compact and opens separate memory and storage graphs', async () => {
+    const root: HTMLElement = fixture.nativeElement;
+    const card = root.querySelector('.application-overview .component-table-scroll')!;
+    expect(card.getBoundingClientRect().width).toBeLessThanOrEqual(420);
+    fixture.componentInstance.status.update(s => s ? {...s, resourceHistory:[{
+      at:5000,applicationMemory:1048576,devserverMemory:2097152,monitoringStorage:524288,
+      componentMemory:{app:1048576}}]} : s);
+    fixture.detectChanges();
+    for (const [selector,title] of [['.application-overview .component-memory','Repair Café · Memory'],
+      ['.infrastructure-section .component-storage','Monitoring storage']]) {
+      const graph = root.querySelector(selector + ' dev-resource-graph')!;
+      (graph.querySelector('button') as HTMLButtonElement).click(); fixture.detectChanges();
+      const dialog = graph.querySelector('dialog')!;
+      expect(dialog.open).toBeTrue();
+      expect(dialog.querySelector('h2')!.textContent).toBe(title);
+      expect(dialog.querySelector('.graph-line')).not.toBeNull();
+      (dialog.querySelector('button') as HTMLButtonElement).click();
+      await fixture.whenStable(); fixture.detectChanges();
+      expect(dialog.open).toBeFalse();
     }
   });
   it('keeps resource columns equal while adapting to longer formatted values', () => {
@@ -719,14 +741,15 @@ describe('Dev console navigation', () => {
     statusDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')).toBeNull();
     const memoryDetail = rows[1].querySelector('.component-memory dev-resource-detail')!;
-    expect(memoryDetail.querySelector(':scope > dev-resource-chart')).not.toBeNull();
+    expect(memoryDetail.querySelector(':scope > dev-resource-chart')).toBeNull();
+    expect(rows[1].querySelector('.component-memory dev-resource-graph button')).not.toBeNull();
     memoryDetail.dispatchEvent(new FocusEvent('focus')); fixture.detectChanges();
     expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('Supervisor');
     expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('1.0 MiB / 4.0 MiB');
     expect(memoryDetail.querySelectorAll('[role=tooltip] dev-resource-chart .resource-chart-line').length).toBe(2);
     memoryDetail.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'})); fixture.detectChanges();
     expect(memoryDetail.querySelector('[role=tooltip]')).toBeNull();
-    expect(rows[1].querySelector('.component-storage [title]')).toBeNull();
+    expect(rows[1].querySelector('.component-storage .resource-value[title]')).toBeNull();
     fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.map(c => ({...c, memoryBytes:null, memoryUsedBytes:null}))} : s);
     fixture.detectChanges();
     expect(rows[1].querySelector('.component-memory')?.textContent).toBe('— / 4.0 MiB');

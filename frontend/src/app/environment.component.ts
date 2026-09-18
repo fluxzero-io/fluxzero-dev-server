@@ -4,13 +4,13 @@ import {ProjectPathComponent} from './project-path.component';
 import {EnvironmentNameComponent} from './environment-name.component';
 import {Status} from './models';
 import {ResourceDetailComponent} from './resource-detail.component';
-import {ResourceChartComponent} from './resource-chart.component';
+import {ResourceGraphComponent} from './resource-graph.component';
 import {TestOutputComponent} from './test-output.component';
 import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [NgTemplateOutlet, EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [NgTemplateOutlet, EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading"><div>
     <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
     <div class="project-title-row">
@@ -32,16 +32,18 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
           <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
-            @if(component.application) {<dev-resource-chart [samples]="state.resourceHistory || []" metric="applicationMemory" [componentId]="component.id"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
-            @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><dev-resource-chart [samples]="state.resourceHistory || []" metric="devserverMemory"/><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span></dev-resource-detail>}
+            <div class="resource-reading">
+              @if(component.application) {<span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
+              @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span></dev-resource-detail>}
+              <dev-resource-graph [title]="component.name + ' · Memory'" [samples]="state.resourceHistory || []" [metric]="component.application ? 'applicationMemory' : 'devserverMemory'" [componentId]="component.application ? component.id : undefined" [current]="component.memoryBytes" [limit]="component.memoryMaxBytes"/>
+            </div>
           </td>
           @if(!component.application) {<td role="cell" class="component-storage" data-label="Monitoring storage">
-            @if(component.id === 'devserver' && state.monitoring.resources) {
-              <dev-resource-chart [samples]="state.resourceHistory || []" metric="monitoringStorage"/>
-              <span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}} / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}</span>
-
-            } @else {—}
+            <div class="resource-reading"><span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}} / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}</span>
+              <dev-resource-graph title="Monitoring storage" [samples]="state.resourceHistory || []" metric="monitoringStorage" [current]="state.monitoring.resources?.storageDiskBytes" [limit]="state.monitoring.resources?.diskRetentionThresholdBytes"/>
+            </div>
           </td>}
+
           @if(!component.application) {<td role="cell" class="component-restart">
             <button class="icon-button" type="button" aria-label="Restart dev server" title="Restart" [attr.aria-busy]="maintenanceAction() === 'restart-devserver'" [disabled]="busy() || !state.maintenance?.restartSupported" (click)="maintain('restart-devserver')">
               @if(maintenanceAction() === 'restart-devserver') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting dev server"></span>}

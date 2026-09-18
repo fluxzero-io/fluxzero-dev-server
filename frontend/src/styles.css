@@ -242,8 +242,8 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .application-actions {display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
 .application-actions .icon-button {display:inline-flex;align-items:center;gap:6px;width:auto;min-height:32px;padding:6px 10px;}
 .application-actions .application-link {background:var(--dashboard-active-soft);color:var(--dashboard-active);border-radius:9px;}
-.application-overview {display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:20px;min-width:0;}
-.application-overview .component-table-scroll {margin:0;min-width:0;}
+.application-overview {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:20px;min-width:0;}
+.application-overview .component-table-scroll {margin:0;min-width:0;max-width:420px;}
 .application-overview .component-memory {grid-column:1/-1;}
 .applications-empty {margin:0;}
 .environment-tests {margin-top:24px;min-width:0;}
@@ -269,3 +269,7 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
   .infrastructure-section .component-table tbody .component-restart {grid-column:1;grid-row:4;}
   .infrastructure-section .component-table tbody .component-actions {grid-column:2;grid-row:4;}
 }
+
+.resource-reading {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-width:0;}
+.resource-reading > dev-resource-detail {min-width:0;}
+.resource-reading .resource-value {overflow-wrap:anywhere;}
