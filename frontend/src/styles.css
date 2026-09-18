@@ -117,21 +117,6 @@ button:disabled { opacity: .35; cursor: default; }
 .project-title-row h1, .project-title-row .current-project-title { margin: 0; }
 .application-link { flex-shrink: 0; font-size: 14px; }
 
-.component-table-scroll {overflow-x:auto;margin:24px 0;}
-.component-table {display:grid;width:max-content;grid-template-columns:max-content max-content repeat(2,1fr) max-content max-content;}
-/* Share row sizing directly; nested subgrids can retain a stale cell height after updates. */
-.component-table thead,.component-table tbody,.component-table tr {display:contents;}
-.component-table tbody tr:hover>* {background:var(--dashboard-panel-soft);}
-.component-table th,.component-table td {display:flex;align-items:center;padding:14px 12px;text-align:left;}
-.component-table tr>:nth-child(n+2):nth-child(-n+4) {text-align:center;justify-content:center;}
-.component-table thead th {font-size:12px;font-weight:500;color:var(--dashboard-muted);}
-.component-table th:first-child {white-space:nowrap;}
-.component-table th:last-child,.component-table td:last-child {padding-right:0;}
-.component-table .component-name {font-size:14px;background:transparent;color:var(--dashboard-text);font-weight:600;text-transform:none;letter-spacing:normal;}
-.component-name small {display:block;font-weight:400;color:var(--dashboard-muted);font-size:12px;margin-top:4px;}
-.component-memory,.component-storage {font-variant-numeric:tabular-nums;white-space:nowrap;}
-.component-table .component-restart,.component-table .component-actions {justify-content:center;}
-.component-table tbody th {border-top:1px solid var(--dashboard-border);}
 .test-summary {margin-top:24px;display:flex;flex-direction:column;gap:12px;}
 .test-heading {display:flex;align-items:center;gap:12px;padding-left:12px;}
 .test-heading h3 {margin:0;font-size:16px;}
@@ -178,51 +163,10 @@ dev-resource-chart>svg {display:block;width:100%;height:100%;overflow:visible;}
 .resource-chart-area {fill:currentColor;fill-opacity:.14;}
 .resource-chart-line {fill:none;stroke:currentColor;stroke-opacity:.5;stroke-width:1;}
 
-/* Keep the compact desktop table, but reflow each component when space is limited. */
+/* Keep project lists usable on narrow screens. */
 .page-heading>div {min-width:0;max-width:100%;}
 .search input {min-width:0;}
 .resource-tooltip-row>:first-child {min-width:0;overflow-wrap:anywhere;}
-@media(max-width:1200px) {
-  .component-table-scroll {overflow:visible;}
-  .component-table,.component-table tbody {display:block;width:100%;min-width:0;}
-  .component-table thead,.project-table thead {display:block;position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;}
-  .component-table tbody tr {display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px 8px;padding:14px 0;border-top:1px solid var(--dashboard-border);}
-  .component-table th,.component-table td {min-width:0;padding:4px 0;border:0;}
-  .component-table tbody th.component-name {border-top:0;grid-column:1 / 5;grid-row:1;white-space:normal;overflow-wrap:anywhere;}
-  .component-table tr>:nth-child(n+2):nth-child(-n+4) {text-align:left;justify-content:flex-start;}
-  .component-table tr>:nth-child(2) {grid-column:1 / -1;grid-row:2;}
-  .component-table .component-memory {grid-column:1 / 4;grid-row:3;}
-  .component-table .component-storage {grid-column:4 / 7;grid-row:3;}
-  .component-table .component-memory,.component-table .component-storage {flex-direction:column;align-items:stretch;gap:8px;white-space:normal;overflow-wrap:anywhere;}
-  .component-table [data-label]::before {content:attr(data-label);position:relative;z-index:1;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--dashboard-muted);}
-  .component-table .component-restart {grid-column:5;grid-row:1;justify-content:flex-end;align-items:flex-start;}
-  .component-table .component-actions {grid-column:6;grid-row:1;justify-content:flex-end;align-items:flex-start;}
-  .component-table .icon-button {width:36px;height:36px;flex-shrink:0;}
-  .component-table dev-resource-chart {inset:24px 0 0;}
-  .project-table {overflow:visible;}
-  .project-table table,.project-table tbody {display:block;width:100%;}
-  .project-table tbody tr {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:16px;border-top:1px solid var(--dashboard-border);}
-  .project-table tbody tr:first-child {border-top:0;}
-  .project-table td {min-width:0;padding:0;border:0;}
-  .project-table .project-identity {grid-column:1 / -1;}
-  .project-table .project-name {flex-wrap:nowrap;align-items:flex-start;}
-  .project-table .project-name i {flex-shrink:0;}
-  .project-table .project-name a,.project-table .project-name strong {min-width:0;overflow-wrap:anywhere;}
-  .project-table .project-path {min-width:0;}
-  .project-table .project-status {align-self:center;overflow-wrap:anywhere;}
-  .project-table .port {display:none;}
-  .project-table .empty {grid-column:1 / -1;padding:16px 0;}
-  .project-table .project-actions .icon-button {width:36px;height:36px;}
-}
-@media(max-width:800px) {
-  .component-table .component-memory {grid-column:1 / -1;grid-row:3;}
-  .component-table .component-storage {grid-column:1 / -1;grid-row:4;}
-  .component-table tr>.component-memory:nth-child(3),.component-table tr>.component-storage:nth-child(4) {flex-direction:row;align-items:center;justify-content:space-between;gap:12px;min-height:44px;}
-  .component-table .resource-value,.component-table .component-memory dev-resource-detail {min-width:0;text-align:right;}
-  .component-table dev-resource-chart {inset:4px 0 0;}
-  .component-table [data-label]::before {flex-shrink:0;}
-  .current-project {padding:16px;}
-}
 @media(max-width:450px) {
   .dialog-actions {flex-wrap:wrap;}
 }
@@ -249,3 +193,44 @@ dev-projects {display:block;container-type:inline-size;}
 .application-empty { padding: 32px; }
 .application-empty h2 { margin-bottom: 8px; }
 @media(max-width: 650px) { .application-heading { padding: 24px 16px; }.application-empty { padding: 24px 16px; } }
+
+/* Environment overview: reuse dashboard colors, with a softer workspace hierarchy. */
+select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
+.project-page {max-width:1440px;}
+.project-page > .page-heading {margin-bottom:28px;}
+.project-page > .page-heading p {font-size:14px;}
+.current-project {padding:0;background:transparent;border:0;box-shadow:none;}
+.current-project > .page-heading {padding:24px 28px;margin:0;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);}
+.environment-eyebrow {display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:1px;font-weight:600;color:var(--dashboard-muted);}
+.environment-eyebrow i {color:var(--dashboard-active);font-size:15px;}
+.current-project-title {font-size:23px;}
+.dashboard-nav-link {border-radius:10px;}
+.component-table-scroll {overflow:visible;margin:20px 0;}
+.component-table {display:block;width:100%;}
+.component-table thead {display:block;position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);}
+.component-table tbody {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}
+.component-table tbody tr {display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);padding:22px;gap:14px 16px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
+.component-table tbody tr:hover>* {background:transparent;}
+.component-table tbody th,.component-table tbody td {display:flex;align-items:center;border:0;padding:0;min-width:0;}
+.component-table tbody .component-name {display:flex;align-items:center;text-transform:none;letter-spacing:normal;background:transparent;color:var(--dashboard-text);grid-column:1/-1;white-space:normal;gap:12px;font-size:16px;}
+.component-name > i {display:flex;align-items:center;justify-content:center;flex:0 0 40px;height:40px;border-radius:12px;background:var(--dashboard-active-soft);color:var(--dashboard-active);font-size:20px;}
+.component-table tbody .component-status {grid-column:1/-1;justify-content:flex-start !important;margin-bottom:6px;}
+.component-table .badge {border-radius:20px;}
+.component-table tbody .component-memory,.component-table tbody .component-storage {display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;padding:14px 0;min-height:78px;white-space:normal;border-top:1px solid var(--dashboard-border);}
+.component-memory::before,.component-storage::before {content:attr(data-label);display:block;font-size:12px;color:var(--dashboard-muted);margin-bottom:8px;}
+.component-table .resource-value {font-variant-numeric:tabular-nums;font-size:13px;line-height:1.5;}
+.component-table tbody .component-restart {justify-content:flex-start;}
+.component-table tbody .component-actions {justify-content:flex-end;}
+.component-restart .icon-button,.component-actions .application-link {width:auto;padding:0 10px;gap:7px;border-radius:9px;font-size:12px;}
+.component-actions .application-link {color:var(--dashboard-active);background:var(--dashboard-active-soft);}
+.environment-tests {padding:24px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
+.environment-tests .test-summary {margin-top:0;}
+.environment-tests .test-heading {padding:0;margin-bottom:8px;}
+.environment-tests .test-heading > i {font-size:24px;color:var(--dashboard-active);}
+.environment-tests .test-heading p {margin-top:4px;font-size:12px;}
+.environment-tests .test-bar {height:34px;border-radius:9px;}
+.test-bar.empty-tests {background:var(--dashboard-panel-soft);}
+.test-empty-label {padding:8px 12px;font-size:12px;color:var(--dashboard-muted);}
+.maintenance-confirm {border-radius:16px;}
+@media(max-width:1100px) {.component-table tbody {grid-template-columns:1fr;}}
+@media(max-width:650px) {.current-project > .page-heading,.environment-tests {padding:20px;}.component-table tbody tr {padding:18px;}.current-project .project-title-row h1 {padding-left:0;}}

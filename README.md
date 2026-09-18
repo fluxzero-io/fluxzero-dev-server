@@ -395,13 +395,13 @@ Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
 
 ## Development console
 
-Open `/_fluxzero/dev/` on the public development URL. The **Project** page and **Monitoring** menu show only the
+Open `/_fluxzero/dev/` on the public development URL. App preview opens by default. The **Dev environment** page and **Monitoring** menu show only the
 selected dev server. Use the sidebar dropdown to switch servers: results are grouped as **Current**, **Running**
-and **Stopped**. Search by name or folder. Selecting an active server opens its Project page; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
+and **Stopped**. Search by name or folder. Selecting an active server opens its App preview; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
 that project's `.fluxzero/dev.yaml` and the current dev-server distribution, without restoring temporary
 command-line overrides from earlier launches. The browser switches after the server's console is ready.
 
-Use the pencil next to the server title on the Project page to distinguish folders with the same name. The
+Use the pencil next to the server title on the Dev environment page to distinguish folders with the same name. The
 default is the folder name; **Use folder name** restores it. These local display names are stored in
 `~/.fluxzero/dev/environments/names/`
 and survive server restarts. They do not rename project directories or applications. Inactive servers can be
@@ -417,12 +417,20 @@ Monitoring uses the dashboard's section navigation and page layout. The current 
 sit above the embedded page, sharing its background and content gutters in light and dark themes.
 The embedded application keeps its existing filters, trace navigation and per-view state when switching screens.
 
+The **Dev profile** selector below the server picker lists the named profiles from `.fluxzero/dev.yaml`.
+Switching requires confirmation because it restarts the entire environment, resets in-memory application data,
+and reruns startup commands. The standalone server validates the selected configuration before stopping the
+current environment, preserves the public port and explicit launch options, and reconnects the dashboard.
+The selection survives subsequent dashboard restarts within the running launcher; it does not change
+`defaultProfile` or persist after stopping the launcher. A fresh launch uses the normal CLI/configuration selection.
+Embedded previews without restart support display the active profile without allowing a switch.
+
 ### Component resources and maintenance
 
-Project shows two rows: the customer application (including its managed frontends), followed by the Fluxzero dev
+Dev environment shows two cards: the customer application (including its managed frontends), followed by the Fluxzero dev
 server and its supporting processes. A stopped customer application stays visible. Both status badges show only
-the status text, without process counts. The customer row has no popovers. Immediate hover/focus popovers on the dev-server
-row break down status and memory by component and follow the selected theme. Hovering the total memory chart
+the status text, without process counts. The customer card has no popovers. Immediate hover/focus popovers on the dev-server
+card break down status and memory by component and follow the selected theme. Hovering the total memory chart
 also opens the memory popover. Each component has its own memory chart.
 Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
 VictoriaLogs reports Go-managed memory (Sys minus HeapReleased) and its exported Go memory limit. The dev server
@@ -434,10 +442,8 @@ even with no browsers connected. Missing samples leave gaps. Navigation, reload 
 history; restarting the dev server starts a new history. Monitoring storage shows its on-disk size
 and configured retention threshold. Its chart scales to that threshold (1 GiB by default), retained with each sample,
 rather than the observed storage peak. Totals, limits and component details automatically use IEC units (B, KiB,
-MiB, GiB and larger). Memory and Storage columns share the width required by the wider value, without a fixed
-pixel width. On narrow screens, component rows reflow into labeled blocks with status, resource usage and
-actions. Memory and storage stack on phones; other projects also stack and omit their port number. Long names
-and paths wrap, and component popovers stay within the visible viewport.
+MiB, GiB and larger). Cards show labeled memory and storage measurements and reflow into a single column on
+narrow screens. Long names and paths wrap, and component popovers stay within the visible viewport.
 
 The trash icon (`title="truncate data"`) stops the command runner and customer backends, truncates all Testserver data
 through the optional public `TestServer.truncateData(Server)` SDK API, and clears the project's monitoring storage.

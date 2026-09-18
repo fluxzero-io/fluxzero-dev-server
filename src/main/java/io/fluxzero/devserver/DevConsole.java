@@ -147,8 +147,18 @@ final class DevConsole implements AutoCloseable {
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Maintenance requires the local console.");
         String action = path.substring((ROOT + "actions/").length());
-        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "clear-test-output", "run-tests", "pause-builds", "resume-builds").contains(action))
+        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "clear-test-output", "run-tests", "pause-builds", "resume-builds", "switch-profile").contains(action))
             return actionResult(response, callback, 404, "Unknown maintenance action.");
+        if ("switch-profile".equals(action)) {
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(4097);
+                if (body.length > 4096) return actionResult(response, callback, 413, "Profile request is too large.");
+                var json = new ObjectMapper().readTree(body);
+                if (json == null || !json.path("profile").isTextual() || json.path("profile").asText().isBlank())
+                    return actionResult(response, callback, 400, "Select a development profile.");
+                action = "switch-profile:" + json.path("profile").asText();
+            } catch (java.io.IOException e) { return actionResult(response, callback, 400, "Invalid profile request."); }
+        }
         Runnable accepted;
         try { accepted = maintenance.apply(action); }
         catch (IllegalStateException e) { return actionResult(response, callback, 409, e.getMessage()); }

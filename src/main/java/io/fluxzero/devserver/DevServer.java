@@ -585,7 +585,27 @@ public class DevServer implements AutoCloseable {
 
     static final String RESTART_REQUESTED = "dev server restart requested";
     private boolean restartSupported;
-    DevServer withRestartSupport() { restartSupported = true; return this; }
+    private java.util.function.BiFunction<String, Integer, DevServerConfig> profileResolver;
+    private volatile String requestedProfile;
+    DevServer withRestartSupport(java.util.function.BiFunction<String, Integer, DevServerConfig> resolver) {
+        restartSupported = true;
+        profileResolver = resolver;
+        return this;
+    }
+    String restartProfile() { return requestedProfile == null ? config.profile() : requestedProfile; }
+
+    private Map<String, Object> consoleProfiles() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("active", config.profile());
+        result.put("switchSupported", profileResolver != null);
+        try {
+            result.put("available", List.copyOf(DevProjectConfig.load(config.projectDirectory()).profiles().keySet()));
+        } catch (RuntimeException e) {
+            result.put("available", List.of());
+            result.put("error", "Unable to read profiles. Check .fluxzero/dev.yaml.");
+        }
+        return result;
+    }
     private final java.util.concurrent.locks.ReentrantLock applicationLifecycleLock = new java.util.concurrent.locks.ReentrantLock();
     private final Map<String, AppInstance> lastStartedApps = new ConcurrentHashMap<>();
     private final Map<String, Integer> componentProcessTotals = new ConcurrentHashMap<>();
@@ -673,6 +693,7 @@ public class DevServer implements AutoCloseable {
         result.put("tests", session.tests().state()); result.put("frontend", session.frontend().state());
         result.put("monitoring", monitoring == null ? Map.of("enabled", false) : monitoring.status());
         result.put("components", components);
+        result.put("profiles", consoleProfiles());
         result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", devRuntime != null && devRuntime.resetSupported(),
                 "restartSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
         Map<String, Object> testResults = new LinkedHashMap<>();
@@ -745,6 +766,22 @@ public class DevServer implements AutoCloseable {
             var targets = projects.values().stream().filter(p -> p.config.testsEnabled()).toList();
             if (targets.isEmpty()) throw new IllegalStateException("No projects have tests enabled.");
             return () -> targets.forEach(p -> p.testPipeline.requestFullRun());
+        }
+        if (action.startsWith("switch-profile:")) {
+            if (profileResolver == null) throw new IllegalStateException("Profile switching requires the standalone dev server.");
+            String profile = action.substring("switch-profile:".length());
+            if (profile.isBlank()) throw new IllegalStateException("Select a development profile.");
+            if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
+            try {
+                // Resolve before stopping anything; never expose resolved environment values through the console.
+                profileResolver.apply(profile, session.gateway().port());
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Unable to load the selected profile. Check .fluxzero/dev.yaml.");
+            }
+            if (profile.equals(config.profile())) return () -> {};
+            Runnable restart = requestMaintenance("restart-devserver");
+            requestedProfile = profile;
+            return restart;
         }
         if ("restart-devserver".equals(action) && !restartSupported)
             throw new IllegalStateException("Restart is only available in the standalone dev server.");

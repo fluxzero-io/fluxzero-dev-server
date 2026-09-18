@@ -51,6 +51,51 @@ describe('Dev console navigation', () => {
     (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
+  it('confirms a profile switch, keeps the active label until reconnect, and refreshes the preview', async () => {
+    const component = fixture.componentInstance;
+    component.status.update(s => ({...s!, profiles: {active: 'local', available: ['local', 'demo'], switchSupported: true}}));
+    fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    const select = root.querySelector('#dev-profile') as HTMLSelectElement;
+    const choose = () => {select.value = 'demo'; select.dispatchEvent(new Event('change')); fixture.detectChanges();};
+    choose();
+    const dialog = root.querySelector('[aria-labelledby="profile-title"]') as HTMLDialogElement;
+    expect(dialog.open).toBeTrue();
+    expect(select.value).toBe('local');
+    const http = TestBed.inject(HttpTestingController);
+    http.expectNone('actions/switch-profile');
+    (dialog.querySelector('.secondary-button') as HTMLButtonElement).click();
+    expect(dialog.open).toBeFalse();
+    choose();
+    const refresh = spyOn(component, 'refreshApplication');
+    (dialog.querySelector('.primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    const request = http.expectOne('actions/switch-profile');
+    expect(request.request.body).toEqual({profile:'demo'});
+    expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush({accepted:true}); await fixture.whenStable(); fixture.detectChanges();
+    expect(select.disabled).toBeTrue();
+    expect(root.textContent).toContain('Switching to demo');
+    push({status: {...component.status()!, profiles: {active:'demo', available:['local','demo'], switchSupported:true}}, environments: component.environments()});
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(select.value).toBe('demo'); expect(select.disabled).toBeFalse();
+    expect(refresh).toHaveBeenCalledTimes(1);
+    http.verify();
+  });
+  it('shows profile errors and retains the active choice when switching is rejected', async () => {
+    const component = fixture.componentInstance;
+    component.status.update(s => ({...s!, profiles: {active:'local', available:['local','demo'], switchSupported:true}}));
+    fixture.detectChanges();
+    const select = fixture.nativeElement.querySelector('#dev-profile') as HTMLSelectElement;
+    select.value = 'demo'; select.dispatchEvent(new Event('change')); fixture.detectChanges();
+    fixture.nativeElement.querySelector('[aria-labelledby="profile-title"] .primary-button').click();
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('actions/switch-profile').flush({error:'Profile is invalid'}, {status:409,statusText:'Conflict'});
+    await fixture.whenStable(); fixture.detectChanges();
+    expect(select.value).toBe('local'); expect(select.disabled).toBeFalse();
+    expect(fixture.nativeElement.textContent).toContain('Profile is invalid');
+    connected(false); fixture.detectChanges(); expect(select.disabled).toBeTrue();
+    http.verify();
+  });
   it('opens App preview by default and from the home link while honoring explicit environment bookmarks', () => {
     history.replaceState(null, '', location.pathname);
     fixture.componentInstance.readRoute(); fixture.detectChanges();
@@ -438,8 +483,8 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('actions/truncate-data');
-    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')?.textContent).toContain('Delete application and monitoring data');
-    (root.querySelector('.maintenance-confirm button') as HTMLButtonElement).click();
+    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')?.textContent).toContain('Delete application and monitoring data');
+    (root.querySelector('dev-environment .maintenance-confirm button') as HTMLButtonElement).click();
     const request = http.expectOne('actions/truncate-data');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
     request.flush(null);
@@ -450,7 +495,7 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const dialog = root.querySelector<HTMLDialogElement>('.maintenance-confirm')!;
+    const dialog = root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!;
     expect(dialog.open).toBeTrue();
     expect(document.activeElement).toBe(dialog.querySelector('[autofocus]'));
     expect(dialog.querySelector('input')).toBeNull();
@@ -465,13 +510,13 @@ describe('Dev console navigation', () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
       fixture.detectChanges();
-      expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
-      expect(root.querySelector('.maintenance-confirm input')).toBeNull();
+      expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
+      expect(root.querySelector('dev-environment .maintenance-confirm input')).toBeNull();
       http.expectNone('actions/truncate-data');
-      (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
+      (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
       http.expectOne('actions/truncate-data').flush(null);
       await fixture.whenStable();
-      expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeFalse();
+      expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeFalse();
       fixture.componentInstance.status.update(s => s ? {...s, maintenance: {...s.maintenance, busy:false, error:''}} : s);
       fixture.detectChanges();
     }
@@ -548,17 +593,17 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
-    expect(root.querySelector('.maintenance-confirm input')).toBeNull();
-    (root.querySelector('.maintenance-confirm .secondary-button') as HTMLButtonElement).click();
+    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
+    expect(root.querySelector('dev-environment .maintenance-confirm input')).toBeNull();
+    (root.querySelector('dev-environment .maintenance-confirm .secondary-button') as HTMLButtonElement).click();
     (root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeTrue();
+    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
     TestBed.inject(HttpTestingController).expectNone('actions/truncate-data');
-    (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
     TestBed.inject(HttpTestingController).expectOne('actions/truncate-data').flush(null);
     await fixture.whenStable();
-    expect(root.querySelector<HTMLDialogElement>('.maintenance-confirm')!.open).toBeFalse();
+    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeFalse();
   });
   it('keeps a stopped customer application separate from a running development environment', () => {
     const root: HTMLElement = fixture.nativeElement;
@@ -664,7 +709,7 @@ describe('Dev console navigation', () => {
       expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
       request.flush(null);
       await fixture.whenStable();
-      expect(fixture.nativeElement.querySelector('.maintenance-confirm').open).toBeFalse();
+      expect(fixture.nativeElement.querySelector('dev-environment .maintenance-confirm').open).toBeFalse();
       expect(button.querySelector('.spinner-border')).not.toBeNull();
       const status = fixture.componentInstance.status()!;
       push({status:{...status,maintenance:{...status.maintenance,busy:true,error:''}},environments:[]});
@@ -682,7 +727,7 @@ describe('Dev console navigation', () => {
     const button = root.querySelector('[aria-label="Truncate data"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(root.querySelector('.spinner-border')).toBeNull();
-    (root.querySelector('.maintenance-confirm .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(button.querySelector('.spinner-border[aria-label="Truncating data"]')).not.toBeNull();
     expect(button.querySelector('.bi-trash')).toBeNull();

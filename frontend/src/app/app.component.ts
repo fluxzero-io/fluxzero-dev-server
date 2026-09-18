@@ -4,13 +4,14 @@ import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
 import {Environment, environmentConsoleUrl, applicationUrl, monitoringPath, monitoringViews, Status} from './models';
+import {ProfileSelectorComponent} from './profile-selector.component';
 import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
 import {ThemeMenuComponent} from './theme-menu.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [ProjectsComponent, EnvironmentComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -131,6 +132,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!['truncate-data', 'restart-devserver', 'restart-application'].includes(action)) return;
     await firstValueFrom(this.http.post('actions/' + action, null,
       {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+  }
+  @HandleCommand('switchProfile') async switchProfile(profile: string) {
+    await firstValueFrom(this.http.post('actions/switch-profile', {profile},
+      {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+  }
+  @HandleCommand('refreshApplication') refreshApplication() {
+    this.reloadApplication();
+    if (this.frame) { this.ready = false; this.frame.nativeElement.src = this.frame.nativeElement.src; }
   }
   @HandleCommand('runTests') async runTests() {
     await firstValueFrom(this.http.post('actions/run-tests', null,

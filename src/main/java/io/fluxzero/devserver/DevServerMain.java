@@ -36,24 +36,28 @@ public final class DevServerMain {
             return;
         }
         System.setProperty("logback.statusListenerClass", "ch.qos.logback.core.status.NopStatusListener");
-        Integer restartPort = null;
+        Restart restart = null;
         do {
-            String[] launchArguments = args;
-            if (restartPort != null) {
-                launchArguments = java.util.Arrays.copyOf(args, args.length + 2);
-                launchArguments[args.length] = "--port";
-                launchArguments[args.length + 1] = restartPort.toString();
-            }
-            restartPort = run(launchArguments);
-        } while (restartPort != null);
+            restart = run(restart == null ? args : restart.arguments(args));
+        } while (restart != null);
     }
 
-    private static Integer run(String[] args) throws Exception {
+    record Restart(int port, String profile) {
+        String[] arguments(String[] original) {
+            var arguments = new java.util.ArrayList<>(java.util.List.of(original));
+            arguments.addAll(java.util.List.of("--port", Integer.toString(port)));
+            if (profile != null) arguments.addAll(java.util.List.of("--profile=" + profile));
+            return arguments.toArray(String[]::new);
+        }
+    }
+
+    private static Restart run(String[] args) throws Exception {
         DevServer server;
         try {
             String[] launchArguments = args.clone();
             server = new DevServer(DevServerConfig.fromArgs(launchArguments),
-                                   () -> DevServerConfig.fromArgs(launchArguments)).withRestartSupport();
+                                   () -> DevServerConfig.fromArgs(launchArguments)).withRestartSupport(
+                    (profile, port) -> DevServerConfig.fromArgs(new Restart(port, profile).arguments(launchArguments)));
         } catch (IllegalArgumentException | LinkageError e) {
             reportStartupFailure(e);
             return null;
@@ -111,7 +115,7 @@ public final class DevServerMain {
             server.close();
             removeShutdownHook(shutdownHook);
         }
-        return port;
+        return new Restart(port, server.restartProfile());
     }
 
     private static void removeShutdownHook(Thread shutdownHook) {

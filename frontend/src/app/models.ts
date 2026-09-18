@@ -11,6 +11,7 @@ export interface Environment {
 }
 export interface TestOutputLine {sequence:number; module:string; text:string;}
 export interface Status {
+  profiles?: {active: string | null; available: string[]; switchSupported: boolean; error?: string};
   testOutput?: TestOutputLine[];
   resourceHistory?: ResourceSample[];
   project: string;

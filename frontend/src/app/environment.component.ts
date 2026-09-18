@@ -11,6 +11,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
 @Component({selector: 'dev-environment', standalone: true, imports: [EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceChartComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading"><div>
+    <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
@@ -22,9 +23,9 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th><th role="columnheader" scope="col">Storage</th><th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th></tr></thead>
       <tbody role="rowgroup">@for(component of groups(); track component.id) {
         <tr role="row">
-          <th role="rowheader" scope="row" class="component-name">{{component.name}}
+          <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i>{{component.name}}
           </th>
-          <td role="cell">
+          <td role="cell" class="component-status">
             @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
@@ -43,11 +44,11 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
             @let restartAction = component.application ? 'restart-application' : 'restart-devserver';
             <button class="icon-button" type="button" [attr.aria-label]="component.application ? 'Restart application' : 'Restart dev server'" title="Restart" [attr.aria-busy]="maintenanceAction() === restartAction" [disabled]="busy() || !(component.application ? state.maintenance?.applicationRestartSupported : state.maintenance?.restartSupported)" (click)="maintain(restartAction)">
               @if(maintenanceAction() === restartAction) {<span class="spinner-border spinner-border-sm" role="status" [attr.aria-label]="component.application ? 'Restarting application' : 'Restarting dev server'"></span>}
-              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
+              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart</span>
             </button>
           </td>
           <td role="cell" class="component-actions">
-            @if(component.application && component.url) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" [attr.aria-label]="'Open ' + component.name" title="Open application"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+            @if(component.application && component.url) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" [attr.aria-label]="'Open ' + component.name" title="Open application"><span>App preview</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>}
             @if(!component.application) {<button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
               @if(maintenanceAction() === 'truncate-data') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Truncating data"></span>}
               @else {<i class="bi bi-trash" aria-hidden="true"></i>}
@@ -64,13 +65,14 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
-    <div class="test-summary">
-      <div class="test-heading"><h3>Tests</h3></div>
+    <section class="environment-tests" aria-label="Tests"><div class="test-summary">
+      <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Feedback from your latest changes.</p></div></div>
       <div class="test-controls">
         <button class="icon-button" type="button" aria-label="Run tests" title="Run tests"
           [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-rocket-takeoff" aria-hidden="true"></i></button>
         <div class="test-bar" [class.empty-tests]="!state.testResults?.available" [class.running-tests]="state.testResults?.available && state.testResults.running" role="img"
           [attr.aria-label]="state.testResults?.available ? state.testResults.passed + ' passed, ' + state.testResults.failed + ' failed, ' + testTotal(state.testResults) + ' total' + (state.testResults.skipped ? ', ' + state.testResults.skipped + ' skipped' : '') : 'No test results available'">
+          @if(!state.testResults?.available) {<span class="test-empty-label">No test results yet</span>}
           @if(state.testResults; as results) {
             @if(results.available) {
               <span class="test-passed" [style.width.%]="percentage(results.passed, results.totalKnown === false ? 0 : results.total)"></span><span class="test-failed" [style.width.%]="percentage(results.failed, results.totalKnown === false ? 0 : results.total)"></span>
@@ -89,7 +91,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       }
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
-    <dev-test-output [lines]="state.testOutput || []"/>
+    <dev-test-output [lines]="state.testOutput || []"/></section>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
       @if(r.error || r.auditlog?.storage?.retentionError) {<p role="alert">{{r.error || r.auditlog.storage.retentionError}}</p>}

@@ -7,6 +7,7 @@
       <span class="brand-title">Fluxzero<span> dev server</span></span>
     </a>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
+    <dev-profile-selector [status]="status()" [connected]="connected()"/>
     <nav aria-label="Dev server navigation">
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Dev environment</span></a>

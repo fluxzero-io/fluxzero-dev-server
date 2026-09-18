@@ -123,6 +123,75 @@ class DevServerMainTest {
     }
 
     @Test
+    void switchesProfilesThroughTheLocalConsoleAndRetainsSelectionOnRestart(@TempDir Path directory) throws Exception {
+        Files.createDirectories(directory.resolve(".fluxzero"));
+        Files.writeString(directory.resolve(DevProjectConfig.FILE), """
+                version: 1
+                defaultProfile: local
+                profiles:
+                  local:
+                    environment: local
+                    monitoring: {enabled: false}
+                  alternate:
+                    environment: local
+                    monitoring: {enabled: false}
+                """);
+        Process process = startServer(directory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(directory)));
+            var before = mapper.readTree(sessionFile(directory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            var statusUrl = java.net.URI.create(base + DevConsole.ROOT + "status.json");
+            var status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+                                                   java.net.http.HttpResponse.BodyHandlers.ofString()).body());
+            assertEquals("local", status.path("profiles").path("active").asText());
+            assertEquals(2, status.path("profiles").path("available").size());
+            assertTrue(status.path("profiles").path("switchSupported").asBoolean());
+            var switchUrl = java.net.URI.create(base + DevConsole.ROOT + "actions/switch-profile");
+            for (String body : List.of("{}", "{", "{\"profile\":null}")) {
+                var request = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+                        .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+                assertEquals(400, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            }
+            var foreign = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", "https://example.com")
+                    .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
+            assertEquals(403, http.send(foreign, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            var unknown = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+                    .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"missing\"}")).build();
+            assertEquals(409, http.send(unknown, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(directory).toFile()).path("sessionId"));
+            for (String action : List.of("switch-profile", "restart-devserver")) {
+                long previousRuntime = before.path("runtime").path("pid").asLong();
+                var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+                        .header("Origin", base).header("X-Fluxzero-Console", "1")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
+                assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+                long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+                var after = before;
+                while (System.nanoTime() < deadline) {
+                    try { after = mapper.readTree(sessionFile(directory).toFile()); } catch (IOException ignored) { }
+                    if (!before.path("sessionId").equals(after.path("sessionId")) && "running".equals(after.path("status").asText())) break;
+                    Thread.sleep(25);
+                }
+                assertFalse(before.path("sessionId").equals(after.path("sessionId")));
+                assertEquals("running", after.path("status").asText());
+                assertEquals(base, after.path("gateway").path("url").asText());
+                assertEquals(process.pid(), after.path("pid").asLong());
+                assertFalse(ProcessHandle.of(previousRuntime).map(ProcessHandle::isAlive).orElse(false));
+                status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+                                                  java.net.http.HttpResponse.BodyHandlers.ofString()).body());
+                assertEquals("alternate", status.path("profiles").path("active").asText());
+                before = after;
+            }
+            assertTrue(Files.readString(directory.resolve(DevProjectConfig.FILE)).contains("defaultProfile: local"));
+        } finally {
+            runControl(directory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
     void controlMainReportsAndStopsDetachedServer(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         Process logs = null;
