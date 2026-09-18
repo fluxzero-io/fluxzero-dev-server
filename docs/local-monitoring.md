@@ -74,64 +74,60 @@ filters and browser history stay synchronized. The host contract's optional
 `navigation: 'host'` hides Auditlog's horizontal switcher. Existing hosts without
 that field retain their previous behavior.
 
-## Enable monitoring
+## Monitoring defaults
 
-Monitoring is a development setting. To enable it by default for every local backend
-project on this machine, configure it once in `~/.fluxzero/dev/monitoring.yaml`:
+Auditlog starts automatically with every local backend environment, before application traffic.
+The distribution contains the pinned Auditlog backend and UI. First use extracts and verifies them
+in `~/.fluxzero/cache/dev-monitoring/`; subsequent starts reuse the verified cache. No Auditlog
+checkout, Node installation, artifact paths, or user configuration is required at runtime.
+Frontend-only environments do not start local monitoring.
+
+To opt out, put this in `.fluxzero/dev.yaml` or the selected profile, then restart the environment:
 
 ```yaml
-enabled: true
-auditlogJar: /absolute/path/to/auditlog.jar
-uiDirectory: /absolute/path/to/auditlog-ui
-storage: victorialogs
-retention: P1D
-maxDiskBytes: 1073741824
+monitoring:
+  enabled: false
 ```
 
-The file contains the monitoring fields directly, without `version` or a `monitoring`
-wrapper. Relative paths in this file resolve beside the file. The selected project's
-`monitoring` configuration replaces these defaults completely; its paths still resolve
-from the project directory. Put `monitoring: {enabled: false}` in a project or selected
-profile to opt out without specifying artifact paths. Frontend-only environments never
-inherit local monitoring. Changes take effect on the next environment start/restart.
-With no user defaults and no project monitoring block, monitoring remains disabled.
-Malformed defaults fail startup with the filename rather than silently disabling monitoring.
-The optional JVM property `fluxzero.dev.monitoringDefaults` selects another defaults file;
-automated tests use an isolated path so user settings never launch services in test fixtures.
+You can customize retention or storage without providing artifact paths:
 
-These defaults reuse already-built Auditlog artifacts; they do not download or build the
-private Auditlog repository. Install compatible artifacts once before enabling them.
-Each dev environment still owns separate monitoring processes and storage.
+```yaml
+monitoring:
+  retention: P2D
+  maxDiskBytes: 2147483648
+```
 
-Build the local Auditlog checkout once (Java 25 and its Node/npm version):
+Optional `~/.fluxzero/dev/monitoring.yaml` settings apply to projects without a monitoring block.
+This file contains the monitoring fields directly, without a `version` or `monitoring` wrapper.
+Project settings replace these machine defaults completely. Relative paths in machine settings
+resolve beside that file; project paths resolve from the project directory. Malformed settings
+fail startup with the filename. The JVM property `fluxzero.dev.monitoringDefaults` selects a
+different defaults file; automated infrastructure tests explicitly opt out through a fixture.
+
+For Auditlog development, override **both** `auditlogJar` and `uiDirectory` with compatible local
+build outputs. Java 25 is required; `javaExecutable` defaults to the supervisor's Java.
+Each environment owns separate monitoring processes and storage.
+
+## Building a distribution
+
+The Maven build packages the Auditlog revision pinned in `monitoring/auditlog-source.json`.
+Maintainers need read access to that repository, Java 25 and Git. Maven installs the pinned
+Node runtime, builds the backend and UI from the pinned commit, and embeds a checksummed ZIP.
+Only compiled runtime artifacts are included; source checkout and credentials are not packaged.
+The generated build input is cached under ignored `.private/monitoring/` and is reused across
+`clean` builds. Changing the source pin or packaging script invalidates this cache.
+
+A local checkout can supply the pinned Git objects without modifying that checkout:
 
 ```sh
-cd /path/to/fluxzero-auditlog/backend
-./mvnw -B package
-cd ../frontend
-npm ci
-npm run build-dev-server
+./mvnw -B package -Dauditlog.source=/path/to/fluxzero-auditlog
 ```
 
-Add to your project's `.fluxzero/dev.yaml`, or to one selected profile:
-
-```yaml
-version: 1
-environment: local
-monitoring:
-  auditlogJar: ../fluxzero-auditlog/backend/target/auditlog.jar
-  uiDirectory: ../fluxzero-auditlog/frontend/dist/fluxzero-auditlog/browser
-  storage: victorialogs
-  retention: P1D
-  maxDiskBytes: 1073741824
-  # javaExecutable: /path/to/java25/bin/java
-```
-
-Run `fz dev` using a dev-server build containing this feature, or launch that
-build's standalone JAR with `java -jar ...-standalone.jar --project-dir .`.
-Auditlog requires Java 25; `javaExecutable` defaults to the supervisor's Java.
-Paths are resolved relative to the development project, including when using
-profiles. Building these artifacts does not publish or release them.
+CI uses `.github/actions/monitoring-source` and requires `AUDITLOG_SOURCE_TOKEN` with read-only
+contents access to `fluxzero-io/fluxzero-auditlog` (including a Dependabot secret for its workflow).
+Checkout credentials are not persisted. Fork PRs without this secret cannot produce the complete
+distribution; run qualification on a trusted maintainer branch. No release or upload is performed
+by a local build. End users of the resulting artifact never need these build credentials.
 
 The dev server starts Auditlog before application traffic, waits for its health
 endpoint, forwards application stdout/stderr through a bounded queue, and stops
@@ -172,8 +168,6 @@ To use the existing testserver instead:
 
 ```yaml
 monitoring:
-  auditlogJar: ../fluxzero-auditlog/backend/target/auditlog.jar
-  uiDirectory: ../fluxzero-auditlog/frontend/dist/fluxzero-auditlog/browser
   storage: testserver
   retention: PT15M
   maxRecords: 5000
@@ -215,8 +209,7 @@ model. Do not expose it as a public authenticated dashboard.
 ## Windows prototype checkout
 
 Use a Windows x64 JDK 25, Git, Node.js 24.18 or newer and Python 3.9 or newer.
-The dev-server build installs its own pinned Node; the separate Auditlog frontend
-uses Node/npm from PATH. Python is needed to package the SDK documentation archive.
+The dev-server build installs its own pinned Node and packages Auditlog automatically. Python is needed to package the SDK documentation archive.
 The complete unreleased prototype spans these branches:
 
 | Repository | Branch |
@@ -237,17 +230,10 @@ cd C:\work\fluxzero-sdk-java
 cd C:\work\fluxzero-dev-server
 .\mvnw.cmd -B clean install
 
-cd C:\work\fluxzero-auditlog\backend
-.\mvnw.cmd -B -DskipTests package
-cd ..\frontend
-npm ci
-npm run build-dev-server
 ```
 
 Use `python3` instead of `python` in the property if that is the installed
-interpreter name. Configure `auditlogJar` and `uiDirectory` in the application's
-`.fluxzero/dev.yaml` as above; relative paths and forward slashes also work on
-Windows. Then launch the built dev server explicitly from PowerShell:
+interpreter name. Auditlog is bundled automatically; no artifact paths are needed. Then launch the built dev server explicitly from PowerShell:
 
 ```powershell
 $env:FLUXZERO_DEV_RUNTIME_VERSION = "0-U13-SNAPSHOT"

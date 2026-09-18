@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "build": "ng build",
+    "package:monitoring": "node ../scripts/prepare-monitoring.mjs",
     "test": "ng test --watch=false --browsers=ChromeHeadless"
   },
   "dependencies": {

@@ -44,12 +44,10 @@ public final class DevProjectConfigMain {
             # fastCompiler: false
             # frontendOnly: false # true skips the local runtime, proxy, IDP, applications, compilation and tests
 
-            # Local monitoring inherits ~/.fluxzero/dev/monitoring.yaml when present.
+            # Auditlog is bundled and enabled by default for local backend environments.
             # Set monitoring: {enabled: false} to disable it in this project/profile.
-            # Explicit artifact paths replace user defaults (see docs/local-monitoring.md).
+            # Optional machine defaults: ~/.fluxzero/dev/monitoring.yaml (see docs/local-monitoring.md).
             # monitoring:
-            #   auditlogJar: ../fluxzero-auditlog/backend/target/auditlog.jar
-            #   uiDirectory: ../fluxzero-auditlog/frontend/dist/fluxzero-auditlog/browser
             #   storage: victorialogs # native instance per dev server; alternatively testserver
             #   retention: P1D # testserver defaults to PT15M; VictoriaLogs requires at least P1D
             #   maxDiskBytes: 1073741824 # VictoriaLogs retention threshold, not a hard quota

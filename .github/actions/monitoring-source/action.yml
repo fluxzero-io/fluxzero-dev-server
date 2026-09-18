@@ -1,0 +1,30 @@
+name: Prepare pinned Auditlog source
+description: Fetch build-time input without persisting repository credentials
+inputs:
+  token:
+    description: Read-only contents token for fluxzero-io/fluxzero-auditlog
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Read source pin
+      id: source
+      shell: bash
+      env:
+        SOURCE_TOKEN: ${{ inputs.token }}
+      run: |
+        if [ -z "$SOURCE_TOKEN" ]; then
+          echo "::error::Set AUDITLOG_SOURCE_TOKEN with read-only contents access to fluxzero-io/fluxzero-auditlog to build the bundled monitoring distribution."
+          exit 1
+        fi
+        python -c 'import json, os; pin=json.load(open("monitoring/auditlog-source.json")); print("commit=" + pin["commit"])' >> "$GITHUB_OUTPUT"
+    - uses: actions/checkout@v7
+      with:
+        repository: fluxzero-io/fluxzero-auditlog
+        ref: ${{ steps.source.outputs.commit }}
+        token: ${{ inputs.token }}
+        path: .private/auditlog-source
+        persist-credentials: false
+    - name: Select local build input
+      shell: bash
+      run: echo "AUDITLOG_SOURCE_CHECKOUT=$GITHUB_WORKSPACE/.private/auditlog-source" >> "$GITHUB_ENV"

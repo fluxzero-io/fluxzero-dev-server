@@ -37,6 +37,7 @@ jobs:
       contains(needs.metadata.outputs.dependency-names, 'io.fluxzero:fluxzero-bom') &&
       needs.metadata.outputs.update-type != 'version-update:semver-major'
     uses: ./.github/workflows/verify.yml
+    secrets: inherit
 
   auto-merge-sdk:
     name: Enable SDK auto-merge

@@ -31,8 +31,10 @@ public record DevMonitoringConfig(String auditlogJar, String uiDirectory, String
 
     public DevMonitoringConfig {
         enabled = enabled == null || enabled;
-        if (enabled && (auditlogJar == null || auditlogJar.isBlank() || uiDirectory == null || uiDirectory.isBlank())) {
-            throw new IllegalArgumentException("monitoring requires auditlogJar and uiDirectory");
+        auditlogJar = auditlogJar == null || auditlogJar.isBlank() ? null : auditlogJar;
+        uiDirectory = uiDirectory == null || uiDirectory.isBlank() ? null : uiDirectory;
+        if (enabled && (auditlogJar == null) != (uiDirectory == null)) {
+            throw new IllegalArgumentException("monitoring requires both auditlogJar and uiDirectory when overriding bundled artifacts");
         }
         storage = storage == null ? "victorialogs" : storage;
         if (!Set.of("victorialogs", "testserver").contains(storage)) {
@@ -49,6 +51,17 @@ public record DevMonitoringConfig(String auditlogJar, String uiDirectory, String
         if (storage.equals("victorialogs") && duration.compareTo(Duration.ofDays(1)) < 0) {
             throw new IllegalArgumentException("VictoriaLogs requires at least one day of retention");
         }
+    }
+
+    static DevMonitoringConfig defaults() {
+        return new DevMonitoringConfig(null, null, null, null, null, null, null, null, null, true);
+    }
+
+    DevMonitoringConfig withBundledArtifacts() {
+        if (!enabled || auditlogJar != null) return this;
+        var artifacts = BundledMonitoringArtifacts.resolve();
+        return new DevMonitoringConfig(artifacts.jar().toString(), artifacts.ui().toString(), storage,
+                victoriaLogsBinary, maxRecords, maxBytes, retention, javaExecutable, maxDiskBytes, true);
     }
 
     Path resolve(Path project, String value) { return project.resolve(value).toAbsolutePath().normalize(); }

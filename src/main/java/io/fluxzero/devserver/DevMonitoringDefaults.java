@@ -22,7 +22,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-/** User-local monitoring defaults, overridden by the selected project's development profile. */
+/** Monitoring is enabled by default; optional user and selected-project settings can override it. */
 final class DevMonitoringDefaults {
     static final String FILE_PROPERTY = "fluxzero.dev.monitoringDefaults";
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
@@ -53,7 +53,8 @@ final class DevMonitoringDefaults {
                 throw new DevServerStartupException("Could not read monitoring defaults " + defaultsFile + ": " + e.getMessage(), e);
             }
         }
-        if (selected == null || !selected.enabled()) return null;
+        if (selected == null) selected = DevMonitoringConfig.defaults();
+        if (!selected.enabled()) return null;
         if (project.services().keySet().stream().anyMatch(id -> id.startsWith("monitoring-"))) {
             throw new DevServerStartupException("Service names starting with monitoring- are reserved for local monitoring. "
                     + "Rename the service or set monitoring.enabled: false in the selected development profile.");

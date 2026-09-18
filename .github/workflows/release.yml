@@ -18,6 +18,7 @@ jobs:
   verify:
     name: Verify release
     uses: ./.github/workflows/verify.yml
+    secrets: inherit
 
   version:
     name: Determine version
@@ -62,6 +63,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          token: ${{ secrets.AUDITLOG_SOURCE_TOKEN }}
       - name: Set release timestamp
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java
@@ -123,6 +127,9 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          token: ${{ secrets.AUDITLOG_SOURCE_TOKEN }}
       - name: Set release timestamp
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
@@ -191,6 +198,10 @@ jobs:
 
       - uses: actions/checkout@v7
         if: steps.central_window.outputs.publish == 'true'
+      - uses: ./.github/actions/monitoring-source
+        if: steps.central_window.outputs.publish == 'true'
+        with:
+          token: ${{ secrets.AUDITLOG_SOURCE_TOKEN }}
       - name: Set release timestamp
         if: steps.central_window.outputs.publish == 'true'
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"

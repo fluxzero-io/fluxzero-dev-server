@@ -82,8 +82,11 @@ class DevMonitoringDefaultsTest {
     }
 
     @Test
-    void absentOrDisabledDefaultsKeepExistingProjectsWorking() throws Exception {
-        assertNull(DevMonitoringDefaults.resolve(project(""), directory.resolve("missing.yaml")));
+    void absentDefaultsEnableBundledMonitoringAndExplicitDisableOptsOut() throws Exception {
+        var config = DevMonitoringDefaults.resolve(project(""), directory.resolve("missing.yaml"));
+        assertTrue(config.enabled());
+        assertNull(config.auditlogJar());
+        assertNull(config.uiDirectory());
         assertNull(DevMonitoringDefaults.resolve(project(""), defaults("enabled: false\n")));
     }
 
@@ -93,7 +96,7 @@ class DevMonitoringDefaultsTest {
         var failure = assertThrows(DevServerStartupException.class,
                 () -> DevMonitoringDefaults.resolve(project(""), defaults));
         assertTrue(failure.getMessage().contains(defaults.toString()));
-        assertTrue(failure.getMessage().contains("monitoring requires auditlogJar and uiDirectory"));
+        assertTrue(failure.getMessage().contains("monitoring requires both auditlogJar and uiDirectory"));
     }
 
     @Test
@@ -108,6 +111,16 @@ class DevMonitoringDefaultsTest {
         var failure = assertThrows(DevServerStartupException.class,
                 () -> DevMonitoringDefaults.resolve(config, defaults));
         assertTrue(failure.getMessage().contains("monitoring.enabled: false"));
+    }
+
+    @Test
+    void projectCanCustomizeBundledMonitoringWithoutArtifactPaths() throws Exception {
+        var config = DevMonitoringDefaults.resolve(project("monitoring: {storage: testserver}\n"),
+                directory.resolve("missing.yaml"));
+        assertTrue(config.enabled());
+        assertEquals("testserver", config.storage());
+        assertNull(config.auditlogJar());
+        assertNull(config.uiDirectory());
     }
 
     private Path defaults(String yaml) throws Exception {

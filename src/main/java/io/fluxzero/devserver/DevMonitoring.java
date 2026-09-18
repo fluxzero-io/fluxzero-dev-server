@@ -54,7 +54,7 @@ final class DevMonitoring implements AutoCloseable {
 
     DevMonitoring(DevMonitoringConfig config, Path project, String sessionId,
                   BiConsumer<String, DevSession.ServiceStatus> statuses, Consumer<String> log) {
-        this.config = config; this.project = project; this.sessionId = sessionId;
+        this.config = config.withBundledArtifacts(); this.project = project; this.sessionId = sessionId;
         this.statuses = statuses; this.log = log;
     }
 
