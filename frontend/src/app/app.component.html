@@ -3,7 +3,7 @@
   @if(menuOpen()) {<button class="nav-backdrop" (click)="menuOpen.set(false)" aria-label="Close navigation"></button>}
   <aside class="dashboard-sidebar" [class.open]="menuOpen()">
     <a class="dashboard-brand" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero dev server home">
-      <img class="brand-mark" src="assets/fluxzero-devserver-logo.svg" alt="">
+      <img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt="">
       <span class="brand-title">Fluxzero<span> dev server</span></span>
     </a>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
