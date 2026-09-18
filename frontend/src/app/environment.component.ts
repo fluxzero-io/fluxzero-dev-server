@@ -124,12 +124,12 @@ export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   status = input<Status>();
   displayName = input('');
-  readonly applications = computed(() => (this.status()?.components || []).filter(c => c.application).map(c => ({
+  readonly applications = computed(() => (this.status()?.components || []).filter(c => c.application && !c.id.startsWith('frontend-')).map(c => ({
     ...c, memoryBytes: usedMemory(c)
   })));
-  readonly applicationUrl = computed(() => this.applications().find(c => c.url)?.url);
+  readonly applicationUrl = computed(() => this.status()?.components?.find(c => c.application && c.url)?.url);
   readonly infrastructure = computed(() => {
-    const components = (this.status()?.components || []).filter(c => !c.application);
+    const components = (this.status()?.components || []).filter(c => !c.application || c.id.startsWith('frontend-'));
     const running = components.reduce((sum, c) => sum + (c.runningProcesses ?? (c.state === 'running' ? 1 : 0)), 0);
     const total = components.reduce((sum, c) => sum + (c.totalProcesses ?? 1), 0);
     return {

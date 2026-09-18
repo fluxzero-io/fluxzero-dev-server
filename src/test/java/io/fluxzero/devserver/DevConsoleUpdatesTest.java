@@ -58,6 +58,21 @@ class DevConsoleUpdatesTest {
         }
     }
 
+    @Test void includesManagedFrontendsInInfrastructureHistory() {
+        var state = Map.of("components", List.of(
+                Map.of("id", "app-orders", "application", true, "state", "running", "memoryUsedBytes", 100, "memoryMaxBytes", 400),
+                Map.of("id", "frontend-store", "application", true, "state", "running", "memoryUsedBytes", 50, "memoryMaxBytes", 200),
+                Map.of("id", "devserver", "application", false, "state", "running", "memoryUsedBytes", 25, "memoryMaxBytes", 100)));
+        try (var updates = new DevConsoleUpdates(() -> state, List::of, () -> 0)) {
+            JsonNode sample = updates.snapshot().path("status").path("resourceHistory").get(0);
+            assertEquals(100, sample.path("applicationMemory").asLong());
+            assertEquals(400, sample.path("applicationMemoryMax").asLong());
+            assertEquals(75, sample.path("devserverMemory").asLong());
+            assertEquals(300, sample.path("devserverMemoryMax").asLong());
+            assertEquals(50, sample.path("componentMemory").path("frontend-store").asLong());
+        }
+    }
+
     @Test void collectsWithoutBrowsersBoundsHistoryAndPreservesGapsAndUnknownMemory() {
         AtomicLong now = new AtomicLong();
         AtomicReference<Map<String,Object>> state = new AtomicReference<>(status(100, 50));

@@ -444,7 +444,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.test-counts [title]')?.getAttribute('title')).toBe('1 skipped');
     expect(root.querySelector('.test-summary > small')).toBeNull();
   });
-  it('shows multiple applications independently and keeps workspace tests outside their list', () => {
+  it('shows backend apps independently and includes managed frontends in shared services', () => {
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.status.update(s => s ? {...s, components: [
       {id:'app-orders',name:'Orders',state:'running',application:true,memoryBytes:1048576,url:'http://localhost:8080/'},
@@ -455,11 +455,17 @@ describe('Dev console navigation', () => {
       componentMemory:{'app-orders':1048576,'app-billing':2097152,'frontend-store':4194304}}]} : s);
     fixture.detectChanges();
     const cards = root.querySelectorAll('.application-overview .component-table');
-    expect(cards.length).toBe(3);
-    expect(Array.from(cards, c => c.querySelector('.component-name')!.textContent!.trim())).toEqual(['Orders','Billing','Frontend (store)']);
-    expect(Array.from(cards, c => c.querySelector('.badge')!.textContent)).toEqual(['running','failed','running']);
-    expect(Array.from(cards, c => c.querySelector('.resource-value')!.textContent)).toEqual(['1.0 MiB / —','2.0 MiB / —','4.0 MiB / —']);
-    expect(root.querySelectorAll('.application-overview .resource-chart-line').length).toBe(3);
+    expect(cards.length).toBe(2);
+    expect(Array.from(cards, c => c.querySelector('.component-name')!.textContent!.trim())).toEqual(['Orders','Billing']);
+    expect(Array.from(cards, c => c.querySelector('.badge')!.textContent)).toEqual(['running','failed']);
+    expect(Array.from(cards, c => c.querySelector('.resource-value')!.textContent)).toEqual(['1.0 MiB / —','2.0 MiB / —']);
+    expect(root.querySelectorAll('.application-overview .resource-chart-line').length).toBe(2);
+    expect(root.querySelector('.infrastructure-section .resource-value')!.textContent).toBe('12.0 MiB / —');
+    const detail = root.querySelector('.infrastructure-section dev-resource-detail')!;
+    detail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
+    expect(detail.querySelector('[role=tooltip]')!.textContent).toContain('Frontend (store)');
+    expect(detail.querySelector('[role=tooltip]')!.textContent).not.toContain('Orders');
+    detail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(root.querySelectorAll('.application-overview button,.application-overview .component-storage').length).toBe(0);
     expect(root.querySelectorAll('[aria-label="Restart all applications"]').length).toBe(1);
     const applications = root.querySelector('.applications-section')!;
@@ -476,6 +482,15 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
     expect(fixture.nativeElement.querySelector('.applications-empty').textContent).toContain('No applications configured');
     expect(fixture.nativeElement.querySelectorAll('.environment-tests').length).toBe(1);
+  });
+  it('keeps preview available for a frontend-only environment without a backend card', () => {
+    fixture.componentInstance.status.update(s => s ? {...s, frontend:'running', components:[
+      {id:'frontend-store',name:'Frontend (store)',state:'running',application:true,memoryBytes:4194304,url:location.origin + '/'}
+    ]} : s);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
+    expect(fixture.nativeElement.querySelector('.application-link').getAttribute('href')).toBe('#application');
+    expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB / —');
   });
   it('keeps chart baselines aligned and memory labels within their cells during resource updates', async () => {
     const root: HTMLElement = fixture.nativeElement;

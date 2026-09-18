@@ -137,7 +137,10 @@ public final class DevConsoleUpdates implements AutoCloseable {
         long total = 0;
         boolean found = false;
         for (JsonNode component : components) {
-            if (component.path("application").asBoolean() != application) continue;
+            // Managed frontends serve the application UI but consume shared development infrastructure.
+            boolean backendApplication = component.path("application").asBoolean()
+                    && !component.path("id").asText().startsWith("frontend-");
+            if (backendApplication != application) continue;
             found = true;
             JsonNode memory = memory(component, field);
             if (memory.isNull()) return memory;
