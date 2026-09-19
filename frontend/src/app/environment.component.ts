@@ -52,7 +52,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           @if(component.application) {<td role="cell" class="component-app-restart">
             <button class="icon-button dashboard-action" type="button" [attr.aria-label]="'Restart ' + component.name" title="Restart only this app from its last successful build" [disabled]="busy() || !component.restartSupported" [attr.aria-busy]="maintenanceAction() === 'restart-app:' + component.id" (click)="maintain('restart-app:' + component.id)">
               @if(maintenanceAction() === 'restart-app:' + component.id) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting app"></span>}
-              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart app</span>
+              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart</span>
             </button>
           </td>}
         </tr>

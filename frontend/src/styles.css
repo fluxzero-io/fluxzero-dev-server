@@ -293,14 +293,14 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 /* Quiet actions share the same surface and interaction states across workspace and tests. */
 .dashboard-action,.split-action {background:var(--dashboard-action-bg);border:0;border-radius:7px;color:var(--dashboard-action-text);}
 .dashboard-action {display:inline-flex;align-items:center;justify-content:center;gap:6px;width:max-content;height:34px;padding:0 11px;font-size:13px;white-space:nowrap;}
-.split-action {display:flex;align-items:stretch;width:max-content;height:34px;}
+.split-action {display:flex;align-items:stretch;width:max-content;height:32px;}
 .split-action button {border:0;background:transparent;color:inherit;height:100%;font-size:13px;}
 .split-action-main {display:flex;align-items:center;gap:7px;flex:1 1 auto;min-width:0;padding:0 10px;border-radius:7px 0 0 7px;white-space:nowrap;text-align:left;}
 .split-action-main:only-child {border-radius:7px;}
 .split-action-choice {flex:0 0 28px;width:28px;padding:0;border-radius:0 7px 7px 0;font-size:10px!important;}
 .dashboard-action:hover:not(:disabled),.split-action button:hover:not(:disabled) {background:var(--dashboard-action-hover);color:var(--dashboard-active);}
 .dashboard-action:active:not(:disabled),.split-action button:active:not(:disabled) {background:var(--dashboard-action-pressed);}
-@media(max-width:650px) {.dashboard-action,.split-action {height:40px;}}
+@media(max-width:650px) {.dashboard-action {height:40px;}}
 
 /* Quiet workspace metadata; current problems get a small, accessible signal. */
 .workspace-issue {display:flex;align-items:baseline;gap:10px;color:var(--dashboard-danger-text);font-size:13px;margin:16px 0 0;}
