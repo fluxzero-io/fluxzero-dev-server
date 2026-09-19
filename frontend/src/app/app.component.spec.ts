@@ -52,7 +52,7 @@ describe('Dev console navigation', () => {
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
   function openPicker() {
-    (fixture.nativeElement.querySelector('[aria-label="Choose dev server"]') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
   it('confirms a profile switch, keeps the active label until reconnect, and refreshes the preview', async () => {
@@ -167,7 +167,7 @@ describe('Dev console navigation', () => {
     expect(navigate.calls.mostRecent().args[0]).toEqual(destination);
     expect(root.querySelector('.server-menu')).toBeNull();
     expect(root.querySelector('.server-picker-button')?.textContent).toContain('repair-cafe');
-    expect(document.activeElement).toBe(root.querySelector('[aria-label="Choose dev server"]'));
+    expect(document.activeElement).toBe(root.querySelector('[aria-label="Choose workspace"]'));
     push({status:{...component.status()!, project:'Workshop',projectDirectory:destination.projectDirectory},environments:component.environments()});
     fixture.detectChanges();
     expect(root.querySelector('.server-picker-button')?.textContent).toContain('Workshop');
@@ -220,10 +220,10 @@ describe('Dev console navigation', () => {
     openPicker();
     (root.querySelector('dev-environment-selector') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
     fixture.detectChanges();expect(root.querySelector('.server-menu')).toBeNull();
-    expect(root.querySelector('[aria-label="Choose dev server"]')?.textContent).toContain('repair-cafe');
+    expect(root.querySelector('[aria-label="Choose workspace"]')?.textContent).toContain('repair-cafe');
     openPicker();(root.querySelector('h1') as HTMLElement).click();fixture.detectChanges();
     expect(root.querySelector('.server-menu')).toBeNull();
-    expect(root.querySelector('[aria-label="Choose dev server"]')?.textContent).toContain('repair-cafe');
+    expect(root.querySelector('[aria-label="Choose workspace"]')?.textContent).toContain('repair-cafe');
   });
   it('requires confirmation before starting an inactive server and switches only after success', async () => {
     const component = fixture.componentInstance;

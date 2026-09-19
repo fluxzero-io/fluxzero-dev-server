@@ -5,13 +5,13 @@ import {sendCommand} from './dom-handlers';
 @Component({selector: 'dev-profile-selector', standalone: true, template: `
   @if(status()?.profiles; as profiles) {
     <div class="profile-picker">
-      <div class="dashboard-section-label">Dev profile</div>
-      <button #trigger class="profile-picker-button" type="button" aria-label="Choose dev profile" aria-haspopup="menu"
+      <div class="dashboard-section-label">Profile</div>
+      <button #trigger class="profile-picker-button" type="button" aria-label="Choose profile" aria-haspopup="menu"
         aria-controls="dev-profile-menu" [attr.aria-expanded]="open()" [disabled]="disabled()" (click)="toggle()">
         <i class="bi bi-sliders2" aria-hidden="true"></i><span>{{profiles.active || 'Default'}}</span><i class="bi bi-chevron-down" aria-hidden="true"></i>
       </button>
       @if(open()) {
-        <div id="dev-profile-menu" class="profile-menu" role="menu" aria-label="Dev profiles">
+        <div id="dev-profile-menu" class="profile-menu" role="menu" aria-label="Profiles">
           @for(profile of profiles.available; track profile) {
             <button class="profile-option" type="button" role="menuitemradio" [attr.aria-checked]="profile === profiles.active"
               [class.active]="profile === profiles.active" (click)="choose(profile)">

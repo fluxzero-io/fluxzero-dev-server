@@ -12,7 +12,7 @@ import {sendCommand} from './dom-handlers';
       </div>
       <div class="test-output-area">
         <button type="button" class="icon-button clear-test-output" aria-label="Clear test output" title="Clear test output"
-          [disabled]="clearing() || !lines().length" (click)="clear()"><i class="bi bi-eraser" aria-hidden="true"></i></button>
+          [disabled]="clearing() || !lines().length" (click)="clear()"><i class="bi bi-slash-circle" aria-hidden="true"></i></button>
       <pre #output tabindex="0" aria-label="Live test output" (scroll)="scrolled()">@for(line of lines();track line.sequence) {<span>{{'[' + line.module + '] ' + line.text + '\n'}}</span>} @empty {<span class="empty-test-output">No test output.</span>}</pre>
       </div>
       @if(error()) {<p role="alert">{{error()}}</p>}
