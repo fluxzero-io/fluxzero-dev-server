@@ -52,7 +52,7 @@ final class AgentDocsTools {
     static Map<String, Object> properties(Object... additional) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("namespace", string("Documentation namespace; default sdk."));
-        result.put("projectId", string("Project id returned by docs_start; never the runtime's highest-version choice."));
+        result.put("projectId", string("Project id returned by docs_start; never the shared Test Server's highest-version choice."));
         result.put("version", string("Exact component version. Omit for the project SDK or latest release fallback; omit projectId for "
                                      + "an explicit version comparison."));
         for (int i = 0; i < additional.length; i += 2) {

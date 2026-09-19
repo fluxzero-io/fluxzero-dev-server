@@ -42,7 +42,7 @@ public final class DevProjectConfigMain {
             # port: 4200 # public URL for the complete dev environment; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
-            # frontendOnly: false # true skips the local runtime, proxy, IDP, applications, compilation and tests
+            # frontendOnly: false # true skips the local Test Server, proxy, IDP, applications, compilation and tests
 
             # Auditlog is bundled and enabled by default for local backend environments.
             # Set monitoring: {enabled: false} to disable it in this project/profile.

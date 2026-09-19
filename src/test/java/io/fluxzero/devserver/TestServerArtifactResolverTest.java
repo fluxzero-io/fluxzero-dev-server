@@ -29,7 +29,7 @@ import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-class DevRuntimeArtifactResolverTest {
+class TestServerArtifactResolverTest {
     @TempDir
     Path directory;
 
@@ -48,7 +48,7 @@ class DevRuntimeArtifactResolverTest {
         publish(central, "org.example", "support", "1.0", "");
         publish(central, "ch.qos.logback", "logback-classic", DevServerVersion.logbackVersion(), "");
         var repositories = List.of(repository("fluxzero", packages), repository("central", central));
-        var resolver = new DevRuntimeArtifactResolver(directory.resolve("cache"), local, repositories);
+        var resolver = new TestServerArtifactResolver(directory.resolve("cache"), local, repositories);
 
         var first = resolver.resolve("1.999.0");
 

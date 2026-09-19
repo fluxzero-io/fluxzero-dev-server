@@ -231,9 +231,9 @@ The complete unreleased prototype spans these branches:
 | fluxzero-auditlog | `codex/local-monitoring` |
 | fluxzero-sdk-java | `codex/testserver-reset` |
 
-Build the SDK test runtime once in its dedicated checkout. SDK 1.269.0 does not
-contain `TestServer.truncateData(Server)`; that capability is needed by the trash
-action. This local version does not change the SDK dependency of the application:
+Build the SDK Test Server once in its dedicated checkout. SDK 1.269.0 does not
+contain the optional `TestServer.truncateData(Server)` API used by legacy maintenance endpoints.
+The dashboard resets in-memory application data through a confirmed complete-environment restart. This local version does not change the SDK dependency of the application:
 
 ```powershell
 cd C:\work\fluxzero-sdk-java
@@ -255,8 +255,7 @@ java -jar C:\work\fluxzero-dev-server\target\fluxzero-dev-server-1-SNAPSHOT-stan
 
 An existing `fz dev` installation does not automatically select this checkout.
 Without monitoring enabled, the Projects UI can also be tested independently of
-the Auditlog checkout. Without a truncate-capable runtime, data truncation is
-unavailable. The prototype's Windows download selection and ZIP extraction have
+the Auditlog checkout. The dashboard does not expose a separate data-truncation action. The prototype's Windows download selection and ZIP extraction have
 automated coverage; the complete Windows monitoring start/restart/truncate flow
 still needs to be exercised on Windows. The repository's standard CI matrix
 includes Windows, while the application and frontend E2E jobs currently use Linux.

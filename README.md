@@ -5,9 +5,13 @@
 Local development server for [Fluxzero](https://fluxzero.io) applications.
 
 The Fluxzero Dev Server provides a complete local development environment for Fluxzero applications. It starts
-a version-aligned test runtime and proxy, launches one or more applications, performs rolling replacements after source
+the public SDK Test Server and Proxy, launches one or more applications, performs rolling replacements after source
 changes, runs affected tests in the background, and can manage a frontend development server behind one public
 URL.
+
+The server and dashboard work exclusively with this locally managed Test Server. The private production runtime
+is not a supported target or local development dependency. No production-runtime implementation is resolved or started.
+Existing `runtime` status fields, cache paths and version-override names are historical compatibility names for the Test Server.
 
 The server is normally launched through `fz dev`, the Fluxzero Maven plugin, or the Fluxzero Gradle plugin. This
 repository contains the independently versioned server implementation and its standalone executable JAR.
@@ -15,7 +19,7 @@ repository contains the independently versioned server implementation and its st
 The agent control plane may start in a completely empty greenfield workspace before project generation. In that
 phase only session management, MCP, and a source watcher run; `get_status` reports `waiting-for-project` and directs
 the agent to generate the project in the same root. When a Maven or Gradle build appears, the server reloads the
-new project configuration and starts the normal runtime, proxy, IDP, application, and test lifecycle without
+new project configuration and starts the normal Test Server, Proxy, IDP, application, and test lifecycle without
 replacing the MCP session. Non-empty directories without a build root remain invalid.
 
 For independent full suites and dependency changes while using a frontend watcher, see
@@ -148,7 +152,7 @@ The standalone stdio MCP started by `fz mcp` serves SDK documentation through `d
 exact symbol, then read individual articles and follow their links. Search returns summaries; article text and
 link lists have bounded pages to avoid loading the whole manual into the agent's context.
 
-Documentation follows each project's declared SDK version, independently of the shared test runtime and its
+Documentation follows each project's declared SDK version, independently of the shared Test Server and its
 version override. Multiple project versions require an explicit selection. An empty project can use an explicit
 version before generation, or use the latest published release as a fallback. A known project's missing
 artifact never causes a project upgrade or silently selects another SDK version. Documentation remains
@@ -203,17 +207,17 @@ Launchers resolve the latest compatible stable `1.x` release from [Fluxzero Pack
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.
 
-### Runtime Version Alignment
+### Test Server Version Alignment
 
 The dev server detects the Fluxzero SDK version declared by each Maven or Gradle build and resolves the matching
 `io.fluxzero:test-server` and `io.fluxzero:proxy` artifacts from Fluxzero Packages. Maven Central remains
-available for third-party dependencies. Runtime and proxy share one isolated
+available for third-party dependencies. Test Server and Proxy share one isolated
 child JVM, so their protocol generation cannot accidentally come from the SDK version embedded in the dev-server
 release. Resolved classpaths are cached under `~/.fluxzero/cache/dev-runtime/<sdk-version>/`; normal warm starts do
 not contact either repository again.
 
 Projects in one environment must use the same Fluxzero SDK major generation. When compatible projects use different
-versions within that generation, the newest version is selected for the shared runtime. The effective version and
+versions within that generation, the newest version is selected for the shared Test Server. The effective version and
 cache status are published as `sdkVersion`, `mode`, and `artifactCache` in the runtime and proxy entries of
 `.fluxzero/dev/session.json`.
 
@@ -291,14 +295,14 @@ Profile-level `backendPaths` add pass-through routes to the built-in `/api` rout
 Legacy `gatewayPort`, `{port}`, and frontend-local `backendPaths` remain accepted for version 1 configuration.
 
 Set `frontendOnly: true` on a profile that should run the managed frontend and public gateway without a local
-Fluxzero runtime, proxy, identity provider, applications, compilation, tests, or startup commands. In this mode all
+Fluxzero Test Server, proxy, identity provider, applications, compilation, tests, or startup commands. In this mode all
 public HTTP and WebSocket traffic, including `/api` and `/_fluxzero`, is routed to the frontend so its own development
 proxy can target a remote backend. Backend application settings and `backendPaths` are rejected to prevent a profile
 from appearing to start components that it deliberately skips.
 
 Use `projects` inside a profile when one local environment spans independent Maven or Gradle roots. Every named
 project has its own directory, application selection, optional application configuration, compile pipeline, source
-watcher, rolling replacement, and background tests. The projects share one Fluxzero runtime and gateway, while an
+watcher, rolling replacement, and background tests. The projects share one Fluxzero Test Server and gateway, while an
 application configuration can override its namespace. A failed compile or startup in one project leaves the last
 ready applications from all projects running. `projects` is additive configuration: existing single-project files
 continue to use `apps` and `applicationConfig` unchanged.
@@ -326,11 +330,11 @@ Referenced JSON resources support TestFixture's `@class`, `@revision`, and recur
 `@class` value such as `CreateAccount` resolves through the application's generated type registry when the type is
 covered by `@RegisterType`; fully qualified class names remain supported. Files may also use the dev server's existing
 `type`/`revision`/`payload`/`metadata` envelope. Successful commands run once per
-in-memory runtime; changed or failed commands are retried without re-running unchanged successful predecessors. The
+in-memory Test Server; changed or failed commands are retried without re-running unchanged successful predecessors. The
 conventional `src/test/resources/fluxzero/dev/commands/**/*.json` directory remains supported and runs after explicitly
 configured commands in normalized path order.
 
-The local dev runtime starts consumers without a stored position ten seconds before the current end of their log,
+The local Test Server starts consumers without a stored position ten seconds before the current end of their log,
 instead of the regular one-second look-back. Startup commands published shortly before a new application consumer is
 registered therefore remain visible during a normal cold start. Existing stored consumer positions are unaffected and
 the mechanism has no dependency on an application framework or framework lifecycle. Command results use the regular
@@ -465,13 +469,12 @@ Embedded previews without restart support display the active profile without all
 
 ### Component resources and maintenance
 
-Dev environment groups the customer application (including its managed frontends) with its tests.
-Customer applications show memory, status and application actions, but no storage metric.
-A separate **Development infrastructure** section below shows combined usage of the dev server, Fluxzero runtime,
-monitoring and other supporting services. Monitoring storage is reported only in that infrastructure section.
-A stopped customer application stays visible. Status badges show the status text without process counts.
-The customer card has no popovers; infrastructure status and memory offer hover/focus breakdowns by component.
-Hovering the total memory chart also opens the memory popover. Each component has its own memory chart.
+Dev environment shows one compact card per backend application, with memory, status and an individual restart
+beside its status badge. Customer applications have no storage metric. A separate **Development infrastructure**
+section above Tests reports combined usage of the dev server, Test Server and Proxy, managed UI servers, monitoring
+and supporting services. Monitoring storage is reported only there. Tests are workspace-wide.
+A stopped application stays visible. Infrastructure status and memory offer hover/focus breakdowns by component.
+Graph buttons open dialogs with a time axis and byte scale for memory and monitoring storage.
 Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
 VictoriaLogs reports Go-managed memory (Sys minus HeapReleased) and its exported Go memory limit. The dev server
 reads its own heap directly and samples managed Java processes through local JMX. Attach and sampling run in a
@@ -485,19 +488,14 @@ rather than the observed storage peak. Totals, limits and component details auto
 MiB, GiB and larger). Cards show labeled memory and storage measurements and reflow into a single column on
 narrow screens. Long names and paths wrap, and component popovers stay within the visible viewport.
 
-The trash icon (`title="truncate data"`) stops the command runner and customer backends, truncates all Testserver data
-through the optional public `TestServer.truncateData(Server)` SDK API, and clears the project's monitoring storage.
-Monitoring and customer processes reconnect with fresh caches. The dev server then reruns its configured initial
-commands (`commands` in `.fluxzero/dev.yaml` and `src/test/resources/fluxzero/dev/commands`) when their handlers are
-available. These are dev-server seed commands, not application startup hooks. External databases are not cleared.
-Older SDK versions keep working, with truncate disabled. Garbage collection need not reduce OS memory immediately.
-The existing per-store HTTP actions remain available for compatibility; the UI offers only the combined action.
-
-Application restart reuses the last ready build and replaces managed frontend processes while retaining their ports.
-Without an available build it is disabled. Dev-server restart replaces the managed environment within the standalone
-launcher JVM, retaining the public port. Customer processes reconnect too because the in-memory Testserver is new;
-initial commands run again, while on-disk monitoring history is retained. The launcher PID itself remains unchanged.
-All maintenance actions require a same-origin loopback POST. Truncate always requires confirmation in the console.
+The workspace restart control offers **All apps and UI** (the default) and **Complete environment**.
+Choosing a scope does not execute the action. All apps and UI reuses the last ready backend builds and replaces
+managed frontend processes while retaining their ports and the Test Server. Each app also has an individual restart.
+Complete environment replaces the managed environment within the standalone launcher JVM, retaining the public
+port. It always asks for confirmation and warns that in-memory application data is reset because a fresh Test Server
+is started. Configured initial commands run again; on-disk monitoring history is retained. The launcher PID stays unchanged.
+There is no separate Reset data action in the dashboard. Legacy per-store HTTP maintenance actions remain for
+compatibility. All maintenance actions require a same-origin loopback POST.
 
 The test bar includes left-aligned passed / failed / total counts using the table status colors. Total represents the
 known project inventory, independent of the run selection. A selective run temporarily clears the previous outcomes

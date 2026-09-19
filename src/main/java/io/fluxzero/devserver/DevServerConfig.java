@@ -49,7 +49,7 @@ import java.util.Objects;
  * @param frontends               routed frontend configurations, including the root frontend
  * @param projects                independently built projects sharing this environment
  * @param services                managed or external support services shared by the environment
- * @param backendEnabled          whether the local Fluxzero runtime, proxy and applications are started
+ * @param backendEnabled          whether the local Fluxzero Test Server, proxy and applications are started
  */
 public record DevServerConfig(
         Path projectDirectory,

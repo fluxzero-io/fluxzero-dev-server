@@ -66,7 +66,7 @@ public class DevServer implements AutoCloseable {
     private volatile DevSessionStore.DevSessionLock sessionLock;
     private volatile ScheduledFuture<?> heartbeatTask;
     private volatile DevServerLifetime lifetime;
-    private volatile VersionAlignedDevRuntime devRuntime;
+    private volatile VersionAlignedTestServer testServer;
     private volatile DevGateway devGateway;
     private volatile DevMonitoring monitoring;
     private volatile int effectiveGatewayPort;
@@ -472,17 +472,17 @@ public class DevServer implements AutoCloseable {
                    + selection.version() + ". Set " + FluxzeroSdkVersionDetector.VERSION_OVERRIDE_ENV
                    + " for a custom build model.");
         }
-        terminalProgress.updateTask("runtime", "Runtime", "resolving Fluxzero SDK " + selection.version());
+        terminalProgress.updateTask("runtime", "Test Server", "resolving Fluxzero SDK " + selection.version());
         try {
             int requestedProxyPort = 0;
-            devRuntime = VersionAlignedDevRuntime.start(
+            testServer = VersionAlignedTestServer.start(
                     config, session.sessionId(), selection, requestedProxyPort,
                     this::applicationRegistered, this::printRuntimeOutput, this::runtimeFailedUnexpectedly);
-            VersionAlignedDevRuntime.Ready ready = devRuntime.awaitReady(config.startupTimeout());
-            runtimeBaseUrl = "ws://localhost:" + ready.runtimePort();
+            VersionAlignedTestServer.Ready ready = testServer.awaitReady(config.startupTimeout());
+            runtimeBaseUrl = "ws://localhost:" + ready.testServerPort();
             proxyUrl = "http://localhost:" + ready.proxyPort();
 
-            Map<String, String> metadata = new LinkedHashMap<>(devRuntime.metadata());
+            Map<String, String> metadata = new LinkedHashMap<>(testServer.metadata());
             String detection;
             String compatibility;
             if (!selection.fallbackProjects().isEmpty()) {
@@ -501,15 +501,15 @@ public class DevServer implements AutoCloseable {
                 metadata.put("project." + project + ".sdkVersionSource",
                              selection.fallbackProjects().contains(project) ? "fallback" : detection);
             });
-            String detail = "Fluxzero SDK " + ready.version() + " runtime";
+            String detail = "Fluxzero SDK " + ready.version() + " Test Server";
             updateRuntimeStatus(DevSession.ServiceStatus.running(
-                    "runtime", runtimeBaseUrl, ready.runtimePort(), devRuntime.pid(), detail)
+                    "runtime", runtimeBaseUrl, ready.testServerPort(), testServer.pid(), detail)
                                         .withMetadata(metadata));
             updateProxyStatus(DevSession.ServiceStatus.running(
-                    "proxy", proxyUrl, ready.proxyPort(), devRuntime.pid(), detail)
+                    "proxy", proxyUrl, ready.proxyPort(), testServer.pid(), detail)
                                       .withMetadata(metadata));
-            record("Runtime SDK: " + ready.version() + " (artifacts "
-                   + (devRuntime.cached() ? "cached" : "resolved") + ")");
+            record("Test Server SDK: " + ready.version() + " (artifacts "
+                   + (testServer.cached() ? "cached" : "resolved") + ")");
         } catch (RuntimeException e) {
             updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", oneLine(e.getMessage())));
             updateProxyStatus(DevSession.ServiceStatus.failed("proxy", oneLine(e.getMessage())));
@@ -694,7 +694,7 @@ public class DevServer implements AutoCloseable {
         result.put("monitoring", monitoring == null ? Map.of("enabled", false) : monitoring.status());
         result.put("components", components);
         result.put("profiles", consoleProfiles());
-        result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", devRuntime != null && devRuntime.resetSupported(),
+        result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", testServer != null && testServer.resetSupported(),
                 "restartSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
         Map<String, Object> testResults = new LinkedHashMap<>();
         testResults.put("state", testsRunning ? "running" : testsIncomplete
@@ -788,7 +788,7 @@ public class DevServer implements AutoCloseable {
             throw new IllegalStateException("Restart is only available in the standalone dev server.");
         if ("clear-monitoring-storage".equals(action) && (monitoring == null || !"victorialogs".equals(monitoring.storage())))
             throw new IllegalStateException("This environment does not use VictoriaLogs.");
-        if (Set.of("truncate-testserver-data", "truncate-data").contains(action) && (devRuntime == null || !devRuntime.resetSupported()))
+        if (Set.of("truncate-testserver-data", "truncate-data").contains(action) && (testServer == null || !testServer.resetSupported()))
             throw new IllegalStateException("The selected Fluxzero SDK does not support truncating Testserver data.");
         if ("restart-application".equals(action) && projects.values().stream().noneMatch(p -> p.compilePipeline.activeSnapshot() != null)
             && frontendProcesses.values().stream().noneMatch(FrontendProcess::managed)) throw new IllegalStateException("No application build is available yet.");
@@ -811,7 +811,7 @@ public class DevServer implements AutoCloseable {
                         case "restart-devserver" -> requestShutdown(RESTART_REQUESTED);
                         case "restart-application" -> restartCustomerApplications();
                         case "truncate-data" -> truncateEnvironment();
-                        case "truncate-testserver-data" -> devRuntime.truncateData(Duration.ofSeconds(30));
+                        case "truncate-testserver-data" -> testServer.truncateData(Duration.ofSeconds(30));
                         case "clear-monitoring-storage" -> {
                             monitoring.close();
                             try { MonitoringStorage.clear(config.projectDirectory()); }
@@ -832,7 +832,7 @@ public class DevServer implements AutoCloseable {
                 record("[maintenance] " + maintenanceError);
             } finally {
                 // Shutdown is bounded; a slow maintenance operation may finish after close() has returned.
-                if (closed.get()) { closeQuietly(monitoring); closeQuietly(commandPipeline); closeQuietly(devRuntime); }
+                if (closed.get()) { closeQuietly(monitoring); closeQuietly(commandPipeline); closeQuietly(testServer); }
                 if ("pause-builds".equals(action)) {
                     buildResume = null;
                     buildPauseState = "running";
@@ -851,7 +851,7 @@ public class DevServer implements AutoCloseable {
                 if (buildResume.getCount() == 0) return null;
                 for (FrontendProcess frontend : frontends) frontend.suspendForBuild();
                 buildPauseState = "paused";
-                record("[maintenance] builds paused; managed frontends stopped; application and runtime retained");
+                record("[maintenance] builds paused; managed frontends stopped; application and Test Server retained");
                 while (!closed.get() && !buildResume.await(1, TimeUnit.SECONDS)) activity();
             } finally {
                 buildPauseState = "resuming";
@@ -884,7 +884,7 @@ public class DevServer implements AutoCloseable {
         Exception failure = null;
         try {
             if (monitoring != null) monitoring.close();
-            devRuntime.truncateData(Duration.ofSeconds(30));
+            testServer.truncateData(Duration.ofSeconds(30));
             sessionStore.invalidateCommandStatus(session.sessionId(), "data truncated; initial commands will run again");
             MonitoringStorage.clear(config.projectDirectory());
         } catch (Exception e) { failure = e; }
@@ -1729,7 +1729,7 @@ public class DevServer implements AutoCloseable {
     private void recordEnvironmentDetails() {
         record("Fluxzero dev environment infrastructure started");
         if (config.backendEnabled()) {
-            record("Runtime: " + runtimeBaseUrl);
+            record("Test Server: " + runtimeBaseUrl);
             record("Proxy:   " + proxyUrl + (devGateway == null ? "" : " (internal)"));
         } else {
             record("Backend: skipped (frontend-only profile)");
@@ -1925,7 +1925,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void runtimeFailedUnexpectedly(String detail) {
-        String summary = "Fluxzero runtime stopped unexpectedly: " + oneLine(detail);
+        String summary = "Fluxzero Test Server stopped unexpectedly: " + oneLine(detail);
         updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", summary));
         updateProxyStatus(DevSession.ServiceStatus.failed("proxy", summary));
         requestShutdown(summary);
@@ -1947,7 +1947,7 @@ public class DevServer implements AutoCloseable {
         }
         closeQuietly(greenfieldWatcher);
         sessionStore.invalidateCommandStatus(
-                session.sessionId(), "runtime session stopped; command will run again in the next session");
+                session.sessionId(), "Test Server session stopped; command will run again in the next session");
         stopSession(shutdownDetail.get());
         closeQuietly(lifetime);
         projects.values().forEach(DevServer::closeQuietly);
@@ -1970,7 +1970,7 @@ public class DevServer implements AutoCloseable {
         serviceProcesses.clear();
         closeQuietly(monitoring);
         closeQuietly(idpService);
-        closeQuietly(devRuntime);
+        closeQuietly(testServer);
         closeQuietly(sessionLock);
         closeQuietly(embeddedLogCapture);
         closeQuietly(devLogStore);

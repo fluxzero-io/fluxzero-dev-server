@@ -41,34 +41,35 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-final class DevRuntimeArtifactResolver {
+/** Resolves the public SDK Test Server and Proxy; these are the only local server implementation. */
+final class TestServerArtifactResolver {
     static final String CACHE_FORMAT = "# fluxzero-dev-runtime-classpath-v1";
     private static final String CENTRAL = "https://repo.maven.apache.org/maven2/";
     private static final String PACKAGES = "https://packages.fluxzero.io/maven/";
-    private static final List<String> RUNTIME_ARTIFACTS = List.of("test-server", "proxy");
+    private static final List<String> TEST_SERVER_ARTIFACTS = List.of("test-server", "proxy");
     private static final ConcurrentHashMap<Path, Object> IN_PROCESS_LOCKS = new ConcurrentHashMap<>();
 
     private final Path cacheRoot;
     private final Path localRepository;
     private final List<RemoteRepository> repositories;
 
-    DevRuntimeArtifactResolver() {
+    TestServerArtifactResolver() {
         this(defaultCacheRoot(), defaultLocalRepository());
     }
 
-    DevRuntimeArtifactResolver(Path cacheRoot, Path localRepository) {
+    TestServerArtifactResolver(Path cacheRoot, Path localRepository) {
         this(cacheRoot, localRepository, List.of(
                 new RemoteRepository.Builder("fluxzero", "default", PACKAGES).build(),
                 new RemoteRepository.Builder("central", "default", CENTRAL).build()));
     }
 
-    DevRuntimeArtifactResolver(Path cacheRoot, Path localRepository, List<RemoteRepository> repositories) {
+    TestServerArtifactResolver(Path cacheRoot, Path localRepository, List<RemoteRepository> repositories) {
         this.cacheRoot = cacheRoot.toAbsolutePath().normalize();
         this.localRepository = localRepository.toAbsolutePath().normalize();
         this.repositories = List.copyOf(repositories);
     }
 
-    ResolvedRuntime resolve(String version) {
+    ResolvedTestServer resolve(String version) {
         Path versionDirectory = cacheRoot.resolve(safeVersion(version));
         Path classpathFile = versionDirectory.resolve("classpath.txt");
         Path lockFile = versionDirectory.resolve("resolve.lock");
@@ -80,11 +81,11 @@ final class DevRuntimeArtifactResolver {
                      FileLock ignored = channel.lock()) {
                     List<Path> cached = readValidClasspath(classpathFile);
                     if (!cached.isEmpty()) {
-                        return new ResolvedRuntime(version, cached, true, classpathFile);
+                        return new ResolvedTestServer(version, cached, true, classpathFile);
                     }
                     List<Path> resolved = resolveArtifacts(version);
                     writeClasspath(classpathFile, resolved);
-                    return new ResolvedRuntime(version, resolved, false, classpathFile);
+                    return new ResolvedTestServer(version, resolved, false, classpathFile);
                 }
             }
         } catch (Exception e) {
@@ -100,7 +101,7 @@ final class DevRuntimeArtifactResolver {
                 .withLocalRepositories(new LocalRepository(localRepository)).build()) {
             CollectRequest collectRequest = new CollectRequest();
             collectRequest.setRepositories(repositories);
-            RUNTIME_ARTIFACTS.forEach(artifactId -> collectRequest.addDependency(new Dependency(
+            TEST_SERVER_ARTIFACTS.forEach(artifactId -> collectRequest.addDependency(new Dependency(
                     new DefaultArtifact("io.fluxzero:" + artifactId + ":" + version), "runtime")));
             collectRequest.addDependency(new Dependency(new DefaultArtifact(
                     "ch.qos.logback:logback-classic:" + DevServerVersion.logbackVersion()), "runtime"));
@@ -112,7 +113,7 @@ final class DevRuntimeArtifactResolver {
                     "test-server-" + version + ".jar"))
                 || classpath.stream().noneMatch(path -> path.getFileName().toString().equals(
                     "proxy-" + version + ".jar"))) {
-                throw new IllegalStateException("resolved classpath is missing the requested runtime artifacts");
+                throw new IllegalStateException("resolved classpath is missing the requested Test Server and Proxy artifacts");
             }
             return List.copyOf(classpath);
         } finally {
@@ -191,8 +192,8 @@ final class DevRuntimeArtifactResolver {
                 : value.replace('\r', ' ').replace('\n', ' ').strip();
     }
 
-    record ResolvedRuntime(String version, List<Path> classpath, boolean cached, Path classpathFile) {
-        ResolvedRuntime {
+    record ResolvedTestServer(String version, List<Path> classpath, boolean cached, Path classpathFile) {
+        ResolvedTestServer {
             classpath = List.copyOf(classpath);
         }
     }

@@ -34,10 +34,10 @@ import java.util.function.BiConsumer;
 /**
  * JDK-only bootstrap that hosts a version-selected TestServer and Proxy in an isolated class loader.
  */
-public final class DevRuntimeProcessMain {
+public final class TestServerProcessMain {
     static final String CONTROL_PREFIX = "FZDEV-RUNTIME\t";
 
-    private DevRuntimeProcessMain() {
+    private TestServerProcessMain() {
     }
 
     public static void main(String[] args) {
@@ -48,16 +48,16 @@ public final class DevRuntimeProcessMain {
             Thread.currentThread().setContextClassLoader(loader);
             validateIntegrationApi(loader, arguments.version());
             resources[0] = monitorConnections(loader);
-            resources[1] = startRuntime(loader, arguments.lookbackMillis());
-            int runtimePort = localPort(resources[1]);
-            resources[2] = startProxy(loader, "ws://localhost:" + runtimePort,
+            resources[1] = startTestServer(loader, arguments.lookbackMillis());
+            int testServerPort = localPort(resources[1]);
+            resources[2] = startProxy(loader, "ws://localhost:" + testServerPort,
                                       arguments.proxyPort(), arguments.namespace());
             int proxyPort = (int) resources[2].getClass().getMethod("getPort").invoke(resources[2]);
-            Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("fluxzero-dev-runtime-shutdown").unstarted(
+            Runtime.getRuntime().addShutdownHook(Thread.ofPlatform().name("fluxzero-test-server-shutdown").unstarted(
                     () -> close(resources, closed)));
             monitorParent(arguments.parentPid());
             if (resetMethod(loader) != null) control("CAPABILITY", "truncate-data");
-            control("READY", Integer.toString(runtimePort), Integer.toString(proxyPort), arguments.version());
+            control("READY", Integer.toString(testServerPort), Integer.toString(proxyPort), arguments.version());
             awaitStop(loader, resources[1]);
             close(resources, closed);
         } catch (Throwable e) {
@@ -72,7 +72,7 @@ public final class DevRuntimeProcessMain {
         List<URL> urls = Files.readAllLines(classpathFile, StandardCharsets.UTF_8).stream()
                 .filter(line -> !line.isBlank() && !line.startsWith("#"))
                 .map(Path::of).map(Path::toAbsolutePath).map(Path::normalize)
-                .map(DevRuntimeProcessMain::url).toList();
+                .map(TestServerProcessMain::url).toList();
         return new URLClassLoader(urls.toArray(URL[]::new), ClassLoader.getPlatformClassLoader());
     }
 
@@ -80,7 +80,7 @@ public final class DevRuntimeProcessMain {
         try {
             return path.toUri().toURL();
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid runtime classpath entry " + path, e);
+            throw new IllegalArgumentException("Invalid Test Server classpath entry " + path, e);
         }
     }
 
@@ -115,12 +115,12 @@ public final class DevRuntimeProcessMain {
             loader.loadClass("io.fluxzero.proxy.ProxyServer").getMethod("start", config);
         } catch (ReflectiveOperationException e) {
             throw new IllegalStateException(
-                    "Fluxzero SDK " + version + " does not expose the local runtime integration API required by "
+                    "Fluxzero SDK " + version + " does not expose the local Test Server integration API required by "
                     + "this dev server. Upgrade the application's Fluxzero SDK.", e);
         }
     }
 
-    private static Object startRuntime(ClassLoader loader, long lookbackMillis) throws Exception {
+    private static Object startTestServer(ClassLoader loader, long lookbackMillis) throws Exception {
         Class<?> testServer = loader.loadClass("io.fluxzero.testserver.TestServer");
         try {
             Method configurable = testServer.getMethod("startServer", int.class, Duration.class);
@@ -130,10 +130,10 @@ public final class DevRuntimeProcessMain {
         }
     }
 
-    private static Object startProxy(ClassLoader loader, String runtimeUrl, int port, String namespace)
+    private static Object startProxy(ClassLoader loader, String testServerUrl, int port, String namespace)
             throws Exception {
         Class<?> configType = loader.loadClass("io.fluxzero.proxy.ProxyServerConfig");
-        Object config = configType.getMethod("forRuntime", String.class).invoke(null, runtimeUrl);
+        Object config = configType.getMethod("forRuntime", String.class).invoke(null, testServerUrl);
         config = configType.getMethod("withMetricsEnabled", boolean.class).invoke(config, false);
         if (namespace != null && !namespace.isBlank()) {
             config = configType.getMethod("withNamespace", String.class).invoke(config, namespace);
@@ -202,7 +202,7 @@ public final class DevRuntimeProcessMain {
         try {
             target.getClass().getMethod(method).invoke(target);
         } catch (Exception e) {
-            System.err.println("Failed to invoke " + method + " during runtime shutdown: " + message(e));
+            System.err.println("Failed to invoke " + method + " during Test Server shutdown: " + message(e));
         }
     }
 
@@ -247,7 +247,7 @@ public final class DevRuntimeProcessMain {
                     case "--lookback-millis" -> lookbackMillis = Long.parseLong(
                             requireValue(args, ++i, "--lookback-millis"));
                     case "--version" -> version = requireValue(args, ++i, "--version");
-                    default -> throw new IllegalArgumentException("Unknown runtime option " + args[i]);
+                    default -> throw new IllegalArgumentException("Unknown Test Server option " + args[i]);
                 }
             }
             if (classpath == null) {

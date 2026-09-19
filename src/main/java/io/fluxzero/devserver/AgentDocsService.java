@@ -21,7 +21,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.function.Supplier;
 
-/** Project-aware selective retrieval; never selects documentation from the shared runtime override. */
+/** Project-aware selective retrieval; never selects documentation from the shared Test Server override. */
 final class AgentDocsService implements AutoCloseable {
     private final Supplier<DevServerConfig> config;
     private final AgentDocsStore store;
@@ -166,7 +166,7 @@ final class AgentDocsService implements AutoCloseable {
         }
         if (versions.size() != 1) {
             throw new SelectionRequired("Several project SDK versions are available. Select projectId and/or version "
-                                        + "explicitly; documentation does not use the highest shared runtime version.");
+                                        + "explicitly; documentation does not use the highest shared Test Server version.");
         }
         if (projectId == null && candidates.size() == 1) {
             projectId = candidates.getFirst().id();

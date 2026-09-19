@@ -7,7 +7,7 @@ Instructions for coding agents working in this repository.
 This repository contains the standalone Fluxzero dev server, built and run with Maven and Java 25. It is a local
 development product rather than an application dependency.
 
-- `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero test runtime and proxy,
+- `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero Test Server and proxy,
   application and frontend child processes, rolling reloads, background tests, startup commands, diagnostics,
   terminal attachment, and MCP access.
 - `src/main/resources`: logging and runtime resources included in the standalone distribution.
@@ -45,6 +45,12 @@ Keep the default test suite deterministic and reasonably fast. Expensive framewo
 belong behind the existing opt-in profiles unless their cost can be reduced enough for every build.
 
 ## Architecture And Compatibility
+
+- The dev server and its dashboard target only the locally managed public SDK Test Server and Proxy.
+  The private production runtime is neither a supported target nor a local development dependency.
+  Do not add production-runtime implementations, artifacts, connections, or fallback paths here.
+  Use Test Server terminology for this service; historical `runtime` fields in session/MCP protocols
+  and version/cache settings refer exclusively to that Test Server and remain compatibility boundaries.
 
 - Treat `.fluxzero/dev.yaml`, `.fluxzero/dev/session.json`, diagnostics files, the MCP surface, environment
   variables, and launcher exit codes as compatibility boundaries. Version schemas before making incompatible

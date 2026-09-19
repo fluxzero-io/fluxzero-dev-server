@@ -79,7 +79,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </section>
     <section class="infrastructure-section" aria-labelledby="infrastructure-title">
       <header><h2 id="infrastructure-title">Development infrastructure</h2>
-        <p>Combined usage of the dev server, Fluxzero runtime, monitoring and supporting services.</p></header>
+        <p>Combined usage of the dev server, Test Server and Proxy, monitoring and supporting services.</p></header>
       <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}

@@ -172,7 +172,7 @@ final class DevMcpTools {
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("serviceIds", stringArray("Filter by application or infrastructure service id."));
         properties.put("instanceIds", stringArray("Filter by concrete application instance id."));
-        properties.put("sources", stringArray("Filter by subsystem, for example app, compile, test, or runtime."));
+        properties.put("sources", stringArray("Filter by subsystem, for example app, compile, test, or runtime (the local Test Server)."));
         properties.put("minimumLevel", Map.of("type", "string", "enum", List.of("TRACE", "DEBUG", "INFO",
                                                                                   "WARN", "ERROR")));
         if (includeLimit) {

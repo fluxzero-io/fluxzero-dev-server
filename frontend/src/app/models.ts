@@ -17,6 +17,7 @@ export interface Status {
   project: string;
   projectDirectory: string;
   state: string;
+  /** Historical protocol field: status of the local Test Server. */
   runtime: string;
   applications: string;
   tests: string;
