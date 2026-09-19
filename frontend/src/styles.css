@@ -322,3 +322,34 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .workspace-heading .project-path {display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;}
 
 .dashboard-nav-link .nav-result-badge.in-progress {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+
+/* Persistent desktop navigation and mobile drawer. */
+.dashboard-sidebar {width:var(--sidebar-width,300px);flex-basis:var(--sidebar-width,300px);}
+.dashboard-brand {position:relative;padding-right:30px;gap:10px;}
+.brand-mark {width:64px;height:64px;flex-basis:64px;}
+.brand-title {font-size:18px;}.brand-title span {font-size:16px;}
+.sidebar-toggle {position:absolute;right:-8px;top:24px;flex-shrink:0;}
+.sidebar-resizer {position:sticky;top:0;height:100dvh;width:8px;margin-left:-4px;margin-right:-4px;flex:0 0 8px;padding:0;border:0;background:transparent;cursor:ew-resize;z-index:22;touch-action:none;}
+.sidebar-resizer:hover,.sidebar-resizer:focus-visible {background:var(--dashboard-active-soft);box-shadow:inset 2px 0 var(--dashboard-active);}
+.sidebar-resizing {cursor:ew-resize;user-select:none;}.sidebar-resizing iframe {pointer-events:none;}
+.navigation-collapsed .dashboard-sidebar {position:fixed;left:0;transform:translateX(-100%);visibility:hidden;}
+.navigation-collapsed .dashboard-sidebar.open {transform:translateX(0);visibility:visible;box-shadow:12px 0 40px #0002;}
+.nav-backdrop {display:block;position:fixed;inset:0;background:#10203955;border:0;z-index:19;cursor:default;}
+.navigation-bar {height:48px;display:flex;align-items:center;padding:0 16px;background:var(--dashboard-sidebar-bg);border-bottom:1px solid var(--dashboard-border);}
+.navigation-launcher {width:36px;height:36px;font-size:20px;}
+.dashboard-section-toggle {min-height:36px;padding:0 10px;gap:8px;}
+.dashboard-section-toggle:hover {background:var(--dashboard-active-soft);}
+.dashboard-section-toggle i {font-size:13px;transition:transform .15s;}
+@media(max-width:650px) {
+  .dashboard-sidebar,.navigation-collapsed .dashboard-sidebar {position:fixed;left:0;top:0;width:min(320px,calc(100vw - 48px));flex-basis:auto;padding:16px;transform:translateX(-100%);visibility:hidden;transition:transform .2s,visibility .2s;height:100dvh;}
+  .dashboard-sidebar.open,.navigation-collapsed .dashboard-sidebar.open {transform:translateX(0);visibility:visible;box-shadow:12px 0 40px #0002;}
+  .dashboard-brand {margin-bottom:18px;min-height:68px;}.sidebar-toggle {top:16px;right:0;width:36px;height:36px;}
+  main h1 {padding-left:0;}.dashboard-nav-link {min-height:46px;}.sidebar-footer {padding-bottom:env(safe-area-inset-bottom);}
+}
+@media(prefers-reduced-motion:reduce) {.dashboard-sidebar,.dashboard-section-toggle i {transition:none!important;}}
+
+.navigation-collapsed .application-page {height:calc(100dvh - 48px);}
+@media(max-width:650px) {.application-page {height:calc(100dvh - 48px);}}
+
+.dashboard-sidebar.open {background:var(--dashboard-surface);}
+body:has(.drawer-open) {overflow:hidden;}

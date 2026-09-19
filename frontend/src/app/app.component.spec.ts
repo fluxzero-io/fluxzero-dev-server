@@ -15,8 +15,11 @@ describe('Dev console navigation', () => {
   const originalConfirmation = localStorage.getItem('devConfirmTruncate');
   const originalRestartScope = localStorage.getItem('devRestartScope');
   const originalTheme = localStorage.getItem('dashboardTheme');
+  const navigationKeys=['devboard.monitoringExpanded','devboard.sidebarCollapsed','devboard.sidebarWidth'];
+  const navigationPreferences=navigationKeys.map(key=>localStorage.getItem(key));
   beforeEach(async () => {
     localStorage.removeItem('devRestartScope');
+    navigationKeys.forEach(key=>localStorage.removeItem(key));
     // A legacy opt-out must never suppress confirmation, even after startup.
     localStorage.setItem('devConfirmTruncate', 'false');
     history.replaceState(null, '', location.pathname + '#projects');
@@ -43,6 +46,7 @@ describe('Dev console navigation', () => {
   });
   afterEach(() => {
     fixture.destroy();
+    navigationKeys.forEach((key,index)=>{const value=navigationPreferences[index];if(value===null) localStorage.removeItem(key);else localStorage.setItem(key,value);});
     if (originalRestartScope == null) localStorage.removeItem('devRestartScope');
     else localStorage.setItem('devRestartScope', originalRestartScope);
     if (originalConfirmation == null) localStorage.removeItem('devConfirmTruncate');
@@ -171,6 +175,30 @@ describe('Dev console navigation', () => {
     expect(document.activeElement).toBe(trigger);
     TestBed.inject(HttpTestingController).expectNone('actions/switch-profile');
   });
+  it('restores Monitoring and pinned navigation choices after recreating the UI', () => {
+    const app=fixture.componentInstance;
+    expect(app.monitoringExpanded()).toBeTrue();
+    app.toggleMonitoring();app.togglePinnedNavigation();
+    app.resizeNavigationWithKeyboard(new KeyboardEvent('keydown',{key:'End'}));
+    const restored=TestBed.createComponent(AppComponent);
+    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    expect(restored.componentInstance.sidebarCollapsed()).toBeTrue();
+    expect(restored.componentInstance.sidebarWidth()).toBe(520);
+    history.replaceState(null,'','#monitoring/logs');
+    restored.componentInstance.readRoute();
+    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    restored.destroy();
+  });
+  it('opens a temporary drawer without changing the saved pinned state and closes on Escape', () => {
+    const app=fixture.componentInstance;
+    app.togglePinnedNavigation();app.openNavigation();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('main').hasAttribute('inert')).toBeTrue();
+    expect(fixture.nativeElement.querySelector('aside').hasAttribute('inert')).toBeFalse();
+    app.navigationKeyboard(new KeyboardEvent('keydown',{key:'Escape'}));fixture.detectChanges();
+    expect(app.menuOpen()).toBeFalse();expect(app.sidebarCollapsed()).toBeTrue();
+    expect(localStorage.getItem('devboard.sidebarCollapsed')).toBe('true');
+    expect(fixture.nativeElement.querySelector('aside').hasAttribute('inert')).toBeTrue();
+  });
   it('opens App preview by default and from the home link while honoring explicit environment bookmarks', () => {
     history.replaceState(null, '', location.pathname);
     fixture.componentInstance.readRoute(); fixture.detectChanges();
@@ -187,7 +215,7 @@ describe('Dev console navigation', () => {
     fixture.componentInstance.status.set({...state,maintenance:{...state.maintenance!,workspaceStopped:true},progress:{revision:'r',error:null,data:{version:1,milestones:[{id:'m',title:'Booking',description:'',features:[feature]}]}}});
     fixture.componentInstance.navigate('progress');fixture.detectChanges();
     const badge=fixture.nativeElement.querySelector('a[href="#progress"] .nav-result-badge');
-    expect(badge.textContent).toBe('100%');expect(badge.title).toContain('1 of 1 completed');
+    expect(badge.textContent).toBe('100%');expect(badge.title).toContain('1 of 1 recorded features and fixes completed');
     expect(badge.classList.contains('in-progress')).toBeFalse();
     expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Progress');
     expect(fixture.nativeElement.querySelector('.milestone-title').textContent).toBe('Booking');

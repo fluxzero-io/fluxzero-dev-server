@@ -62,7 +62,70 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemTheme = matchMedia('(prefers-color-scheme: dark)');
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
-  readonly monitoringExpanded = signal(true);
+  readonly monitoringExpanded = signal(this.preference('devboard.monitoringExpanded') !== 'false');
+  readonly sidebarCollapsed = signal(this.preference('devboard.sidebarCollapsed') === 'true');
+  readonly sidebarWidth = signal(Math.max(260, Math.min(520, Number(this.preference('devboard.sidebarWidth')) || 300)));
+  readonly mobileNavigation = signal(matchMedia('(max-width: 650px)').matches);
+  readonly resizingSidebar = signal(false);
+  readonly navigationHidden = computed(() => (this.mobileNavigation() || this.sidebarCollapsed()) && !this.menuOpen());
+  private resizePointer?: number;
+  private preference(key:string) {try {return localStorage.getItem(key);} catch {return null;}}
+  private savePreference(key:string, value:string) {try {localStorage.setItem(key,value);} catch { /* Keep working without storage. */ }}
+  toggleMonitoring() {
+    this.monitoringExpanded.update(value=>!value);
+    this.savePreference('devboard.monitoringExpanded',String(this.monitoringExpanded()));
+  }
+  togglePinnedNavigation() {
+    if(this.mobileNavigation()) {this.closeNavigation();return;}
+    this.sidebarCollapsed.update(value=>!value);
+    this.savePreference('devboard.sidebarCollapsed',String(this.sidebarCollapsed()));
+    this.menuOpen.set(false);
+    if(this.sidebarCollapsed()) this.focusNavigationTrigger();
+  }
+  openNavigation() {
+    this.menuOpen.set(true);
+    setTimeout(()=>this.elementRef.nativeElement.querySelector<HTMLElement>('.sidebar-toggle')?.focus());
+  }
+  closeNavigation() {this.menuOpen.set(false);this.focusNavigationTrigger();}
+  private focusNavigationTrigger() {setTimeout(()=>this.elementRef.nativeElement.querySelector<HTMLElement>('.navigation-launcher')?.focus());}
+  @HostListener('window:resize') viewportChanged() {
+    const mobile=matchMedia('(max-width: 650px)').matches;
+    if(mobile!==this.mobileNavigation()) {this.mobileNavigation.set(mobile);this.menuOpen.set(false);this.stopSidebarResize();}
+  }
+  startSidebarResize(event:PointerEvent) {
+    if(event.button!==0 || this.mobileNavigation()) return;
+    event.preventDefault();this.resizePointer=event.pointerId;this.resizingSidebar.set(true);
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+  }
+  @HostListener('window:pointermove',['$event']) resizeSidebar(event:PointerEvent) {
+    if(!this.resizingSidebar() || event.pointerId!==this.resizePointer) return;
+    if(event.clientX<176) {this.stopSidebarResize();this.togglePinnedNavigation();return;}
+    this.sidebarWidth.set(Math.max(260,Math.min(520,event.clientX)));
+  }
+  @HostListener('window:pointerup') @HostListener('window:pointercancel') stopSidebarResize() {
+    if(this.resizingSidebar()) this.savePreference('devboard.sidebarWidth',String(this.sidebarWidth()));
+    this.resizingSidebar.set(false);this.resizePointer=undefined;
+  }
+  resizeNavigationWithKeyboard(event:KeyboardEvent) {
+    let width=this.sidebarWidth();
+    if(event.key==='ArrowLeft') {if(width<=260) {event.preventDefault();this.togglePinnedNavigation();return;}width-=20;}
+    else if(event.key==='ArrowRight') width+=20;
+    else if(event.key==='Home') width=260;
+    else if(event.key==='End') width=520;
+    else return;
+    event.preventDefault();this.sidebarWidth.set(Math.max(260,Math.min(520,width)));
+    this.savePreference('devboard.sidebarWidth',String(this.sidebarWidth()));
+  }
+  @HostListener('document:keydown',['$event']) navigationKeyboard(event:KeyboardEvent) {
+    if(!this.menuOpen()) return;
+    if(event.key==='Escape') {event.preventDefault();this.closeNavigation();return;}
+    if(event.key!=='Tab') return;
+    const elements=Array.from(this.elementRef.nativeElement.querySelectorAll('.dashboard-sidebar a[href], .dashboard-sidebar button:not([disabled]), .dashboard-sidebar [tabindex="0"]')) as HTMLElement[];
+    const visible=elements.filter(element=>element.getClientRects().length>0);
+    const first=visible[0],last=visible[visible.length-1];
+    if(event.shiftKey && document.activeElement===first) {event.preventDefault();last?.focus();}
+    else if(!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
+  }
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
   readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
   readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
@@ -218,7 +281,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.route.set(route);
     if (route === 'application') this.applicationOpened.set(true);
     if (this.isMonitoring()) {
-      this.monitoringExpanded.set(true);
+      if(this.preference('devboard.monitoringExpanded') === null) this.monitoringExpanded.set(true);
       this.wantedPath = route.substring('monitoring'.length);
       this.ensureFrame();
       if (this.ready) this.navigateFrame();

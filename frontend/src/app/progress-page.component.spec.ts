@@ -25,7 +25,7 @@ describe('Functional progress',()=>{
   expect(f.nativeElement.querySelector('[role=progressbar]')).toBeNull();f.destroy();
  });
  it('counts functional items, including bugs, rather than milestones or effort',()=>{
-  expect(progressCount(data)).toEqual({done:2,total:3,percent:67,label:'2 of 3 completed · 67%'});
+  expect(progressCount(data)).toEqual({done:2,total:3,percent:67,label:'2 of 3 recorded features and fixes completed · 67%. Counts items, not remaining build time.'});
   expect(progressCount({...data,error:'invalid'})).toBeNull();
   expect(progressCount({revision:'missing',data:{version:1,milestones:[]},error:null})).toBeNull();
  });

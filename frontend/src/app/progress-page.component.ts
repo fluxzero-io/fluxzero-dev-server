@@ -7,7 +7,7 @@ export function progressCount(progress:ProjectProgress|undefined) {
   const features=progress.data.milestones.flatMap(m=>m.features), total=features.length;
   if(!total) return null;
   const done=features.filter(f=>f.status==='done').length;
-  return {done,total,percent:Math.round(done/total*100),label:`${done} of ${total} completed · ${Math.round(done/total*100)}%`};
+  return {done,total,percent:Math.round(done/total*100),label:`${done} of ${total} recorded features and fixes completed · ${Math.round(done/total*100)}%. Counts items, not remaining build time.`};
 }
 @Component({selector:'dev-progress',standalone:true,imports:[DatePipe],template:`
   <section class="page progress-page" aria-labelledby="progress-title">
@@ -21,7 +21,7 @@ export function progressCount(progress:ProjectProgress|undefined) {
     } @else {
       <div class="progress-card">
         @if(count(); as summary) {
-          <div class="progress-summary"><span><strong>{{summary.done}}</strong> / {{summary.total}} completed</span><span class="muted">{{summary.percent}}%</span></div>
+          <div class="progress-summary"><span><strong>{{summary.done}}</strong> / {{summary.total}} completed</span><span class="muted" tabindex="0" [title]="summary.label" [attr.aria-label]="summary.label">{{summary.percent}}%</span></div>
           <div class="progress-track" role="progressbar" aria-label="Completed features and fixes" [attr.aria-valuenow]="summary.done" aria-valuemin="0" [attr.aria-valuemax]="summary.total" [attr.aria-valuetext]="summary.label"><span [style.width.%]="summary.percent"></span></div>
         }
         <div class="progress-filters" role="group" aria-label="Filter progress">
@@ -35,7 +35,7 @@ export function progressCount(progress:ProjectProgress|undefined) {
               <span class="milestone-title">{{milestone.title}}</span><span class="count">{{completed(milestone)}} / {{milestone.features.length}} completed</span>
             </button>
             @if(isOpen(milestone)) {
-              @if(milestone.description) {<p class="milestone-description">{{milestone.description}}</p>}
+              @if(milestone.description) {<details class="milestone-description"><summary>About this group</summary><p>{{milestone.description}}</p></details>}
               <div class="features">
               @for(feature of visibleFeatures(milestone); track feature.id) {
                 <div class="feature">
