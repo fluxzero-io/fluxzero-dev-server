@@ -28,7 +28,7 @@ import {sendCommand} from './dom-handlers';
     <h2 id="profile-title">Switch to {{chosen()}}?</h2>
     <p id="profile-description">This restarts the dev environment with the selected profile. In-memory application data will be reset and startup commands will run again.</p>
     <div class="dialog-actions">
-      <button class="secondary-button" (click)="dialog.close()" autofocus>Cancel</button>
+      <button class="secondary-button dialog-cancel" (click)="dialog.close()" autofocus>Cancel</button>
       <button class="primary-button" (click)="confirm()">Switch profile</button>
     </div>
   </dialog>

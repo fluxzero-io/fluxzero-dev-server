@@ -49,13 +49,13 @@ import {sendCommand} from './dom-handlers';
     <p class="server-path">{{selectedToStart()?.projectDirectory}}</p>
     @if(startError()) {<p role="alert">{{startError()}}</p>}
     <div class="dialog-actions">
+      <button class="secondary-button dialog-cancel" type="button" autofocus [disabled]="starting() || removing()" (click)="startDialog.close()">Cancel</button>
       <button class="icon-button remove-project" type="button" [disabled]="starting() || removing()"
         [attr.aria-label]="'Remove ' + selectedToStart()?.projectName + ' from overview'" title="Remove from overview; keep project files"
         (click)="forget()"><i class="bi bi-trash" aria-hidden="true"></i></button>
       @if(selectedToStart()?.directoryExists) {<button class="primary-button" type="button" [disabled]="starting() || removing()" (click)="startServer()">
         @if(starting()) {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>}{{starting() ? 'Starting…' : 'Start dev server'}}
       </button>}
-      <button class="secondary-button" type="button" autofocus [disabled]="starting() || removing()" (click)="startDialog.close()">Cancel</button>
     </div>
   </dialog>
 `, styles: `
@@ -79,7 +79,6 @@ import {sendCommand} from './dom-handlers';
   .server-option:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
   .server-option-name {grid-column:1;min-width:0;font-weight:600;overflow-wrap:anywhere;}
   .server-path {grid-column:1;min-width:0;font-size:12px;color:var(--dashboard-muted);overflow-wrap:anywhere;}
-  .remove-project {margin-right:auto;}
   .server-empty {padding:16px 10px;}
   .start-dialog {width:420px;max-width:calc(100vw - 24px);padding:24px;border:1px solid var(--dashboard-border);border-radius:8px;background:var(--dashboard-popover-bg);color:var(--dashboard-text);box-shadow:var(--dashboard-popover-shadow);}
   .start-dialog::backdrop {background:rgba(0,0,0,.4);}

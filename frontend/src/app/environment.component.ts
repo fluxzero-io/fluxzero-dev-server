@@ -64,8 +64,9 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     @if(confirmAction(); as action) {
       <h2 id="maintenance-title">Restart environment?</h2>
       <p id="maintenance-description">This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again.</p>
-      <div class="dialog-actions"><button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Restart environment</button>
-      <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
+      <div class="dialog-actions">
+      <button type="button" class="secondary-button dialog-cancel" (click)="cancelConfirmation()" autofocus>Cancel</button>
+      <button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Restart environment</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
     <section class="applications-section" aria-labelledby="applications-title">

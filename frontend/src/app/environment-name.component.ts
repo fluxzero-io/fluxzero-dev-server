@@ -15,8 +15,8 @@ import {sendCommand} from './dom-handlers';
       <button class="folder-name" type="button" [disabled]="saving()" (click)="useFolderName()">Use folder name</button>
       @if(error()) {<p role="alert">{{error()}}</p>}
       <div class="dialog-actions">
+        <button class="secondary-button dialog-cancel" type="button" [disabled]="saving()" (click)="nameDialog.close()">Cancel</button>
         <button class="primary-button" type="submit" [disabled]="saving() || !draft().trim()">{{saving() ? 'Saving…' : 'Save'}}</button>
-        <button class="secondary-button" type="button" [disabled]="saving()" (click)="nameDialog.close()">Cancel</button>
       </div>
     </form>
   </dialog>`, styles: `

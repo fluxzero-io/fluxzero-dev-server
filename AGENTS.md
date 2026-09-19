@@ -89,6 +89,14 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
 - Do not commit `target/`, generated local state under `.fluxzero/dev`, resolved secrets, or fixture dependency
   directories such as `node_modules/`.
 
+## Dashboard UI
+
+- In every modal footer, place Cancel at the far left and the primary confirmation action at the far right.
+  Use the shared `.dialog-actions` layout and put `.dialog-cancel` first in DOM order, so keyboard order follows
+  the visible order. Keep any additional actions to the right, before the primary action.
+- Preserve this separation on mobile, with compact controls and enough space between title, body and footer.
+  Informational dialogs without footer actions may retain a close icon in the header.
+
 ## Commit Messages
 
 - Use Conventional Commits with a clear scope: `<type>(<scope>): <imperative summary>`.
