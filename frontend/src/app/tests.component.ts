@@ -38,8 +38,8 @@ import {Handler, sendCommand} from './dom-handlers';
     </div>
     @if(state.testResults?.paused) {<p class="test-pause-status" role="status">Automatic tests paused.@if(state.testResults.running) { Current test run will finish.}</p>}
 
-      </div>
       <dev-test-catalog/>
+      </div>
       <section class="test-output-section" aria-labelledby="output-title">
         <h2 id="output-title">Test output</h2>
         <div class="tests-card"><dev-test-output [lines]="state.testOutput || []" [paused]="!!state.testResults?.paused"

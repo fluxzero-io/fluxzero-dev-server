@@ -67,7 +67,7 @@ final class TestCatalog {
     }
 
     static Page page(List<Case> cases, String state, String query, String requestedOffset) {
-        String filter = state == null ? "attention" : state;
+        String filter = state == null ? "all" : state;
         String search = clipped(query == null ? "" : query, 256).strip().toLowerCase(Locale.ROOT);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String kind : List.of("failed", "passed", "pending", "skipped")) counts.put(kind, 0L);

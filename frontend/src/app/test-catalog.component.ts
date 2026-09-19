@@ -29,11 +29,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           <div class="scenario-empty">
             @if(query()) {<p>No matching scenarios in this filter.</p>}
             @else if(count('all', data) === 0) {<p>Test names will appear when the test runner reports them.</p>}
-            @else if(filter() === 'attention') {
-              <i class="bi bi-check2-circle" aria-hidden="true"></i><strong>No tests need attention</strong>
-              <p>@if(data.counts['passed']) {{{data.counts['passed']}} tests passed. }@if(data.counts['skipped']) {{{data.counts['skipped']}} skipped. }</p>
-              @if(data.counts['passed']) {<button type="button" class="icon-button" (click)="select('passed')">Show passed tests <i class="bi bi-chevron-right" aria-hidden="true"></i></button>}
-            } @else {<p>No {{filter()}} tests.</p>}
+            @else {<p>No {{filter()}} tests.</p>}
           </div>
         }
         @if(data.total > data.pageSize) {
@@ -44,7 +40,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
       } @else if(loading()) {<p class="scenario-empty" role="status">Loading scenarios…</p>}
     </div>
   </section>`, styles:`
-    .scenario-panel {border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);padding:24px;}
+    :host {display:block;}
     header {display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;}
     h2 {font-size:17px;margin:0;} header p {font-size:12px;color:var(--dashboard-muted);margin:5px 0 0;}
     .scenario-search {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;}
@@ -64,15 +60,15 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
     .scenario-empty strong {display:block;color:var(--dashboard-text);font-size:15px;font-weight:500;}.scenario-empty p {margin:8px 0;}
     .icon-button {width:auto;height:auto;min-height:30px;padding:6px 10px;gap:6px;white-space:nowrap;}
     .scenario-pagination {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;font-size:12px;color:var(--dashboard-muted);}
-    @media(max-width:650px) {.scenario-panel {padding:18px;}header {flex-direction:column;align-items:stretch;}.scenario-search input {width:100%;}.scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}.scenario-filters button {padding:7px 8px;}}
+    @media(max-width:650px) {header {flex-direction:column;align-items:stretch;}.scenario-search input {width:100%;}.scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}.scenario-filters button {padding:7px 8px;}}
   `})
 export class TestCatalogComponent implements OnInit, OnDestroy {
   readonly page = signal<TestPage | undefined>(undefined);
-  readonly filter = signal('attention');
+  readonly filter = signal('all');
   readonly query = signal('');
   readonly loading = signal(false);
   readonly error = signal('');
-  readonly filters = [{key:'attention',label:'Needs attention'},{key:'passed',label:'Passed'},{key:'skipped',label:'Skipped'},{key:'all',label:'All'}];
+  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'}];
   private readonly http = inject(HttpClient);
   private readonly zone = inject(NgZone);
   private request?: Subscription;
@@ -95,6 +91,6 @@ export class TestCatalogComponent implements OnInit, OnDestroy {
       error:() => {this.error.set('Unable to refresh scenarios. Results may be out of date.');this.loading.set(false);}
     });
   }
-  count(filter:string, page:TestPage) {return filter === 'all' ? Object.values(page.counts).reduce((a,b)=>a+b,0) : filter === 'attention' ? (page.counts['failed']||0)+(page.counts['pending']||0) : page.counts[filter]||0;}
+  count(filter:string, page:TestPage) {return filter === 'all' ? Object.values(page.counts).reduce((a,b)=>a+b,0) : page.counts[filter]||0;}
   label(state:string) {return ({passed:'Passed',failed:'Failed',skipped:'Skipped',pending:'Not completed'} as Record<string,string>)[state] || state;}
 }

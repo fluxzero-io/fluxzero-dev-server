@@ -527,8 +527,9 @@ Confirmation cannot be disabled, including by preferences saved in earlier versi
 ### Live test progress and output
 
 **Tests** has its own sidebar page. Named scenarios and their latest outcomes appear above the technical
-output. The default **Needs attention** filter shows failed and unfinished tests; passing tests stay hidden
-until selected. Search works across names, suites and modules, with 50 results per page. This inventory is
+output. The summary and scenarios share one card. The default **All** filter shows every discovered test,
+with failed tests first. Use **Passed**, **Failed**, or **Skipped** to narrow the results. Search works across
+names, suites and modules, with 50 results per page. This inventory is
 loaded only while viewing Tests, separately from the frequent status updates. It describes discovered tests,
 not a claim that every possible application scenario is covered.
 

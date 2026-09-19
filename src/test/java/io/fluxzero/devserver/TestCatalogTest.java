@@ -60,14 +60,19 @@ class TestCatalogTest {
         assertTrue(new TestInventory(directory).cases("app").isEmpty());
     }
 
-    @Test void pagesAndSearchesAllResultsWhileAttentionHidesSuccessfulTests() {
+    @Test void defaultsToAllWithFailuresFirstAndFiltersResults() {
         var tests = new java.util.ArrayList<TestCatalog.Case>();
         for (int i = 0; i < 123; i++) tests.add(TestCatalog.describe("app", "m", "demo.A#scenario" + i, null, "passed"));
         tests.add(TestCatalog.describe("app", "m", "demo.A#broken", "Payment fails", "failed"));
         tests.add(TestCatalog.describe("app", "m", "demo.A#pending", null, "pending"));
-        var attention = TestCatalog.page(tests, null, null, null);
-        assertEquals(List.of("failed", "pending"), attention.items().stream().map(TestCatalog.Case::state).toList());
-        assertEquals(123L, attention.counts().get("passed"));
+        var all = TestCatalog.page(tests, null, null, null);
+        assertEquals(125, all.total());
+        assertEquals(50, all.items().size());
+        assertEquals(List.of("failed", "pending"), all.items().stream().limit(2).map(TestCatalog.Case::state).toList());
+        assertEquals(123L, all.counts().get("passed"));
+        var failed = TestCatalog.page(tests, "failed", null, null);
+        assertEquals(1, failed.total());
+        assertEquals("Payment fails", failed.items().getFirst().name());
         var page = TestCatalog.page(tests, "passed", "", "50");
         assertEquals(50, page.items().size());assertEquals(123, page.total());assertEquals(50, page.offset());
         assertEquals(100, TestCatalog.page(tests, "passed", "", "999999").offset());

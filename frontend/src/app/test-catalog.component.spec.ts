@@ -12,18 +12,20 @@ describe('Scenario catalog', () => {
     http=TestBed.inject(HttpTestingController);fixture=TestBed.createComponent(TestCatalogComponent);fixture.detectChanges();
   });
   afterEach(() => {fixture.destroy();http.verify();});
-  it('keeps passing tests hidden until requested and renders their names safely', () => {
+  it('defaults to All and filters failures while rendering names safely', () => {
     const initial=http.expectOne(r=>r.url==='tests.json');
-    expect(initial.request.params.get('state')).toBe('attention');initial.flush(empty);fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('286 tests passed');
-    expect(fixture.nativeElement.querySelector('.scenario-row')).toBeNull();
-    const show=Array.from(fixture.nativeElement.querySelectorAll('button') as NodeListOf<HTMLButtonElement>).find(b=>b.textContent?.includes('Show passed'))!;
-    show.click();fixture.detectChanges();
-    const request=http.expectOne(r=>r.url==='tests.json');expect(request.request.params.get('state')).toBe('passed');
-    request.flush({...empty,total:1,items:[{key:'a',project:'shop',suite:'Checkout',name:'<img src=x> Customer can pay',state:'passed',source:'id'}]});fixture.detectChanges();
+    expect(initial.request.params.get('state')).toBe('all');
+    initial.flush({...empty,total:1,items:[{key:'a',project:'shop',suite:'Checkout',name:'<img src=x> Customer can pay',state:'passed',source:'id'}]});fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.scenario-name').textContent).toContain('<img src=x>');
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
     expect(fixture.nativeElement.querySelector('.scenario-state').textContent).toBe('Passed');
+    const filters=Array.from(fixture.nativeElement.querySelectorAll('.scenario-filters button') as NodeListOf<HTMLButtonElement>);
+    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped']);
+    expect(filters[0].getAttribute('aria-pressed')).toBe('true');
+    filters[2].click();fixture.detectChanges();
+    const request=http.expectOne(r=>r.url==='tests.json');expect(request.request.params.get('state')).toBe('failed');
+    request.flush(empty);fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('No failed tests.');
   });
   it('shows failures and incomplete tests as distinct states, then searches and resets pagination', () => {
     http.expectOne(r=>r.url==='tests.json').flush({...empty,total:72,counts:{passed:286,failed:1,pending:71},items:[
