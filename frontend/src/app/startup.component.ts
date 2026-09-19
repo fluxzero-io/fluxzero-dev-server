@@ -4,8 +4,7 @@ import {Status} from './models';
 @Component({selector:'dev-startup', standalone:true, template:`
   @if(startup(); as data) {
     @if(data.actions.length || data.state === 'failed') {
-      <section aria-labelledby="startup-title">
-        <h2 id="startup-title">Startup data</h2>
+      <section aria-label="Startup actions">
         <div class="startup-card">
           @if(data.actions.length) {
             <label class="startup-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" aria-label="Find a startup action" placeholder="Find an action" maxlength="256" [value]="query()" (input)="search($event)"/></label>
@@ -33,7 +32,6 @@ import {Status} from './models';
     }
   }`, styles:`
     :host {display:block;}
-    section {margin-top:24px;} h2 {font-size:17px;margin:0 0 16px;}
     .startup-card {padding:22px 24px 10px;background:var(--dashboard-surface);border:1px solid var(--dashboard-border);border-radius:16px;}
     .startup-search {height:34px;width:max-content;max-width:100%;box-sizing:border-box;display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;margin-bottom:16px;}
     input {background:transparent;border:0;color:var(--dashboard-text);font:inherit;font-size:13px;min-width:0;width:180px;}

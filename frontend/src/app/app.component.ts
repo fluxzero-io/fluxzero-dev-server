@@ -9,10 +9,11 @@ import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
 import {ThemeMenuComponent} from './theme-menu.component';
 import {TestsComponent} from './tests.component';
+import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -46,6 +47,23 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
   readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
   readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
+  readonly testBadge = computed(() => {
+    if (!this.badgesAvailable()) return null;
+    const results=this.status()?.testResults;
+    return this.resultBadge(results?.passed || 0, results?.failed || 0, 'passed tests', 'failed tests');
+  });
+  readonly startupBadge = computed(() => {
+    if (!this.badgesAvailable()) return null;
+    const startup=this.status()?.startup;
+    const failed=startup?.actions.filter(a => a.state === 'failed').length || 0;
+    if(startup?.state === 'failed' && !failed) return {value:'!',failed:true,label:'Startup data needs attention'};
+    return this.resultBadge(startup?.actions.filter(a => a.state === 'succeeded').length || 0, failed, 'completed startup actions', 'failed startup actions');
+  });
+  private badgesAvailable() {return this.connected() && !this.status()?.maintenance?.workspaceStopped && this.status()?.state !== 'shutdown';}
+  private resultBadge(passed:number, failed:number, successLabel:string, failureLabel:string) {
+    return failed > 0 ? {value:String(failed),failed:true,label:failed+' '+failureLabel}
+      : passed > 0 ? {value:String(passed),failed:false,label:passed+' '+successLabel} : null;
+  }
   frameSource?: SafeResourceUrl;
   private ready = false;
   private navigationId = 0;
@@ -91,7 +109,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!path) return;
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
-    } else if (!['projects', 'environment', 'application', 'tests'].includes(route)) return;
+    } else if (!['projects', 'environment', 'application', 'tests', 'startup'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
@@ -176,7 +194,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (route === 'monitoring') route = 'monitoring/messages';
     if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests'].includes(route)) route = 'projects';
+    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup'].includes(route)) route = 'projects';
     this.route.set(route);
     if (route === 'application') this.applicationOpened.set(true);
     if (this.isMonitoring()) {

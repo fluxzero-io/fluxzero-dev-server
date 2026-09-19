@@ -72,7 +72,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.workspace-versions')).toBeNull();
     expect(root.querySelector('.workspace-issue')).toBeNull();
     expect(root.querySelector('a[href="#projects"] .nav-issue-badge')).toBeNull();
-    expect(root.querySelector('a[href="#tests"] .nav-issue-badge')?.textContent).toBe('2');
+    expect(root.querySelector('a[href="#tests"] .nav-result-badge.failed')?.textContent).toBe('2');
     component.status.update(s => ({...s!, workspaceIssue:'Your app could not start.'}));fixture.detectChanges();
     expect(root.querySelector('.workspace-issue')?.textContent).toContain('Your app could not start.');
     expect(root.querySelector('a[href="#projects"] .nav-issue-badge')?.getAttribute('aria-label')).toBe('Workspace needs attention');
@@ -80,6 +80,33 @@ describe('Dev console navigation', () => {
     component.status.update(s => ({...s!, workspaceIssue:'',testResults:{...s!.testResults!,failed:0}}));
     connected(true);fixture.detectChanges();
     expect(root.querySelector('.workspace-issue')).toBeNull();expect(root.querySelector('.nav-issue-badge')).toBeNull();
+  });
+  it('navigates to Startup data below Tests and replaces green result counters with only failures', () => {
+    const component=fixture.componentInstance;
+    const root:HTMLElement=fixture.nativeElement;
+    const actions=[{id:'one',name:'Create home',state:'succeeded'},{id:'two',name:'Add floor',state:'succeeded'}];
+    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:0},startup:{state:'succeeded',actions}}));fixture.detectChanges();
+    expect(root.querySelector('a[href="#tests"] .nav-result-badge:not(.failed)')?.textContent).toBe('8');
+    expect(root.querySelector('a[href="#startup"] .nav-result-badge:not(.failed)')?.textContent).toBe('2');
+    expect(root.querySelector('a[href="#tests"]')?.nextElementSibling?.getAttribute('href')).toBe('#startup');
+    expect(root.querySelector('dev-startup')).toBeNull();
+    (root.querySelector('a[href="#startup"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    expect(component.route()).toBe('startup');
+    expect(root.querySelector('h1')?.textContent).toBe('Startup data');
+    expect(root.querySelectorAll('.startup-row').length).toBe(2);
+    component.readRoute();expect(component.route()).toBe('startup');
+    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:3},startup:{state:'failed',actions:[actions[0],{...actions[1],state:'failed'}]}}));fixture.detectChanges();
+    expect(root.querySelector('a[href="#tests"] .nav-result-badge.failed')?.textContent).toBe('3');
+    expect(root.querySelector('a[href="#startup"] .nav-result-badge.failed')?.textContent).toBe('1');
+    expect(root.querySelector('.nav-result-badge:not(.failed)')).toBeNull();
+    connected(false);fixture.detectChanges();expect(root.querySelector('.nav-result-badge')).toBeNull();
+    connected(true);
+    component.status.update(s=>({...s!,maintenance:{...s!.maintenance!,workspaceStopped:true}}));fixture.detectChanges();
+    expect(root.querySelector('.nav-result-badge')).toBeNull();
+    expect(root.querySelector('.workspace-stopped')?.textContent).toContain('Workspace stopped');
+    component.status.update(s=>({...s!,maintenance:{...s!.maintenance!,workspaceStopped:false},testResults:undefined,startup:{state:'idle',actions:[]}}));fixture.detectChanges();
+    expect(root.querySelector('.nav-result-badge')).toBeNull();
+    expect(root.querySelector('dev-startup-page')?.textContent).toContain('No startup data configured');
   });
   it('confirms a profile switch, keeps the active label until reconnect, and refreshes the preview', async () => {
     const component = fixture.componentInstance;
@@ -156,7 +183,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests', 'Startup data']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');

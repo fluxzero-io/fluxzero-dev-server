@@ -92,7 +92,9 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
 ## Dashboard UI
 
 - Call the project selector Project and the resource-management page Workspace. Keep App preview, Workspace
-  and Tests as direct navigation links; Monitoring is the collapsible group for technical detail.
+  and Tests as direct navigation links, followed by Startup data; Monitoring is the collapsible group for technical detail.
+  Tests and Startup data show a quiet green count of successful results, replaced by only the red failure count
+  when failures exist. Hide these counters when disconnected, stopped or without results.
 - Use shared quiet action styles: a very light blue surface, visible hover/pressed states, and content-sized
   controls. Split buttons round only their outside corners and reserve space for the dropdown arrow even
   with the longest label. Keep workspace/test actions in a row on desktop and stacked on narrow screens.

@@ -32,12 +32,13 @@ Restart those environments with a dashboard-enabled Dev Server build to switch t
 
 The Total memory breakdown shows known versions after each service name, including the Dev Server,
 selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
-or update failures add a short notice and a navigation indicator; Tests has a separate failed-test count.
+or update failures add a short notice and a navigation indicator. Tests and Startup data show green success
+counts in navigation, replaced by red failure counts when errors exist.
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
 Detailed diagnostics remain available through MCP.
 
 Workspace also shows the server's relative start time, with its exact local timestamp on hover.
-The Startup data section lists reported startup actions in execution order with readable names and individual results.
+The Startup data page, directly below Tests in navigation, lists reported startup actions in execution order with readable names and individual results.
 Actions are visible by default, with search and All, Completed, Failed and Pending filters. Pending includes blocked
 actions, whose rows retain their Blocked status. Large lists offer Show more after 50 entries. Raw command payloads
 and diagnostic details remain in the existing agent tools rather than the dashboard.

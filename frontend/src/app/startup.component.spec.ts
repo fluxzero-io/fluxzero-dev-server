@@ -8,7 +8,7 @@ describe('Workspace startup', () => {
     fixture.componentRef.setInput('startup',{state:'succeeded',actions:[{id:'a',name:'Create home',state:'succeeded'}]});
     fixture.detectChanges();
     const root:HTMLElement=fixture.nativeElement;
-    expect(root.querySelector('h2')?.textContent).toBe('Startup data');
+    expect(root.querySelector('section')?.getAttribute('aria-label')).toBe('Startup actions');
     expect(root.querySelector('.startup-filters button')?.getAttribute('aria-pressed')).toBe('true');
     expect(root.querySelector('.startup-row')?.textContent).toContain('Create home');
     fixture.componentInstance.select('failed');fixture.detectChanges();
