@@ -134,6 +134,10 @@ final class TestTelemetry implements AutoCloseable {
                         inventoryTemplates.getOrDefault(stream, Set.of()));
                 inventoryTests.remove(stream); inventoryTemplates.remove(stream);
             }
+            case "name" -> {
+                int separator = id.indexOf('\0');
+                if (inventory != null && separator > 0) inventory.name(scope, id.substring(0, separator), id.substring(separator + 1));
+            }
             case "plan" -> streams.putIfAbsent(stream,false);
             case "discovered" -> streams.put(stream,true);
             case "end" -> ended.add(stream);

@@ -37,6 +37,7 @@ final class TestPipeline implements AutoCloseable {
     private final Runnable progressChanged;
     private volatile TestTelemetry telemetry;
     private final TestInventory inventory;
+    List<TestCatalog.Case> testCases(String project) {return inventory.cases(project);}
     TestInventory.Snapshot inventory() {return inventory.snapshot();}
     TestTelemetry.Progress liveProgress() {var current=telemetry;return current==null?null:current.progress();}
     private final ExecutorService executor = Executors.newSingleThreadExecutor();

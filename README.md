@@ -475,9 +475,9 @@ Embedded previews without restart support display the active profile without all
 ### Component resources and maintenance
 
 Dev environment shows one compact card per backend application, with memory, status and an individual restart
-beside its status badge. Customer applications have no storage metric. A separate **Development infrastructure**
-section above Tests reports combined usage of the dev server, Test Server and Proxy, managed UI servers, monitoring
-and supporting services. Monitoring storage is reported only there. Tests are workspace-wide.
+beside its status badge. Customer applications have no storage metric. A separate **Dev resources**
+section reports combined usage of the dev server, Test Server and Proxy, managed UI servers, monitoring
+and supporting services. Monitoring storage is reported only there. Tests are workspace-wide and have their own sidebar page.
 A stopped application stays visible. Infrastructure status and memory offer hover/focus breakdowns by component.
 Graph buttons open dialogs with a time axis and byte scale for memory and monitoring storage.
 Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
@@ -526,6 +526,16 @@ Confirmation cannot be disabled, including by preferences saved in earlier versi
 
 ### Live test progress and output
 
+**Tests** has its own sidebar page. Named scenarios and their latest outcomes appear above the technical
+output. The default **Needs attention** filter shows failed and unfinished tests; passing tests stay hidden
+until selected. Search works across names, suites and modules, with 50 results per page. This inventory is
+loaded only while viewing Tests, separately from the frequent status updates. It describes discovered tests,
+not a claim that every possible application scenario is covered.
+
+JUnit display names (including dynamic/parameterized invocation names) are retained across restarts. Older
+inventories and Gradle results use readable names derived from test identities. Without named telemetry,
+the aggregate run results and output remain available; individual outcomes are never inferred from counts.
+
 The dev server automatically adds a small listener to Maven/JUnit Platform test runs and callbacks to Gradle
 `Test` tasks. Customer source files and build configuration do not need changes. Each completed invocation
 updates the test bar through the console WebSocket, including parameterized, dynamic and forked tests.
@@ -536,12 +546,14 @@ removed cases are pruned when a fresh inventory or a completed full run establis
 When events are unavailable, XML remains the fallback for run diagnostics; incomplete telemetry does not invent
 per-test outcomes. An interrupted run keeps its valid reported outcomes and leaves unfinished tests pending.
 
-The rocket button beside the test bar runs the full suite for each test-enabled module, even with unchanged
+The rerun button beside the test bar runs the full suite for each test-enabled module, even with unchanged
 inputs. Runs use the existing test pipeline. A newer code-change run supersedes a queued manual run;
 a manual run interrupted for compilation is not automatically resumed. Gradle manual runs use
 `--rerun-tasks` to bypass up-to-date checks and cached task results. Output is always visible at a default and minimum height of 80 pixels; drag the lower-right corner to resize
-it vertically. The pause/play button inside the output area
-stops or resumes automatic scrolling; scrolling up also pauses it. The trash button clears the shared
+it vertically. The pause/play button pauses only automatic tests; builds and UI servers continue running,
+and manual reruns remain available. Output follows new lines when already at the bottom and preserves the
+viewport when scrolled up. Hovering or focusing the output reveals scroll-to-bottom and clear buttons.
+The clear button clears the shared
 output history, including on reconnect, while keeping test results and application data. The dev server retains the latest 200 lines, limited to 2,000 characters each,
 in memory and restores this tail on reconnect. Output is escaped as text and terminal colors are stripped.
 
@@ -592,7 +604,7 @@ same-origin HTTP protections and flush their acceptance before a gateway restart
 
 ### Stop and start from the dashboard
 
-The workspace page offers **Stop** with two scopes. **Workspace** is the default: it stops managed apps, frontends, builds, tests and supporting services, while retaining the dashboard controls and workspace ownership. Choose **Start** to initialize the workspace again on the same URL and with its current profile. In-memory application data is lost; monitoring history stored on disk is retained.
+The workspace page offers **Stop** with two scopes. **Workspace** is the default: it stops managed apps, frontends, builds, tests and supporting services, while retaining the dashboard controls and workspace ownership. Choose **Start** (a single action without a dropdown) to initialize the workspace again on the same URL and with its current profile. In-memory application data is lost; monitoring history stored on disk is retained.
 
 **Everything** also closes the dashboard and exits the dev server. Start again with `fz dev` in the workspace, or through another running workspace’s dashboard. Both stop actions require confirmation. The complete shutdown scope is never saved as a default.
 

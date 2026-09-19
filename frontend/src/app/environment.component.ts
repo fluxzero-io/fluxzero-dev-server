@@ -6,14 +6,13 @@ import {WorkspaceStopComponent} from './workspace-stop.component';
 import {WorkspaceRestartComponent} from './workspace-restart.component';
 import {ResourceDetailComponent} from './resource-detail.component';
 import {ResourceGraphComponent} from './resource-graph.component';
-import {TestOutputComponent} from './test-output.component';
 import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
-    <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
+    <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> WORKSPACE</div>
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
@@ -90,35 +89,6 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     }
     @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
     </section>
-    <section class="environment-tests" aria-labelledby="tests-title">
-      <header><h2 id="tests-title">Tests</h2></header>
-      <div class="tests-card"><div class="test-summary">
-      <div class="test-controls">
-        <button class="icon-button" type="button" aria-label="Rerun tests" title="Rerun tests"
-          [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
-        <div class="test-bar" [class.empty-tests]="!state.testResults?.available" [class.running-tests]="state.testResults?.available && state.testResults.running" role="img"
-          [attr.aria-label]="state.testResults?.available ? state.testResults.passed + ' passed, ' + state.testResults.failed + ' failed, ' + testTotal(state.testResults) + ' total' + (state.testResults.skipped ? ', ' + state.testResults.skipped + ' skipped' : '') : 'No test results available'">
-          @if(!state.testResults?.available) {<span class="test-empty-label">No test results yet</span>}
-          @if(state.testResults; as results) {
-            @if(results.available) {
-              <span class="test-passed" [style.width.%]="percentage(results.passed, results.totalKnown === false ? 0 : results.total)"></span><span class="test-failed" [style.width.%]="percentage(results.failed, results.totalKnown === false ? 0 : results.total)"></span>
-              <div class="test-counts" aria-hidden="true">
-                <span class="passed-count"><strong>{{results.passed}}</strong> passed</span><span>/</span>
-                <span class="failed-count"><strong>{{results.failed}}</strong> failed</span><span>/</span>
-                <span [title]="results.skipped ? results.skipped + ' skipped' : ''"><strong>{{testTotal(results)}}</strong> total</span>
-              </div>
-            }
-          }
-        </div>
-      </div>
-      @if(state.testResults; as results) {
-        @if(results.incomplete && !results.running) {<small>Run interrupted or incomplete.</small>}
-        @if(results.running) {<small>{{results.label}}@if(results.expectedTotal) { · {{results.live ? '' : '~'}}{{results.expectedTotal}} {{results.live ? 'discovered' : 'expected'}}} @else { · total not yet known}</small>}
-      }
-      @if(testError()) {<small role="alert">{{testError()}}</small>}
-    </div>
-    @if(state.testResults?.paused) {<p class="test-pause-status" role="status">Automatic tests paused.@if(state.testResults.running) { Current test run will finish.}</p>}
-    <dev-test-output [lines]="state.testOutput || []" [paused]="!!state.testResults?.paused" [pauseBusy]="changingTestPause() || !state.testResults?.runnable" (toggleTests)="toggleTests()"/></div></section>
     }</section>}`})
 @Handler()
 export class EnvironmentComponent {
@@ -204,28 +174,6 @@ export class EnvironmentComponent {
     }
     finally { this.maintenanceStatus = this.status(); this.submitting.set(false); }
   }
-  readonly changingTestPause = signal(false);
-  async toggleTests() {
-    if (this.changingTestPause()) return;
-    this.changingTestPause.set(true); this.testError.set('');
-    try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment',
-      this.status()?.testResults?.paused ? 'resume-tests' : 'pause-tests'); }
-    catch (error: any) { this.testError.set(error?.error?.error || 'Unable to change automatic tests.'); }
-    finally { this.changingTestPause.set(false); }
-  }
-  testState() { const state = this.status(); return ['idle', 'stopped'].includes(state?.tests || '') && state?.testResults?.available ? state.testResults.state || state.tests : state?.tests; }
-  readonly startingTests = signal(false);
-  readonly testError = signal('');
-  async runTests() {
-    this.startingTests.set(true);this.testError.set('');
-    try {await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'runTests');}
-    catch(error:any) {this.testError.set(error?.error?.error || 'Unable to start tests.');}
-    finally {this.startingTests.set(false);}
-  }
-  testTotal(results: NonNullable<Status['testResults']>) {
-    return results.totalKnown === false ? '?' : String(results.total);
-  }
-  percentage(value: number, total: number) { return total > 0 ? value * 100 / total : 0; }
   openProjects(event: MouseEvent) {
     if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();

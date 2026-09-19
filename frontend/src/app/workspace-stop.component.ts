@@ -9,16 +9,16 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
       @else {<i class="bi" [class.bi-play]="stopped()" [class.bi-stop]="!stopped()" aria-hidden="true"></i>}
       <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop all' : 'Stop'}}</span>
     </button>
-    <button #trigger class="stop-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
+    @if(!stopped()) {<button #trigger class="stop-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
       aria-controls="stop-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
-    </button>
+    </button>}
   </div>
-  @if(open()) {
+  @if(open() && !stopped()) {
     <div #menu id="stop-scope-menu" class="stop-menu" role="menu" aria-label="Stop scope">
       @for(option of options; track option.key) {
         <button type="button" role="menuitemradio" [attr.aria-checked]="scope() === option.key" tabindex="-1"
-          [disabled]="busy() || !supported(option.key)" (click)="choose(option.key)">
+          [disabled]="busy()" (click)="choose(option.key)">
           <span><strong>{{option.label}}</strong><small>{{option.description}}</small></span>
           @if(scope() === option.key) {<i class="bi bi-check2" aria-hidden="true"></i>}
         </button>
@@ -57,10 +57,9 @@ export class WorkspaceStopComponent {
   private readonly changes = inject(ChangeDetectorRef);
   @ViewChild('trigger') trigger?: ElementRef<HTMLButtonElement>;
   @ViewChild('menu') menu?: ElementRef<HTMLElement>;
-  constructor() { effect(() => { if (this.busy()) this.close(); }); effect(() => { this.stopped(); this.scope.set('stop-workspace'); }); }
-  supported(key: string) { return !this.stopped() || key === 'stop-devserver'; }
+  constructor() { effect(() => { if (this.busy()) this.close(); }); effect(() => { this.stopped(); this.scope.set('stop-workspace'); this.close(); }); }
   toggle() {
-    if (this.busy()) return;
+    if (this.busy() || this.stopped()) return;
     this.open.set(!this.open());
     if (this.open()) {
       this.changes.detectChanges();
@@ -69,11 +68,10 @@ export class WorkspaceStopComponent {
     }
   }
   choose(key: string) {
-    if (this.busy() || !this.supported(key)) return;
+    if (this.busy() || this.stopped()) return;
     if (!this.options.some(option => option.key === key)) return;
     this.scope.set(key);
     this.close(true);
-    if (this.stopped() && key === 'stop-devserver') this.actionRequested.emit(key);
   }
   private close(restoreFocus = false) {
     this.open.set(false);

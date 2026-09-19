@@ -180,6 +180,23 @@ class DevConsoleUpdatesTest {
         }
     }
 
+    @Test void servesNamedTestsAsABoundedSeparateReadEndpoint(@TempDir Path directory) throws Exception {
+        var cases = new java.util.ArrayList<TestCatalog.Case>();
+        for (int i = 0; i < 70; i++) cases.add(TestCatalog.describe("app", "m", "demo.Test#case" + i, null, "passed"));
+        var console = new DevConsole(() -> Map.of(), null, new DevEnvironmentRegistry(directory)).withTestCases(() -> cases);
+        try (var gateway = DevGateway.start(null, List.of(new DevGateway.FrontendRoute("app", "/", "http://localhost:1", () -> false)),
+                () -> false, List.of(), 0, () -> {}, false, console); var client = HttpClient.newHttpClient()) {
+            var response = client.send(java.net.http.HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.ROOT + "tests.json?state=passed&offset=50")).build(),
+                    java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, response.statusCode());
+            var data = JSON.readTree(response.body());
+            assertEquals(20, data.path("items").size());assertEquals(70, data.path("total").asInt());
+            assertEquals(50, data.path("offset").asInt());
+            assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+            assertFalse(console.updates.snapshot().toString().contains("case69"));
+        }
+    }
+
     @Test void pushesChangesReconnectsWithHistoryAndRejectsForeignOrigins(@TempDir Path directory) throws Exception {
         AtomicReference<Map<String,Object>> state = new AtomicReference<>(status(100,50));
         var console = new DevConsole(state::get, null, new DevEnvironmentRegistry(directory));

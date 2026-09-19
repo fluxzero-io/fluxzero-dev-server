@@ -32,6 +32,7 @@ final class TestInventory {
     private final Map<String, Set<String>> templates = new LinkedHashMap<>();
     private final Map<String, Set<String>> selected = new LinkedHashMap<>();
     private final Map<String, Set<String>> discoveredThisRun = new LinkedHashMap<>();
+    private final Map<String, Map<String, String>> names = new LinkedHashMap<>();
     private boolean known;
 
     TestInventory(Path directory) {
@@ -43,6 +44,12 @@ final class TestInventory {
                 if (restored.values().stream().mapToInt(Map::size).sum() <= MAX_TESTS) {
                     restored.forEach((scope, tests) -> modules.put(scope, new LinkedHashMap<>(tests)));
                     known = saved.known();
+                    if (saved.names() != null) saved.names().forEach((scope, labels) -> {
+                        var tests = modules.getOrDefault(scope, Map.of());
+                        var retained = new LinkedHashMap<String, String>();
+                        labels.forEach((id, label) -> {if (tests.containsKey(id)) retained.put(id, label);});
+                        names.put(scope, retained);
+                    });
                     if (saved.templates() != null) templates.putAll(saved.templates());
                 }
             }
@@ -98,6 +105,20 @@ final class TestInventory {
         else tests.put(id, kind.equals("started") ? "pending" : kind);
     }
 
+    synchronized void name(String scope, String id, String label) {
+        if (label.isBlank() || id.length() > 16000 || modules.size() >= 256 && !modules.containsKey(scope)) return;
+        var labels = names.computeIfAbsent(scope, ignored -> new LinkedHashMap<>());
+        if (labels.containsKey(id) || names.values().stream().mapToInt(Map::size).sum() < MAX_TESTS)
+            labels.put(id, label.substring(0, Math.min(label.length(), 1000)));
+    }
+
+    synchronized List<TestCatalog.Case> cases(String project) {
+        var result = new java.util.ArrayList<TestCatalog.Case>();
+        modules.forEach((scope, tests) -> tests.forEach((id, state) -> result.add(
+                TestCatalog.describe(project, scope, id, names.getOrDefault(scope, Map.of()).get(id), state))));
+        return result;
+    }
+
     synchronized Snapshot snapshot() {
         int passed = 0, failed = 0, skipped = 0, total = 0;
         for (Map<String, String> tests : modules.values()) for (String result : tests.values()) {
@@ -125,6 +146,8 @@ final class TestInventory {
             templates.clear();
             known = true;
         }
+        names.keySet().retainAll(modules.keySet());
+        names.forEach((scope, labels) -> labels.keySet().retainAll(modules.get(scope).keySet()));
         save();
     }
 
@@ -132,13 +155,13 @@ final class TestInventory {
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            new ObjectMapper().writeValue(temp.toFile(), new Saved(known, modules, templates));
+            new ObjectMapper().writeValue(temp.toFile(), new Saved(known, modules, templates, names));
             try {Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);}
             catch (java.nio.file.AtomicMoveNotSupportedException e) {Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);}
         } catch (Exception ignored) { /* Live status remains available if the local cache cannot be written. */ }
     }
 
-    record Saved(boolean known, Map<String, Map<String, String>> modules, Map<String, Set<String>> templates) {}
+    record Saved(boolean known, Map<String, Map<String, String>> modules, Map<String, Set<String>> templates, Map<String, Map<String, String>> names) {}
 
     record Snapshot(boolean known, int total, TestCounts counts) {}
 }

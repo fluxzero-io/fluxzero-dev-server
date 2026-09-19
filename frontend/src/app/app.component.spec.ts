@@ -51,6 +51,12 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  function openTests() {
+    fixture.componentInstance.navigate('tests');fixture.detectChanges();
+    TestBed.inject(HttpTestingController).expectOne(r => r.url === 'tests.json')
+      .flush({items:[],total:0,offset:0,pageSize:50,counts:{passed:8,failed:2,skipped:1,pending:0}});
+    fixture.detectChanges();
+  }
   function openPicker() {
     (fixture.nativeElement.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -130,7 +136,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Dev environment']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Dev environment', 'Tests']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Dev environment');
@@ -269,6 +275,7 @@ describe('Dev console navigation', () => {
     expect((dialog.querySelector('.primary-button') as HTMLButtonElement).disabled).toBeFalse();
   });
   it('updates tests and server history from push without polling, and replaces history on reconnect', () => {
+    openTests();
     const state = fixture.componentInstance.status()!;
     const sample = {at:5000,applicationMemory:100,devserverMemory:200,monitoringStorage:50};
     push({status:{...state,resourceHistory:[sample],testResults:{available:true,running:true,passed:3,failed:0,skipped:0,total:3,expectedTotal:10,label:''}},environments:[]});
@@ -285,6 +292,7 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectNone('environments.json');
   });
   it('shows pushed test output as text and keeps long lines inside the mobile layout', async () => {
+    openTests();
     push({status:{...fixture.componentInstance.status()!,testOutput:[{sequence:1,module:'customer',text:'<script>example</script>'+ 'x'.repeat(500)}]},environments:[]});
     fixture.detectChanges();
     await fixture.whenStable();fixture.detectChanges();
@@ -295,6 +303,7 @@ describe('Dev console navigation', () => {
     expect(output.scrollWidth).toBeLessThanOrEqual(output.clientWidth+1);
   });
   it('clears output without changing test results', async () => {
+    openTests();
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testOutput:[{sequence:1,module:'app',text:'example'}]},environments:[]});
     fixture.detectChanges();await fixture.whenStable();
@@ -309,6 +318,7 @@ describe('Dev console navigation', () => {
     expect(fixture.componentInstance.status()?.testResults).toEqual(state.testResults);
   });
   it('pauses only automatic tests and keeps manual runs and restarts available', async () => {
+    openTests();
     const state=fixture.componentInstance.status()!;
     const root:HTMLElement=fixture.nativeElement;
     const http=TestBed.inject(HttpTestingController);
@@ -325,7 +335,6 @@ describe('Dev console navigation', () => {
     expect(resume.disabled).toBeFalse();
     expect(root.querySelector('.test-pause-status')?.textContent).toContain('Automatic tests paused');
     expect((root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).disabled).toBeFalse();
-    expect((root.querySelector('.restart-action') as HTMLButtonElement).disabled).toBeFalse();
     (root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).click();
     http.expectOne('actions/run-tests').flush(null);await fixture.whenStable();
     resume.click();fixture.detectChanges();
@@ -335,6 +344,7 @@ describe('Dev console navigation', () => {
     http.expectNone('actions/pause-builds');
   });
   it('follows output at the bottom and preserves a scrolled-up viewport', async () => {
+    openTests();
     const state=fixture.componentInstance.status()!;
     const update=async (count:number) => {
       push({status:{...state,testOutput:Array.from({length:count},(_,i)=>({sequence:i,module:'app',text:'line '+i}))},environments:[]});
@@ -358,6 +368,7 @@ describe('Dev console navigation', () => {
     expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
   });
   it('starts tests through the dev server with output always visible', async () => {
+    openTests();
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testResults:{...state.testResults!,runnable:true},testOutput:[{sequence:1,module:'app',text:'retained'}]},environments:[]});
     fixture.detectChanges();await fixture.whenStable();
@@ -454,7 +465,8 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.application-overview')?.textContent).not.toContain('Storage');
     expect(root.querySelector('.infrastructure-section h2')?.textContent).toBe('Dev resources');
     expect(root.querySelector('[aria-label="Rename dev server"]')).toBeNull();
-    expect(root.querySelector('.environment-tests > header h2')?.textContent).toBe('Tests');
+    expect(root.querySelector('.environment-tests')).toBeNull();
+    expect(root.querySelector('.environment-eyebrow')?.textContent?.trim()).toBe('WORKSPACE');
     expect(root.querySelector('.tests-card h2,.tests-card h3')).toBeNull();
     expect(root.querySelector('.infrastructure-section')?.contains(root.querySelectorAll('.component-table')[1])).toBeTrue();
     expect(root.querySelector('.applications-section')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
@@ -467,6 +479,8 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.applications-heading button')).toBeNull();
     expect(root.querySelector('[aria-label="Reset data"]')).toBeNull();
     expect(componentRows[1].querySelector('.component-restart,.component-actions')).toBeNull();
+    openTests();
+    expect(root.querySelector('nav a[href="#tests"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('.test-bar')?.getAttribute('aria-label')).toBe('8 passed, 2 failed, 11 total, 1 skipped');
     expect(root.querySelector('.test-counts [title]')?.getAttribute('title')).toBe('1 skipped');
     expect(root.querySelector('.test-summary > small')).toBeNull();
@@ -496,19 +510,18 @@ describe('Dev console navigation', () => {
     expect(root.querySelectorAll('.application-overview .component-restart,.application-overview .component-storage').length).toBe(0);
     expect(root.querySelectorAll('[aria-label="Restart Apps"]').length).toBe(1);
     const applications = root.querySelector('.applications-section')!;
-    const tests = root.querySelector('.environment-tests')!;
-    expect(root.querySelectorAll('.environment-tests').length).toBe(1);
-    expect(applications.contains(tests)).toBeFalse();
+    expect(root.querySelector('.environment-tests')).toBeNull();
     expect(applications.nextElementSibling).toBe(root.querySelector('.infrastructure-section'));
-    expect(tests.getBoundingClientRect().width).toBeCloseTo(applications.getBoundingClientRect().width, 0);
-    expect(root.querySelector('.infrastructure-section')!.nextElementSibling).toBe(tests);
+    openTests();
+    expect(root.querySelector('h1')?.textContent).toBe('Tests');
+    expect(root.querySelector('dev-test-catalog')?.nextElementSibling?.className).toBe('test-output-section');
   });
   it('shows an empty application list without inventing an application', () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.filter(c => !c.application)} : s);
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
     expect(fixture.nativeElement.querySelector('.applications-empty').textContent).toContain('No applications configured');
-    expect(fixture.nativeElement.querySelectorAll('.environment-tests').length).toBe(1);
+    expect(fixture.nativeElement.querySelectorAll('.environment-tests').length).toBe(0);
   });
   it('keeps preview available for a frontend-only environment without a backend card', () => {
     fixture.componentInstance.status.update(s => s ? {...s, frontend:'running', components:[
@@ -709,6 +722,7 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Dev environment');
   });
   it('updates the test bar while a run is in progress without a total status pill', () => {
+    openTests();
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.status.update(s => s ? {...s, testResults: {available:true, running:true, passed:2, failed:1, skipped:0, total:10, totalKnown:true, expectedTotal:3, label:'Running'}} : s);
     fixture.detectChanges();
@@ -855,6 +869,8 @@ describe('Dev console navigation', () => {
     expect(root.textContent).toContain('Workspace stopped.');
     expect(root.querySelector('.restart-action')).toBeNull();
     expect(root.querySelector('.stop-action')?.textContent).toContain('Start');
+    expect(root.querySelector('.stop-choice')).toBeNull();
+    expect(root.querySelector('#stop-scope-menu')).toBeNull();
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
     http.expectOne('actions/start-workspace').flush(null); await fixture.whenStable();
   });

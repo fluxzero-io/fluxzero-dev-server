@@ -971,7 +971,9 @@ public class DevServer implements AutoCloseable {
             routes = List.of(new DevGateway.FrontendRoute("application", "/", proxyUrl, () -> !currentApps.isEmpty()));
         }
         DevConsole console = new DevConsole(this::consoleStatus,
-                monitoring == null ? null : monitoring.assets()).withDeferredMaintenance(this::requestMaintenance);
+                monitoring == null ? null : monitoring.assets()).withDeferredMaintenance(this::requestMaintenance)
+                .withTestCases(() -> projects.values().stream().filter(p -> p.config.testsEnabled())
+                        .flatMap(p -> p.testPipeline.testCases(p.id).stream()).toList());
         devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
                                       config.frontend().backendPaths(), effectiveGatewayPort, this::activity,
                                       config.backendEnabled(), console);

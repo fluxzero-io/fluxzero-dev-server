@@ -41,6 +41,10 @@ final class DevConsole implements AutoCloseable {
     private final FolderOpener folderOpener;
     private final DevConsoleProjectStarter projectStarter;
     private java.util.function.Function<String, Runnable> maintenance;
+    private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
+    DevConsole withTestCases(Supplier<java.util.List<TestCatalog.Case>> testCases) {
+        this.testCases = testCases; return this;
+    }
 
     DevConsole withMaintenance(java.util.function.Consumer<String> maintenance) {
         this.maintenance = action -> { maintenance.accept(action); return () -> {}; }; return this;
@@ -99,6 +103,11 @@ final class DevConsole implements AutoCloseable {
         String type;
         if (path.equals(ROOT + "status.json")) {
             content = new ObjectMapper().writeValueAsBytes(updates.snapshot().get("status"));
+            type = "application/json";
+        } else if (path.equals(ROOT + "tests.json")) {
+            var query = Request.extractQueryParameters(request);
+            content = new ObjectMapper().writeValueAsBytes(TestCatalog.page(testCases.get(),
+                    query.getValue("state"), query.getValue("q"), query.getValue("offset")));
             type = "application/json";
         } else if (path.equals(ROOT + "environments.json")) {
             content = new ObjectMapper().writeValueAsBytes(Map.of("environments", environments.listKnown()));

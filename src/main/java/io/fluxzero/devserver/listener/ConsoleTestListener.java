@@ -39,7 +39,7 @@ public final class ConsoleTestListener implements TestExecutionListener {
         discoverProject(plan);
         client.event("plan", "");
         for(TestIdentifier root:plan.getRoots()) for(TestIdentifier test:plan.getDescendants(root))
-            if(test.isTest()) client.event("registered",test.getUniqueId());
+            if(test.isTest()) send("registered",test);
         client.event("discovered", "");
     }
     private void discoverProject(TestPlan selected) {
@@ -56,7 +56,7 @@ public final class ConsoleTestListener implements TestExecutionListener {
                     .selectors(DiscoverySelectors.selectClasspathRoots(roots))
                     .filters(ClassNameFilter.includeClassNamePatterns(".*")).build());
             for (TestIdentifier root : inventory.getRoots()) for (TestIdentifier test : inventory.getDescendants(root)) {
-                if (test.isTest()) client.event("inventory-test", test.getUniqueId());
+                if (test.isTest()) send("inventory-test", test);
                 else if (test.getSource().isPresent() && test.getSource().get() instanceof MethodSource
                          && inventory.getChildren(test).isEmpty()) client.event("inventory-template", test.getUniqueId());
             }
@@ -77,5 +77,15 @@ public final class ConsoleTestListener implements TestExecutionListener {
     @Override public void testPlanExecutionFinished(TestPlan plan) {
         if(client!=null){client.event("end", "");client.close();client=null;}
     }
-    private void send(String kind,TestIdentifier test){TestEventClient current=client;if(current!=null)current.event(kind,test.getUniqueId());}
+    private void send(String kind, TestIdentifier test) {
+        TestEventClient current = client;
+        if (current == null) return;
+        String label = test.getDisplayName();
+        if (plan != null && (test.getUniqueId().contains("[test-template-invocation:") || test.getUniqueId().contains("[dynamic-test:"))) {
+            java.util.Optional<TestIdentifier> parent = plan.getParent(test);
+            if (parent.isPresent()) label = parent.get().getDisplayName() + " · " + label;
+        }
+        current.event("name", test.getUniqueId() + "\0" + label);
+        current.event(kind, test.getUniqueId());
+    }
 }
