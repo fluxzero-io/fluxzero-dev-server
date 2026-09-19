@@ -20,12 +20,23 @@ describe('Scenario catalog', () => {
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
     expect(fixture.nativeElement.querySelector('.scenario-state').textContent).toBe('Passed');
     const filters=Array.from(fixture.nativeElement.querySelectorAll('.scenario-filters button') as NodeListOf<HTMLButtonElement>);
-    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped']);
+    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped','Test output']);
     expect(filters[0].getAttribute('aria-pressed')).toBe('true');
     filters[2].click();fixture.detectChanges();
     const request=http.expectOne(r=>r.url==='tests.json');expect(request.request.params.get('state')).toBe('failed');
     request.flush(empty);fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No failed tests.');
+  });
+  it('opens output without requesting an output result filter and keeps counts', () => {
+    http.expectOne(r=>r.url==='tests.json').flush(empty);fixture.detectChanges();
+    fixture.componentInstance.select('output');fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.output-panel').hidden).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.scenario-results')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.output-tab').getAttribute('aria-pressed')).toBe('true');
+    fixture.componentInstance.refresh();http.expectNone(r=>r.url==='tests.json');
+    fixture.componentInstance.select('all');fixture.detectChanges();
+    http.expectOne(r=>r.url==='tests.json').flush(empty);
+    expect(fixture.nativeElement.querySelector('.output-panel').hidden).toBeTrue();
   });
   it('shows failures and incomplete tests as distinct states, then searches and resets pagination', () => {
     http.expectOne(r=>r.url==='tests.json').flush({...empty,total:72,counts:{passed:286,failed:1,pending:71},items:[

@@ -11,40 +11,31 @@ import {Handler, sendCommand} from './dom-handlers';
       @if(state.maintenance?.workspaceStopped || state.state === 'shutdown') {
         <p class="workspace-stopped" role="status">Workspace stopped. Start it from <a href="#projects">Dev environment</a> to run tests.</p>
       } @else {
-      <div class="tests-card"><div class="test-summary">
-      <div class="test-controls">
-        <button class="icon-button" type="button" aria-label="Rerun tests" title="Rerun tests"
-          [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
-        <div class="test-bar" [class.empty-tests]="!state.testResults?.available" [class.running-tests]="state.testResults?.available && state.testResults.running" role="img"
-          [attr.aria-label]="state.testResults?.available ? state.testResults.passed + ' passed, ' + state.testResults.failed + ' failed, ' + testTotal(state.testResults) + ' total' + (state.testResults.skipped ? ', ' + state.testResults.skipped + ' skipped' : '') : 'No test results available'">
-          @if(!state.testResults?.available) {<span class="test-empty-label">No test results yet</span>}
-          @if(state.testResults; as results) {
-            @if(results.available) {
-              <span class="test-passed" [style.width.%]="percentage(results.passed, results.totalKnown === false ? 0 : results.total)"></span><span class="test-failed" [style.width.%]="percentage(results.failed, results.totalKnown === false ? 0 : results.total)"></span>
-              <div class="test-counts" aria-hidden="true">
-                <span class="passed-count"><strong>{{results.passed}}</strong> passed</span><span>/</span>
-                <span class="failed-count"><strong>{{results.failed}}</strong> failed</span><span>/</span>
-                <span [title]="results.skipped ? results.skipped + ' skipped' : ''"><strong>{{testTotal(results)}}</strong> total</span>
-              </div>
+      <div class="tests-card">
+        <dev-test-catalog>
+          <div test-actions class="test-actions">
+            <button class="icon-button" type="button" aria-label="Rerun tests" title="Rerun tests"
+              [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()">
+              <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Rerun tests</span>
+            </button>
+            <button class="icon-button" type="button" [attr.aria-label]="state.testResults?.paused ? 'Resume tests' : 'Pause tests'"
+              [title]="state.testResults?.paused ? 'Resume automatic tests' : 'Pause automatic tests'"
+              [disabled]="changingTestPause() || !state.testResults?.runnable || busy()" [attr.aria-pressed]="!!state.testResults?.paused" (click)="toggleTests()">
+              <i [class]="state.testResults?.paused ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
+              <span>{{state.testResults?.paused ? 'Resume tests' : 'Pause tests'}}</span>
+            </button>
+          </div>
+          <div test-status class="test-status" aria-live="polite">
+            @if(state.testResults; as results) {
+              @if(results.incomplete && !results.running) {<p>Run interrupted or incomplete.</p>}
+              @if(results.running) {<p>Running tests · {{results.passed}} passed · {{results.failed}} failed@if(results.expectedTotal) { · {{results.expectedTotal}} {{results.live ? 'discovered' : 'expected'}}}</p>}
+              @if(results.paused) {<p class="test-pause-status">Automatic tests paused.@if(results.running) { Current test run will finish.}</p>}
             }
-          }
-        </div>
+            @if(testError()) {<p role="alert">{{testError()}}</p>}
+          </div>
+          <dev-test-output test-output [lines]="state.testOutput || []"/>
+        </dev-test-catalog>
       </div>
-      @if(state.testResults; as results) {
-        @if(results.incomplete && !results.running) {<small>Run interrupted or incomplete.</small>}
-        @if(results.running) {<small>{{results.label}}@if(results.expectedTotal) { · {{results.live ? '' : '~'}}{{results.expectedTotal}} {{results.live ? 'discovered' : 'expected'}}} @else { · total not yet known}</small>}
-      }
-      @if(testError()) {<small role="alert">{{testError()}}</small>}
-    </div>
-    @if(state.testResults?.paused) {<p class="test-pause-status" role="status">Automatic tests paused.@if(state.testResults.running) { Current test run will finish.}</p>}
-
-      <dev-test-catalog/>
-      </div>
-      <section class="test-output-section" aria-labelledby="output-title">
-        <h2 id="output-title">Test output</h2>
-        <div class="tests-card"><dev-test-output [lines]="state.testOutput || []" [paused]="!!state.testResults?.paused"
-          [pauseBusy]="changingTestPause() || !state.testResults?.runnable || busy()" (toggleTests)="toggleTests()"/></div>
-      </section>
       }
     } @else {<p>Connecting to the workspace…</p>}
   </section>`, styles:`
@@ -52,10 +43,10 @@ import {Handler, sendCommand} from './dom-handlers';
     .tests-page > header {margin-bottom:28px;}
     .tests-page > header h1 {font-size:32px;font-weight:800;margin:0;}
     .tests-page > header p {color:var(--dashboard-muted);margin:4px 0 0;font-size:14px;}
-    dev-test-catalog {display:block;margin-top:24px;}
-    .test-output-section {margin-top:24px;}
-    .test-output-section h2 {margin-bottom:16px;}
-    .test-output-section .tests-card {padding:18px;}
+    .test-actions {display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+    .test-actions .icon-button {width:auto;height:30px;padding:0 6px;gap:6px;font-size:12px;white-space:nowrap;}
+    .test-status {font-size:12px;color:var(--dashboard-muted);}
+    .test-status p {margin:0 0 14px;}
     @media(max-width:650px) {.tests-page > header h1 {font-size:28px;}}
   `})
 @Handler()
@@ -80,8 +71,4 @@ export class TestsComponent {
     catch(error:any) {this.testError.set(error?.error?.error || 'Unable to start tests.');}
     finally {this.startingTests.set(false);}
   }
-  testTotal(results: NonNullable<Status['testResults']>) {
-    return results.totalKnown === false ? '?' : String(results.total);
-  }
-  percentage(value: number, total: number) { return total > 0 ? value * 100 / total : 0; }
 }

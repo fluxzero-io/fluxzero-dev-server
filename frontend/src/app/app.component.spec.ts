@@ -57,6 +57,9 @@ describe('Dev console navigation', () => {
       .flush({items:[],total:0,offset:0,pageSize:50,counts:{passed:8,failed:2,skipped:1,pending:0}});
     fixture.detectChanges();
   }
+  function openOutput() {
+    (fixture.nativeElement.querySelector('.output-tab') as HTMLButtonElement).click();fixture.detectChanges();
+  }
   function openPicker() {
     (fixture.nativeElement.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();
     fixture.detectChanges();
@@ -280,7 +283,7 @@ describe('Dev console navigation', () => {
     const sample = {at:5000,applicationMemory:100,devserverMemory:200,monitoringStorage:50};
     push({status:{...state,resourceHistory:[sample],testResults:{available:true,running:true,passed:3,failed:0,skipped:0,total:3,expectedTotal:10,label:''}},environments:[]});
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.test-bar').getAttribute('aria-label')).toContain('3 passed');
+    expect(fixture.nativeElement.querySelector('.test-status').textContent).toContain('3 passed');
     expect(fixture.componentInstance.status()?.resourceHistory).toEqual([sample]);
     connected(false); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('.sidebar-footer').textContent).toBe('Disconnected');
@@ -292,7 +295,7 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectNone('environments.json');
   });
   it('shows pushed test output as text and keeps long lines inside the mobile layout', async () => {
-    openTests();
+    openTests();openOutput();
     push({status:{...fixture.componentInstance.status()!,testOutput:[{sequence:1,module:'customer',text:'<script>example</script>'+ 'x'.repeat(500)}]},environments:[]});
     fixture.detectChanges();
     await fixture.whenStable();fixture.detectChanges();
@@ -303,7 +306,7 @@ describe('Dev console navigation', () => {
     expect(output.scrollWidth).toBeLessThanOrEqual(output.clientWidth+1);
   });
   it('clears output without changing test results', async () => {
-    openTests();
+    openTests();openOutput();
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testOutput:[{sequence:1,module:'app',text:'example'}]},environments:[]});
     fixture.detectChanges();await fixture.whenStable();
@@ -324,14 +327,14 @@ describe('Dev console navigation', () => {
     const http=TestBed.inject(HttpTestingController);
     push({status:{...state,testResults:{...state.testResults!,runnable:true}},environments:[]});
     fixture.detectChanges();await fixture.whenStable();
-    (root.querySelector('[aria-label="Pause automatic tests"]') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Pause tests"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     const pause=http.expectOne('actions/pause-tests');
     expect(pause.request.method).toBe('POST');
     pause.flush(null); await fixture.whenStable();
     push({status:{...state,testResults:{...state.testResults!,runnable:true,paused:true}},environments:[]});
     fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    const resume=root.querySelector('[aria-label="Resume automatic tests"]') as HTMLButtonElement;
+    const resume=root.querySelector('[aria-label="Resume tests"]') as HTMLButtonElement;
     expect(resume.disabled).toBeFalse();
     expect(root.querySelector('.test-pause-status')?.textContent).toContain('Automatic tests paused');
     expect((root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).disabled).toBeFalse();
@@ -344,7 +347,7 @@ describe('Dev console navigation', () => {
     http.expectNone('actions/pause-builds');
   });
   it('follows output at the bottom and preserves a scrolled-up viewport', async () => {
-    openTests();
+    openTests();openOutput();
     const state=fixture.componentInstance.status()!;
     const update=async (count:number) => {
       push({status:{...state,testOutput:Array.from({length:count},(_,i)=>({sequence:i,module:'app',text:'line '+i}))},environments:[]});
@@ -367,7 +370,7 @@ describe('Dev console navigation', () => {
     await update(70);
     expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
   });
-  it('starts tests through the dev server with output always visible', async () => {
+  it('starts tests through the dev server and offers output in its own tab', async () => {
     openTests();
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testResults:{...state.testResults!,runnable:true},testOutput:[{sequence:1,module:'app',text:'retained'}]},environments:[]});
@@ -377,7 +380,9 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.test-output summary')).toBeNull();
     expect(root.querySelector('[aria-label="Hide test output"]')).toBeNull();
     expect(root.querySelector('[aria-label="Rerun tests"] .bi-arrow-clockwise')).not.toBeNull();
-    expect((root.querySelector('dev-test-output') as HTMLElement).hidden).toBeFalse();
+    expect((root.querySelector('.output-panel') as HTMLElement).hidden).toBeTrue();
+    openOutput();
+    expect((root.querySelector('.output-panel') as HTMLElement).hidden).toBeFalse();
     expect(root.querySelector('.test-output pre')?.textContent).toContain('retained');
     (root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).click();fixture.detectChanges();
     const request=TestBed.inject(HttpTestingController).expectOne('actions/run-tests');
@@ -385,7 +390,7 @@ describe('Dev console navigation', () => {
     request.flush(null);await fixture.whenStable();
     push({status:{...state,testResults:{...state.testResults!,runnable:true,running:true}},environments:[]});fixture.detectChanges();
     expect((root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).disabled).toBeTrue();
-    expect(root.querySelector('.test-counts')?.textContent).toContain('/');
+    expect(root.querySelector('.test-status')?.textContent).toContain('Running tests');
   });
   it('keeps the projects page when selecting the current environment through the DOM', async () => {
     (fixture.nativeElement.querySelector('.current-project-title a') as HTMLAnchorElement).click();
@@ -481,8 +486,9 @@ describe('Dev console navigation', () => {
     expect(componentRows[1].querySelector('.component-restart,.component-actions')).toBeNull();
     openTests();
     expect(root.querySelector('nav a[href="#tests"]')?.getAttribute('aria-current')).toBe('page');
-    expect(root.querySelector('.test-bar')?.getAttribute('aria-label')).toBe('8 passed, 2 failed, 11 total, 1 skipped');
-    expect(root.querySelector('.test-counts [title]')?.getAttribute('title')).toBe('1 skipped');
+    expect(root.querySelector('.scenario-filters')?.textContent).toContain('Passed8');
+    expect(root.querySelector('.scenario-filters')?.textContent).toContain('Skipped1');
+    expect(root.querySelector('.test-bar')).toBeNull();
     expect(root.querySelector('.test-summary > small')).toBeNull();
   });
   it('shows backend apps independently and includes managed frontends in shared services', () => {
@@ -514,7 +520,8 @@ describe('Dev console navigation', () => {
     expect(applications.nextElementSibling).toBe(root.querySelector('.infrastructure-section'));
     openTests();
     expect(root.querySelector('h1')?.textContent).toBe('Tests');
-    expect(root.querySelector('dev-test-catalog')?.nextElementSibling?.className).toBe('test-output-section');
+    expect(root.querySelector('dev-test-catalog .output-panel dev-test-output')).not.toBeNull();
+    expect(root.querySelector('.test-output-section')).toBeNull();
   });
   it('shows an empty application list without inventing an application', () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.filter(c => !c.application)} : s);
@@ -721,21 +728,19 @@ describe('Dev console navigation', () => {
     expect(location.hash).toBe('#projects');
     expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Dev environment');
   });
-  it('updates the test bar while a run is in progress without a total status pill', () => {
+  it('shows live progress without repeating the completed summary', () => {
     openTests();
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.status.update(s => s ? {...s, testResults: {available:true, running:true, passed:2, failed:1, skipped:0, total:10, totalKnown:true, expectedTotal:3, label:'Running'}} : s);
     fixture.detectChanges();
-    expect((root.querySelector('.test-passed') as HTMLElement).style.width).toBe('20%');
-    expect((root.querySelector('.test-failed') as HTMLElement).style.width).toBe('10%');
+    expect(root.querySelector('.test-status')?.textContent).toContain('2 passed · 1 failed');
     expect(root.querySelector('.test-heading .badge')).toBeNull();
     expect(root.querySelector('.current-project-meta')).toBeNull();
     fixture.componentInstance.status.update(s => s ? {...s, testResults: {...s.testResults!, passed:6, total:10}} : s);
     fixture.detectChanges();
-    expect((root.querySelector('.test-passed') as HTMLElement).style.width).toBe('60%');
-    expect(root.querySelector('.test-bar .test-counts')?.textContent).toContain('6 passed');
-    expect(root.querySelector('.test-counts')?.textContent).toContain('10 total');
-    expect(root.querySelector('.test-counts')?.textContent).toContain('total');
+    expect(root.querySelector('.test-status')?.textContent).toContain('6 passed');
+    expect(root.querySelector('.test-status')?.textContent).toContain('3 expected');
+    expect(root.querySelector('.test-bar')).toBeNull();
   });
   it('uses one confirmation for application and monitoring data', async () => {
     chooseCompleteEnvironment();

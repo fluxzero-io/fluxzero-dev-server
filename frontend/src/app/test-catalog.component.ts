@@ -6,16 +6,21 @@ export interface TestCase {key:string;project:string;suite:string;name:string;st
 export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:number;counts:Record<string,number>}
 @Component({selector:'dev-test-catalog', standalone:true, template:`
   <section class="scenario-panel" aria-labelledby="scenarios-title">
-    <header><div><h2 id="scenarios-title">Scenarios</h2><p>Latest result for each discovered test.</p></div>
-      <label class="scenario-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" placeholder="Find a scenario" aria-label="Find a scenario" maxlength="256" [value]="query()" (input)="search($event)"/></label>
+    <header><div><h2 id="scenarios-title">Scenarios</h2>@if(filter() !== 'output') {<label class="scenario-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" placeholder="Find a scenario" aria-label="Find a scenario" maxlength="256" [value]="query()" (input)="search($event)"/></label>}</div>
+      <ng-content select="[test-actions]"/>
     </header>
+    <ng-content select="[test-status]"/>
+    <div class="scenario-toolbar">
     <div class="scenario-filters" role="group" aria-label="Filter test results">
       @for(option of filters; track option.key) {
-        <button type="button" [class.selected]="filter() === option.key" [attr.aria-pressed]="filter() === option.key" (click)="select(option.key)">
-          {{option.label}}@if(page(); as data) {<span>{{count(option.key, data)}}</span>}
+        <button type="button" [class.output-tab]="option.key === 'output'" [class.selected]="filter() === option.key" [attr.aria-pressed]="filter() === option.key" (click)="select(option.key)">
+          {{option.label}}@if(option.key !== 'output' && page(); as data) {<span>{{count(option.key, data)}}</span>}
         </button>
       }
     </div>
+    </div>
+    <div class="output-panel" [hidden]="filter() !== 'output'"><ng-content select="[test-output]"/></div>
+    @if(filter() !== 'output') {
     @if(error()) {<p role="alert">{{error()}} <button class="icon-button" type="button" (click)="refresh()">Retry</button></p>}
     <div class="scenario-results" [attr.aria-busy]="loading()">
       @if(page(); as data) {
@@ -39,14 +44,17 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
         }
       } @else if(loading()) {<p class="scenario-empty" role="status">Loading scenarios…</p>}
     </div>
+    }
   </section>`, styles:`
     :host {display:block;}
     header {display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;}
     h2 {font-size:17px;margin:0;} header p {font-size:12px;color:var(--dashboard-muted);margin:5px 0 0;}
-    .scenario-search {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;}
+    .scenario-toolbar {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+    .scenario-search {margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;}
     input {background:transparent;border:0;color:var(--dashboard-text);font:inherit;font-size:13px;min-width:0;width:180px;}
     .scenario-search:focus-within {outline:2px solid var(--dashboard-active);} input:focus {outline:0;}
-    .scenario-filters {display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px;}
+    .scenario-filters {display:flex;width:100%;flex-wrap:wrap;gap:6px;}
+    .scenario-filters .output-tab {margin-left:auto;}
     .scenario-filters button {border:0;border-radius:6px;padding:7px 10px;background:transparent;color:var(--dashboard-muted);font-size:12px;}
     .scenario-filters button.selected {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
     .scenario-filters span {margin-left:6px;font-variant-numeric:tabular-nums;}
@@ -60,7 +68,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
     .scenario-empty strong {display:block;color:var(--dashboard-text);font-size:15px;font-weight:500;}.scenario-empty p {margin:8px 0;}
     .icon-button {width:auto;height:auto;min-height:30px;padding:6px 10px;gap:6px;white-space:nowrap;}
     .scenario-pagination {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;font-size:12px;color:var(--dashboard-muted);}
-    @media(max-width:650px) {header {flex-direction:column;align-items:stretch;}.scenario-search input {width:100%;}.scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}.scenario-filters button {padding:7px 8px;}}
+    @media(max-width:650px) {header {align-items:flex-start;}header>div {min-width:0;}.scenario-search {width:100%;box-sizing:border-box;}.scenario-search input {width:100%;}.scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}.scenario-filters {gap:2px;}.scenario-filters button {padding:7px 5px;font-size:11px;}.scenario-filters span {margin-left:4px;}}
   `})
 export class TestCatalogComponent implements OnInit, OnDestroy {
   readonly page = signal<TestPage | undefined>(undefined);
@@ -68,7 +76,7 @@ export class TestCatalogComponent implements OnInit, OnDestroy {
   readonly query = signal('');
   readonly loading = signal(false);
   readonly error = signal('');
-  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'}];
+  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'},{key:'output',label:'Test output'}];
   private readonly http = inject(HttpClient);
   private readonly zone = inject(NgZone);
   private request?: Subscription;
@@ -81,10 +89,11 @@ export class TestCatalogComponent implements OnInit, OnDestroy {
     }, 3000);});
   }
   ngOnDestroy() {this.request?.unsubscribe();if(this.timer) clearInterval(this.timer);}
-  select(filter:string) {this.filter.set(filter);this.offset=0;this.page.set(undefined);this.refresh();}
+  select(filter:string) {this.filter.set(filter);if(filter === 'output') {this.request?.unsubscribe();this.loading.set(false);return;}this.offset=0;this.page.set(undefined);this.refresh();}
   search(event:Event) {this.query.set((event.target as HTMLInputElement).value);this.offset=0;this.page.set(undefined);this.refresh();}
   go(offset:number) {this.offset=offset;this.refresh();}
   refresh() {
+    if(this.filter() === 'output') return;
     this.request?.unsubscribe();this.loading.set(true);this.error.set('');
     this.request = this.http.get<TestPage>('tests.json', {params:{state:this.filter(),q:this.query(),offset:this.offset},timeout:10000}).subscribe({
       next:data => {this.page.set(data);this.offset=data.offset;this.loading.set(false);},

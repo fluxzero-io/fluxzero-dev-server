@@ -1,15 +1,9 @@
-import {Component, ElementRef, ViewChild, afterEveryRender, inject, input, output as outputEvent, signal} from '@angular/core';
+import {Component, ElementRef, ViewChild, afterEveryRender, inject, input, signal} from '@angular/core';
 import {TestOutputLine} from './models';
 import {sendCommand} from './dom-handlers';
 
 @Component({selector:'dev-test-output',standalone:true,template:`
   <div class="test-output">
-      <div class="test-output-toolbar">
-        <button type="button" class="icon-button" [attr.aria-label]="pauseLabel()" [title]="pauseLabel()"
-          [disabled]="pauseBusy()" [attr.aria-pressed]="paused()" (click)="toggleTests.emit()">
-          <i [class]="paused() ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
-        </button>
-      </div>
       <div class="test-output-area">
         <div class="test-output-actions">
         <button type="button" class="icon-button" aria-label="Scroll to bottom" title="Scroll to bottom"
@@ -25,24 +19,18 @@ import {sendCommand} from './dom-handlers';
 export class TestOutputComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   lines=input<TestOutputLine[]>([]);
-  paused=input(false);
-  pauseBusy=input(false);
-  toggleTests=outputEvent<void>();
   private following=true;
-  pauseLabel() {
-    return this.paused() ? 'Resume automatic tests' : 'Pause automatic tests';
-  }
   clearing=signal(false);
   error=signal('');
   @ViewChild('output') output?: ElementRef<HTMLElement>;
   constructor() {afterEveryRender(()=>{
     const element=this.output?.nativeElement;
-    if(element && this.following)element.scrollTop=element.scrollHeight;
+    if(element && element.clientHeight > 0 && this.following)element.scrollTop=element.scrollHeight;
   });}
   ngOnChanges() { this.scrolled(); }
   scrolled() {
     const element=this.output?.nativeElement;
-    if(element)this.following=element.scrollHeight-element.scrollTop-element.clientHeight<=4;
+    if(element && element.clientHeight > 0)this.following=element.scrollHeight-element.scrollTop-element.clientHeight<=4;
   }
   scrollToBottom() {
     this.following=true;
