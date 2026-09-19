@@ -96,8 +96,9 @@ describe('Scenario catalog', () => {
     http.expectNone(r=>r.params.has('group'));
     toggle.click();fixture.detectChanges();
     const variants=http.expectOne(r=>r.params.get('group')==='template');
-    variants.flush({...results(0,75),items:results(0,75).items.map(t=>({...t,name:'Variant '+t.key}))});fixture.detectChanges();
+    variants.flush({...results(0,75),items:results(0,75).items.map(t=>({...t,name:'Validates input · Variant '+t.key,groupName:'Validates input'}))});fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Variant 0');
+    expect(fixture.nativeElement.querySelector('.scenario-variants .scenario-name strong').textContent).toBe('Variant 0');
     fixture.componentInstance.refresh();http.expectOne(r=>!r.params.has('group')).flush(grouped);fixture.detectChanges();
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(fixture.nativeElement.textContent).toContain('Variant 0');

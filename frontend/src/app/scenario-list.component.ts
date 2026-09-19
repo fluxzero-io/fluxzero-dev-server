@@ -2,7 +2,7 @@ import {Component, input, output, signal, inject, forwardRef, OnInit, OnChanges,
 import {HttpClient} from '@angular/common/http';
 import {forkJoin, Subscription} from 'rxjs';
 
-export interface TestCase {key:string;project:string;suite:string;name:string;state:string;source:string;variants?:Record<string,number>}
+export interface TestCase {key:string;project:string;suite:string;name:string;state:string;source:string;groupName?:string|null;variants?:Record<string,number>}
 export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:number;counts:Record<string,number>}
 
 @Component({selector:'dev-scenario-list',standalone:true,imports:[forwardRef(() => ScenarioListComponent)],template:`
@@ -25,7 +25,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           } @else {
             <div class="scenario-row">
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" aria-hidden="true"></i>
-              <div class="scenario-name"><strong>{{test.name}}</strong>@if(!group()) {<small [title]="test.source">{{test.suite}} · {{test.project}}</small>}</div>
+              <div class="scenario-name"><strong>{{displayName(test)}}</strong>@if(!group()) {<small [title]="test.source">{{test.suite}} · {{test.project}}</small>}</div>
               <span class="scenario-state">{{label(test.state)}}</span>
             </div>
           }
@@ -115,5 +115,9 @@ export class ScenarioListComponent implements OnInit, OnChanges, OnDestroy {
     });
   }
   total(counts:Record<string,number>) {return Object.values(counts).reduce((a,b)=>a+b,0);}
+  displayName(test:TestCase) {
+    const prefix=test.groupName ? test.groupName + ' · ' : '';
+    return this.group() && prefix && test.name.startsWith(prefix) ? test.name.slice(prefix.length).trim() || test.name : test.name;
+  }
   label(state:string) {return ({passed:'Passed',failed:'Failed',skipped:'Skipped',pending:'Not completed'} as Record<string,string>)[state] || state;}
 }
