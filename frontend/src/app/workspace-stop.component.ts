@@ -1,15 +1,15 @@
 import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener, inject, input, output, signal, ViewChild} from '@angular/core';
 
 @Component({selector: 'dev-workspace-stop', standalone: true, template: `
-  <div class="stop-control">
-    <button class="stop-action" type="button" [attr.aria-label]="stopped() ? 'Start workspace' : 'Stop ' + selected().label"
+  <div class="stop-control split-action">
+    <button class="stop-action split-action-main" type="button" [attr.aria-label]="stopped() ? 'Start workspace' : 'Stop ' + selected().label"
       [title]="stopped() ? 'Start the workspace again' : selected().description" [disabled]="busy()" [attr.aria-busy]="working()"
       (click)="actionRequested.emit(stopped() ? 'start-workspace' : selected().key)">
       @if(working()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Working"></span>}
       @else {<i class="bi" [class.bi-play]="stopped()" [class.bi-stop]="!stopped()" aria-hidden="true"></i>}
       <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop all' : 'Stop'}}</span>
     </button>
-    @if(!stopped()) {<button #trigger class="stop-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
+    @if(!stopped()) {<button #trigger class="stop-choice split-action-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
       aria-controls="stop-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
     </button>}
@@ -26,17 +26,11 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
-  .stop-control {display:flex;align-items:center;}
-  .stop-control button {border:0;background:transparent;color:var(--dashboard-muted);font-size:12px;height:30px;}
-  .stop-action {display:flex;align-items:center;gap:6px;padding:0 4px 0 6px;border-radius:5px;text-align:left;white-space:nowrap;}
-  .stop-action span {font-size:12px;font-weight:400;}
-  .stop-choice {width:24px;border-radius:5px;font-size:10px!important;}
-  button:hover:not(:disabled) {background:var(--dashboard-panel-soft);}
-  button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
   .stop-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
     border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
   .stop-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
     border:0;border-radius:6px;background:transparent;color:var(--dashboard-text);text-align:left;}
+  .stop-menu button:hover:not(:disabled) {background:var(--dashboard-action-hover);}
   .stop-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
   .stop-menu strong {font-size:13px;font-weight:600;}
   .stop-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}

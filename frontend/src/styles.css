@@ -212,8 +212,6 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .project-page > .page-heading p {font-size:14px;}
 .current-project {padding:0;background:transparent;border:0;box-shadow:none;}
 .current-project > .page-heading {padding:24px 28px;margin:0;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);}
-.environment-eyebrow {display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:1px;font-weight:600;color:var(--dashboard-muted);}
-.environment-eyebrow i {color:var(--dashboard-active);font-size:15px;}
 .current-project-title {font-size:23px;}
 .dashboard-nav-link {border-radius:10px;}
 .component-table-scroll {overflow:visible;margin:20px 0;}
@@ -272,9 +270,9 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 
 .component-table tbody .application-component .component-status {grid-column:1;grid-row:2;margin-bottom:0;}
 .component-table tbody .component-app-restart {grid-column:2;grid-row:2;justify-content:flex-end;}
-.component-app-restart .icon-button {width:auto;gap:6px;padding:0 6px;white-space:nowrap;font-size:12px;}
+.component-app-restart .dashboard-action {height:32px;font-size:12px;}
 .workspace-actions {margin-left:auto;}
-.workspace-action-buttons {display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+.workspace-action-buttons {display:flex;align-items:center;gap:8px;}
 .current-project > .page-heading {flex-wrap:wrap;}
 @media(max-width:900px) {
   .workspace-actions {margin-left:auto;align-self:flex-end;}
@@ -283,13 +281,23 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 @media(max-width:650px) {
   .workspace-heading {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 8px;align-items:center;}
   .workspace-heading > .workspace-summary {display:contents;}
-  .workspace-heading .environment-eyebrow {grid-column:1;grid-row:1;align-self:center;font-size:10px;letter-spacing:.6px;gap:6px;}
-  .workspace-heading .environment-eyebrow i {font-size:13px;}
   .workspace-heading > .workspace-actions {grid-column:2;grid-row:1;align-self:center;}
-  .workspace-heading .project-title-row,.workspace-heading .project-path {grid-column:1/-1;}
+  .workspace-heading .project-title-row {grid-column:1;grid-row:1;min-width:0;}
+  .workspace-heading .project-title-row h3 {overflow-wrap:anywhere;}
+  .workspace-heading .project-path {grid-column:1/-1;}
+  .workspace-action-buttons {flex-direction:column-reverse;align-items:flex-end;gap:6px;}
 }
 
 .workspace-stopped {margin:24px 0 0;padding:20px 24px;border:1px solid var(--dashboard-border);border-radius:16px;background:var(--dashboard-surface);font-size:13px;line-height:1.6;}
-@media(max-width:650px) {
-  .workspace-heading .environment-eyebrow {letter-spacing:0;gap:4px;}
-}
+
+/* Quiet actions share the same surface and interaction states across workspace and tests. */
+.dashboard-action,.split-action {background:var(--dashboard-action-bg);border:0;border-radius:7px;color:var(--dashboard-action-text);}
+.dashboard-action {display:inline-flex;align-items:center;justify-content:center;gap:6px;width:max-content;height:34px;padding:0 11px;font-size:13px;white-space:nowrap;}
+.split-action {display:flex;align-items:stretch;width:max-content;height:34px;}
+.split-action button {border:0;background:transparent;color:inherit;height:100%;font-size:13px;}
+.split-action-main {display:flex;align-items:center;gap:7px;flex:1 1 auto;min-width:0;padding:0 10px;border-radius:7px 0 0 7px;white-space:nowrap;text-align:left;}
+.split-action-main:only-child {border-radius:7px;}
+.split-action-choice {flex:0 0 28px;width:28px;padding:0;border-radius:0 7px 7px 0;font-size:10px!important;}
+.dashboard-action:hover:not(:disabled),.split-action button:hover:not(:disabled) {background:var(--dashboard-action-hover);color:var(--dashboard-active);}
+.dashboard-action:active:not(:disabled),.split-action button:active:not(:disabled) {background:var(--dashboard-action-pressed);}
+@media(max-width:650px) {.dashboard-action,.split-action {height:40px;}}

@@ -1,15 +1,15 @@
 import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener, inject, input, output, signal, ViewChild} from '@angular/core';
 
 @Component({selector: 'dev-workspace-restart', standalone: true, template: `
-  <div class="restart-control">
-    <button class="restart-action" type="button" [attr.aria-label]="'Restart ' + selected().label"
+  <div class="restart-control split-action">
+    <button class="restart-action split-action-main" type="button" [attr.aria-label]="'Restart ' + selected().label"
       [title]="selected().description" [disabled]="busy() || !supported(selected().key)" [attr.aria-busy]="restarting()"
       (click)="restart.emit(selected().key)">
       @if(restarting()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting"></span>}
       @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
       <span><span class="restart-verb">Restart </span>{{selected().label}}</span>
     </button>
-    <button #trigger class="restart-choice" type="button" aria-label="Choose restart scope" aria-haspopup="menu"
+    <button #trigger class="restart-choice split-action-choice" type="button" aria-label="Choose restart scope" aria-haspopup="menu"
       aria-controls="restart-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
     </button>
@@ -26,20 +26,15 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
-  .restart-control {display:flex;align-items:center;}
-  .restart-control button {border:0;background:transparent;color:var(--dashboard-muted);font-size:12px;height:30px;}
-  .restart-action {display:flex;align-items:center;gap:6px;padding:0 4px 0 6px;border-radius:5px;text-align:left;white-space:nowrap;}
-  .restart-action span {font-size:12px;font-weight:400;}
-  .restart-choice {width:24px;border-radius:5px;font-size:10px!important;}
-  button:hover:not(:disabled) {background:var(--dashboard-panel-soft);}
-  button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
+  .restart-control {width:192px;}
   .restart-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
     border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
   .restart-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
     border:0;border-radius:6px;background:transparent;color:var(--dashboard-text);text-align:left;}
+  .restart-menu button:hover:not(:disabled) {background:var(--dashboard-action-hover);}
   .restart-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
   .restart-menu strong {font-size:13px;font-weight:600;}
-  @media(max-width:480px) {.restart-verb {display:none;}}
+  @media(max-width:650px) {.restart-control {width:148px;}.restart-verb {display:none;}}
   .restart-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
 `})
 export class WorkspaceRestartComponent {

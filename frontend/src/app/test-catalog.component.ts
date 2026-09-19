@@ -6,7 +6,7 @@ export interface TestCase {key:string;project:string;suite:string;name:string;st
 export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:number;counts:Record<string,number>}
 @Component({selector:'dev-test-catalog', standalone:true, template:`
   <section class="scenario-panel" aria-labelledby="scenarios-title">
-    <header><div><h2 id="scenarios-title">Scenarios</h2>@if(filter() !== 'output') {<label class="scenario-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" placeholder="Find a scenario" aria-label="Find a scenario" maxlength="256" [value]="query()" (input)="search($event)"/></label>}</div>
+    <header [class.showing-output]="filter() === 'output'"><div class="scenario-heading"><h2 id="scenarios-title">Scenarios</h2>@if(filter() !== 'output') {<label class="scenario-search"><i class="bi bi-search" aria-hidden="true"></i><input type="search" placeholder="Find a scenario" aria-label="Find a scenario" maxlength="256" [value]="query()" (input)="search($event)"/></label>}</div>
       <ng-content select="[test-actions]"/>
     </header>
     <ng-content select="[test-status]"/>
@@ -47,17 +47,21 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
     }
   </section>`, styles:`
     :host {display:block;}
-    header {display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;}
+    header {display:flex;justify-content:space-between;align-items:center;gap:24px;margin-bottom:20px;}
+    .scenario-heading {display:flex;align-items:center;gap:24px;flex:1;min-width:0;}
     h2 {font-size:17px;margin:0;} header p {font-size:12px;color:var(--dashboard-muted);margin:5px 0 0;}
-    .scenario-toolbar {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
-    .scenario-search {margin-top:12px;display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;}
+    .output-panel {padding-top:16px;}
+    .scenario-toolbar {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:0;}
+    .scenario-search {height:34px;min-width:0;display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);border:1px solid var(--dashboard-border);border-radius:8px;padding:8px 10px;}
     input {background:transparent;border:0;color:var(--dashboard-text);font:inherit;font-size:13px;min-width:0;width:180px;}
     .scenario-search:focus-within {outline:2px solid var(--dashboard-active);} input:focus {outline:0;}
-    .scenario-filters {display:flex;width:100%;flex-wrap:wrap;gap:6px;}
-    .scenario-filters .output-tab {margin-left:auto;}
-    .scenario-filters button {border:0;border-radius:6px;padding:7px 10px;background:transparent;color:var(--dashboard-muted);font-size:12px;}
-    .scenario-filters button.selected {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
-    .scenario-filters span {margin-left:6px;font-variant-numeric:tabular-nums;}
+    .scenario-filters {display:flex;width:100%;gap:18px;border-bottom:1px solid var(--dashboard-border);overflow-x:auto;}
+    .scenario-filters button {border:0;border-radius:0;border-bottom:2px solid transparent;padding:11px 3px 13px;background:transparent;color:var(--dashboard-muted);font-size:13px;white-space:nowrap;}
+    .scenario-filters button.selected {border-bottom-color:var(--dashboard-active);color:var(--dashboard-active);}
+    .scenario-filters button:hover {background:var(--dashboard-action-bg);color:var(--dashboard-active);}
+    .scenario-filters span {display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;font-size:11px;background:var(--dashboard-action-bg);font-variant-numeric:tabular-nums;}
+    .scenario-filters .selected span {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+    .scenario-row:first-child {border-top:0;}
     .scenario-row {display:flex;align-items:center;gap:12px;padding:14px 0;border-top:1px solid var(--dashboard-border);}
     .scenario-status {flex:0 0 auto;color:var(--dashboard-muted);}.scenario-status.passed {color:var(--dashboard-success-text);}.scenario-status.failed {color:var(--dashboard-danger-text);}
     .scenario-name {flex:1;min-width:0;overflow-wrap:anywhere;}.scenario-name strong {display:block;font-size:14px;font-weight:500;}
@@ -68,7 +72,16 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
     .scenario-empty strong {display:block;color:var(--dashboard-text);font-size:15px;font-weight:500;}.scenario-empty p {margin:8px 0;}
     .icon-button {width:auto;height:auto;min-height:30px;padding:6px 10px;gap:6px;white-space:nowrap;}
     .scenario-pagination {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;font-size:12px;color:var(--dashboard-muted);}
-    @media(max-width:650px) {header {align-items:flex-start;}header>div {min-width:0;}.scenario-search {width:100%;box-sizing:border-box;}.scenario-search input {width:100%;}.scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}.scenario-filters {gap:2px;}.scenario-filters button {padding:7px 5px;font-size:11px;}.scenario-filters span {margin-left:4px;}}
+    @media(max-width:650px) {
+      header {position:relative;min-height:138px;align-items:flex-start;gap:10px;}
+      header.showing-output {min-height:86px;}
+      .scenario-heading {display:contents;} h2 {padding-top:10px;}
+      .scenario-search {position:absolute;bottom:0;left:0;right:0;width:100%;height:38px;box-sizing:border-box;}
+      .scenario-search input {width:100%;}
+      .scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state {padding-left:24px;}
+      .scenario-filters {gap:8px;}.scenario-filters button {padding:10px 0;font-size:12px;}
+      .scenario-filters span {margin-left:3px;padding:1px 3px;font-size:10px;}
+    }
   `})
 export class TestCatalogComponent implements OnInit, OnDestroy {
   readonly page = signal<TestPage | undefined>(undefined);

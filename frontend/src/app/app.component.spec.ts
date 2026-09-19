@@ -133,16 +133,16 @@ describe('Dev console navigation', () => {
     expect(fixture.componentInstance.route()).toBe('application');
     expect(fixture.nativeElement.querySelector('h1').textContent).toBe('App preview');
     fixture.componentInstance.navigate('projects'); fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Dev environment');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Workspace');
     fixture.nativeElement.querySelector('.dashboard-brand').click(); fixture.detectChanges();
     expect(location.hash).toBe('#application');
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Dev environment', 'Tests']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
-    expect(root.querySelector('h1')?.textContent).toBe('Dev environment');
+    expect(root.querySelector('h1')?.textContent).toBe('Workspace');
     expect(root.querySelector('main')?.textContent).not.toContain('Other projects');
     expect(root.querySelector('main')?.textContent).not.toContain('/projects/orders');
     expect(root.querySelector('.current-project')?.textContent).toContain('/projects/repair-cafe');
@@ -397,7 +397,7 @@ describe('Dev console navigation', () => {
     await fixture.whenStable();
     fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Dev environment');
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Workspace');
     expect(fixture.nativeElement.querySelector('main').textContent).not.toContain('/projects/orders');
   });
   it('keeps monitoring views in the left navigation even without a configured backend', async () => {
@@ -471,7 +471,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.infrastructure-section h2')?.textContent).toBe('Dev resources');
     expect(root.querySelector('[aria-label="Rename dev server"]')).toBeNull();
     expect(root.querySelector('.environment-tests')).toBeNull();
-    expect(root.querySelector('.environment-eyebrow')?.textContent?.trim()).toBe('WORKSPACE');
+    expect(root.querySelector('.environment-eyebrow')).toBeNull();
     expect(root.querySelector('.tests-card h2,.tests-card h3')).toBeNull();
     expect(root.querySelector('.infrastructure-section')?.contains(root.querySelectorAll('.component-table')[1])).toBeTrue();
     expect(root.querySelector('.applications-section')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
@@ -726,7 +726,7 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', '#settings');
     fixture.componentInstance.readRoute(); fixture.detectChanges();
     expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Dev environment');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('Workspace');
   });
   it('shows live progress without repeating the completed summary', () => {
     openTests();

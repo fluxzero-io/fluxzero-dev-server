@@ -32,8 +32,9 @@ import {HISTORY_BUCKETS, resourceChart, ResourceMetric, ResourceSample, SAMPLE_I
   </dialog>
 `, styles: `
   :host {display:inline-flex;flex:0 0 auto;}
-  .graph-button {color:var(--dashboard-active);border:1px solid var(--dashboard-border);border-radius:8px;width:30px;height:30px;}
-  .graph-button:hover {background:var(--dashboard-active-soft);}
+  .graph-button {color:var(--dashboard-active);border:0;background:var(--dashboard-action-bg);border-radius:7px;width:30px;height:30px;}
+  .graph-button:hover {background:var(--dashboard-action-hover);}
+  .graph-button:active {background:var(--dashboard-action-pressed);}
   .resource-graph-dialog {width:min(760px,calc(100vw - 32px));max-height:calc(100dvh - 32px);box-sizing:border-box;padding:28px;border:1px solid var(--dashboard-border);border-radius:20px;background:var(--dashboard-surface);color:var(--dashboard-text);box-shadow:0 24px 90px #0004;text-align:left;white-space:normal;}
   .resource-graph-dialog::backdrop {background:#101d35a6;}
   header {display:flex;justify-content:space-between;align-items:flex-start;gap:16px;}

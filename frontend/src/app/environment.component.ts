@@ -12,7 +12,6 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
 @Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
-    <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> WORKSPACE</div>
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
@@ -21,8 +20,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
-        @if(state.maintenance?.stopSupported && !fullyStopped()) {<dev-workspace-stop [working]="!!maintenanceAction()?.startsWith('stop-') || maintenanceAction() === 'start-workspace'" [busy]="busy()" [stopped]="!!state.maintenance?.workspaceStopped" (actionRequested)="requestMaintenance($event)"/>}
         @if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-workspace-restart [busy]="busy()" [action]="maintenanceAction()" [appsSupported]="!!state.maintenance?.applicationRestartSupported" [environmentSupported]="!!state.maintenance?.restartSupported" (restart)="requestMaintenance($event)"/>}
+        @if(state.maintenance?.stopSupported && !fullyStopped()) {<dev-workspace-stop [working]="!!maintenanceAction()?.startsWith('stop-') || maintenanceAction() === 'start-workspace'" [busy]="busy()" [stopped]="!!state.maintenance?.workspaceStopped" (actionRequested)="requestMaintenance($event)"/>}
       </div>
     </div></div>
     <ng-template #componentCard let-component>
@@ -50,7 +49,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           </td>}
 
           @if(component.application) {<td role="cell" class="component-app-restart">
-            <button class="icon-button" type="button" [attr.aria-label]="'Restart ' + component.name" title="Restart only this app from its last successful build" [disabled]="busy() || !component.restartSupported" [attr.aria-busy]="maintenanceAction() === 'restart-app:' + component.id" (click)="maintain('restart-app:' + component.id)">
+            <button class="icon-button dashboard-action" type="button" [attr.aria-label]="'Restart ' + component.name" title="Restart only this app from its last successful build" [disabled]="busy() || !component.restartSupported" [attr.aria-busy]="maintenanceAction() === 'restart-app:' + component.id" (click)="maintain('restart-app:' + component.id)">
               @if(maintenanceAction() === 'restart-app:' + component.id) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting app"></span>}
               @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart app</span>
             </button>

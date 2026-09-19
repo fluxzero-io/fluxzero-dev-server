@@ -10,7 +10,7 @@
     <dev-profile-selector [status]="status()" [connected]="connected()"/>
     <nav aria-label="Dev dashboard navigation">
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
-      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Dev environment</span></a>
+      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Workspace</span></a>
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span></a>
       <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="monitoringExpanded.set(!monitoringExpanded())" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
@@ -40,7 +40,7 @@
       @if(applicationSource(); as source) {
         <iframe #applicationFrame name="dev-application" [title]="currentName() + ' application'" [src]="source"></iframe>
       } @else {
-        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Dev environment page.</p></div>
+        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
       }
     </section>
     <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">

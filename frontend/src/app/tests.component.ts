@@ -9,16 +9,16 @@ import {Handler, sendCommand} from './dom-handlers';
     <header class="page-heading"><div><h1 id="tests-title">Tests</h1><p>Explore the scenarios checked by your tests.</p></div></header>
     @if(status(); as state) {
       @if(state.maintenance?.workspaceStopped || state.state === 'shutdown') {
-        <p class="workspace-stopped" role="status">Workspace stopped. Start it from <a href="#projects">Dev environment</a> to run tests.</p>
+        <p class="workspace-stopped" role="status">Workspace stopped. Start it from <a href="#projects">Workspace</a> to run tests.</p>
       } @else {
       <div class="tests-card">
         <dev-test-catalog>
           <div test-actions class="test-actions">
-            <button class="icon-button" type="button" aria-label="Rerun" title="Rerun"
+            <button class="icon-button dashboard-action" type="button" aria-label="Rerun" title="Rerun"
               [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()">
               <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Rerun</span>
             </button>
-            <button class="icon-button" type="button" [attr.aria-label]="state.testResults?.paused ? 'Resume' : 'Pause'"
+            <button class="icon-button dashboard-action" type="button" [attr.aria-label]="state.testResults?.paused ? 'Resume' : 'Pause'"
               [title]="state.testResults?.paused ? 'Resume automatic tests' : 'Pause automatic tests'"
               [disabled]="changingTestPause() || !state.testResults?.runnable || busy()" [attr.aria-pressed]="!!state.testResults?.paused" (click)="toggleTests()">
               <i [class]="state.testResults?.paused ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
@@ -43,11 +43,10 @@ import {Handler, sendCommand} from './dom-handlers';
     .tests-page > header {margin-bottom:28px;}
     .tests-page > header h1 {font-size:32px;font-weight:800;margin:0;}
     .tests-page > header p {color:var(--dashboard-muted);margin:4px 0 0;font-size:14px;}
-    .test-actions {display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
-    .test-actions .icon-button {width:auto;height:30px;padding:0 6px;gap:6px;font-size:12px;white-space:nowrap;}
+    .test-actions {display:flex;align-items:center;gap:8px;}
     .test-status {font-size:12px;color:var(--dashboard-muted);}
     .test-status p {margin:0 0 14px;}
-    @media(max-width:650px) {.tests-page > header h1 {font-size:28px;}}
+    @media(max-width:650px) {.test-actions {flex-direction:column;align-items:flex-end;gap:6px;}.tests-page > header h1 {font-size:28px;}}
   `})
 @Handler()
 export class TestsComponent {

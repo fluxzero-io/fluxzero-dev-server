@@ -91,6 +91,12 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
 
 ## Dashboard UI
 
+- Call the project selector Project and the resource-management page Workspace. Keep App preview, Workspace
+  and Tests as direct navigation links; Monitoring is the collapsible group for technical detail.
+- Use shared quiet action styles: a very light blue surface, visible hover/pressed states, and content-sized
+  controls. Split buttons round only their outside corners and reserve space for the dropdown arrow even
+  with the longest label. Keep workspace/test actions in a row on desktop and stacked on narrow screens.
+
 - In every modal footer, place Cancel at the far left and the primary confirmation action at the far right.
   Use the shared `.dialog-actions` layout and put `.dialog-cancel` first in DOM order, so keyboard order follows
   the visible order. Keep any additional actions to the right, before the primary action.

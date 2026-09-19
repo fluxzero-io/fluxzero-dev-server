@@ -4,7 +4,7 @@ import {NgTemplateOutlet} from '@angular/common';
 import {sendCommand} from './dom-handlers';
 
 @Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet], template: `
-  <div class="dashboard-section-label">Workspace</div>
+  <div class="dashboard-section-label">Project</div>
   <button #trigger class="server-picker-button" type="button" aria-label="Choose workspace" aria-haspopup="dialog"
     aria-controls="dev-server-picker" [attr.aria-expanded]="open()" [title]="currentName()" (click)="toggle()">
     <i class="bi bi-collection" aria-hidden="true"></i><span>{{currentName()}}</span><i class="bi bi-chevron-down" aria-hidden="true"></i>
