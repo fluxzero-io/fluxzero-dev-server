@@ -40,6 +40,30 @@ class TestCatalogTest {
         assertEquals("Accepts payment", TestCatalog.describe("app", "gradle", "demo.Checkout#acceptsPayment()", null, "passed").name());
     }
 
+    @Test void usesNamedInvocationsWithoutExposingJunitSignatures() {
+        String template = "[engine:junit-jupiter]/[class:demo.ValidationTest]/"
+                + "[test-template:rejectsInvalidInput(java.lang.String, java.lang.String, java.lang.Object)]";
+        var first = TestCatalog.describe("app", "m", template + "/[test-template-invocation:#1]",
+                "rejectsInvalidInput(String, String, Object) · automation needs a cooldown", "passed");
+        assertEquals("automation needs a cooldown", first.name());
+        var second = TestCatalog.describe("app", "m", template + "/[test-template-invocation:#2]",
+                "rejectsInvalidInput(String, String, Object) · automation needs a cooldown", "passed");
+        assertNotEquals(first.key(), second.key(), "Equal labels must not merge distinct invocations");
+        assertTrue(first.source().contains("rejectsInvalidInput"), "Technical identity remains searchable");
+        assertEquals("Rejects invalid input · [1] rule=missing name",
+                TestCatalog.describe("app", "m", template + "/[test-template-invocation:#1]",
+                        "rejectsInvalidInput(String, String, Object) · [1] rule=missing name", "passed").name());
+        assertEquals("Rejects invalid input", TestCatalog.describe("app", "m", template,
+                "rejectsInvalidInput(String, String, Object)", "passed").name());
+        assertEquals("Validation (API) · missing name", TestCatalog.describe("app", "m", template,
+                "Validation (API) · missing name", "passed").name());
+        assertEquals("Handles nesting (including null) · safely", TestCatalog.describe("app", "m", template,
+                "rejectsInvalidInput(String, String, Object) · Handles nesting (including null) · safely", "passed").name());
+        String factory = "[engine:junit-jupiter]/[class:demo.ValidationTest]/[test-factory:validationCases()]/[dynamic-test:#1]";
+        assertEquals("Accepts valid input", TestCatalog.describe("app", "m", factory,
+                "validationCases() · Accepts valid input", "passed").name());
+    }
+
     @Test void preservesOldCachesAndNewDisplayNamesAcrossSelectiveRuns(@TempDir Path directory) throws Exception {
         Files.writeString(directory.resolve("test-inventory.json"),
                 "{\"known\":true,\"modules\":{\"m\":{\"demo.A#works\":\"passed\"}},\"templates\":{}}");

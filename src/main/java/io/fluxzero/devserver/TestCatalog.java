@@ -47,9 +47,24 @@ final class TestCatalog {
         }
         String name = displayName == null || displayName.isBlank() ? method : displayName;
         String displaySuffix = "";
-        if (name.startsWith(method + " · ")) {
-            displaySuffix = name.substring(method.length());
-            name = method;
+        int separator = name.indexOf(" · ");
+        String displayMethod = separator < 0 ? name : name.substring(0, separator);
+        // JUnit's display signature uses simple argument types; its unique ID uses qualified types.
+        // Only strip a generated signature belonging to this method, never an explicit display name.
+        String methodName = method.replaceFirst("\\(.*\\)$", "");
+        boolean generatedSignature = displayMethod.equals(method)
+                || Pattern.compile(Pattern.quote(methodName) + "\\([^()]*\\)").matcher(displayMethod).matches();
+        if (generatedSignature) {
+            if (separator >= 0) {
+                String invocationName = name.substring(separator + 3);
+                if (!invocationName.isBlank() && !invocationName.matches("\\[\\d+].*")) {
+                    // A named parameter or dynamic test is already a scenario; keep its author's wording.
+                    name = invocationName;
+                } else {
+                    displaySuffix = name.substring(separator);
+                    name = method;
+                }
+            } else name = method;
         }
         if (name.equals(method) || name.matches("[A-Za-z_$][A-Za-z0-9_$]*\\(\\)")) {
             name = name.replaceFirst("\\(.*\\)$", "").replace('_', ' ');
