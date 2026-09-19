@@ -748,6 +748,7 @@ public class DevServer implements AutoCloseable {
         } else {
             url = null;
         }
+        result.put("restartSupported", application && id.startsWith("app-") && restartProject(id) != null);
         result.put("port", port);
         result.put("url", service != null && "running".equals(service.state()) ? url : null);
         return result;
@@ -791,6 +792,8 @@ public class DevServer implements AutoCloseable {
             throw new IllegalStateException("The selected Fluxzero SDK does not support truncating Testserver data.");
         if ("restart-application".equals(action) && projects.values().stream().noneMatch(p -> p.compilePipeline.activeSnapshot() != null)
             && frontendProcesses.values().stream().noneMatch(FrontendProcess::managed)) throw new IllegalStateException("No application build is available yet.");
+        if (action.startsWith("restart-app:") && restartProject(action.substring("restart-app:".length())) == null)
+            throw new IllegalStateException("No active build is available for this application.");
         if (!maintenanceBusy.compareAndSet(false, true)) throw new IllegalStateException("Maintenance is already running.");
         maintenanceError = "";
         if ("pause-builds".equals(action)) {
@@ -814,7 +817,14 @@ public class DevServer implements AutoCloseable {
                             try { MonitoringStorage.clear(config.projectDirectory()); }
                             finally { if (!closed.get()) startMonitoring(); }
                         }
-                        default -> throw new IllegalStateException("Unknown maintenance action.");
+                        default -> {
+                            if (!action.startsWith("restart-app:")) throw new IllegalStateException("Unknown maintenance action.");
+                            String componentId = action.substring("restart-app:".length());
+                            ProjectRuntime project = restartProject(componentId);
+                            if (project == null) throw new IllegalStateException("No active build is available for this application.");
+                            if (startCandidateAppsLocked(project, project.compilePipeline.activeSnapshot(), componentId.substring(4)) == null)
+                                throw new IllegalStateException("Application restart failed: " + componentId);
+                        }
                     }
                 } finally { applicationLifecycleLock.unlock(); }
             } catch (Exception e) {
@@ -889,6 +899,15 @@ public class DevServer implements AutoCloseable {
             } catch (Exception e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
         }
         if (failure != null) throw failure;
+    }
+
+    private ProjectRuntime restartProject(String componentId) {
+        if (!componentId.startsWith("app-")) return null;
+        String launchId = componentId.substring(4);
+        return projects.values().stream().filter(p -> {
+            BuildSnapshot snapshot = p.compilePipeline.activeSnapshot();
+            return snapshot != null && describedApplications(p, snapshot).stream().anyMatch(a -> a.launchId().equals(launchId));
+        }).findFirst().orElse(null);
     }
 
     private void restartCustomerApplications() throws Exception {
@@ -1047,16 +1066,28 @@ public class DevServer implements AutoCloseable {
         } finally { applicationLifecycleLock.unlock(); }
     }
 
-    private ReloadTiming startCandidateAppsLocked(ProjectRuntime project, BuildSnapshot snapshot) {
+    private List<ApplicationBuild> describedApplications(ProjectRuntime project, BuildSnapshot snapshot) {
         List<ApplicationBuild> discovered = snapshot.applications().isEmpty()
                 ? List.of(new ApplicationBuild(project.config.applicationName(), ".", project.config.mainClass(),
                                                List.of(snapshot.classesDirectory()), snapshot.runtimeClasspath()))
                 : snapshot.applications();
-        List<ApplicationBuild> applications = projects.size() == 1 ? discovered
+        return projects.size() == 1 ? discovered
                 : discovered.stream().map(application -> application.scopedTo(project.id)).toList();
+    }
+
+    private ReloadTiming startCandidateAppsLocked(ProjectRuntime project, BuildSnapshot snapshot) {
+        return startCandidateAppsLocked(project, snapshot, null);
+    }
+
+    private ReloadTiming startCandidateAppsLocked(ProjectRuntime project, BuildSnapshot snapshot, String selectedApp) {
+        List<ApplicationBuild> applications = describedApplications(project, snapshot);
         Map<String, AppInstance> candidates = new LinkedHashMap<>();
         Map<String, PendingReadiness> readiness = new LinkedHashMap<>();
         Map<String, String> failures = new LinkedHashMap<>();
+        if (selectedApp != null) {
+            failures.putAll(project.failures);
+            failures.remove(selectedApp);
+        }
         try {
             long reloadStarted = System.nanoTime();
             updateReloadStatus(project.id, DevSession.ServiceStatus.running(
@@ -1065,6 +1096,7 @@ public class DevServer implements AutoCloseable {
             String restartSuffix = snapshot == project.compilePipeline.activeSnapshot()
                     ? "-restart-" + java.util.UUID.randomUUID() : "";
             for (ApplicationBuild application : applications) {
+                if (selectedApp != null && !selectedApp.equals(application.launchId())) continue;
                 PendingReadiness pending = new PendingReadiness(
                         project.appProcessRunner.clientId(snapshot, application) + restartSuffix, new CompletableFuture<>());
                 readiness.put(application.launchId(), pending);
@@ -1167,7 +1199,11 @@ public class DevServer implements AutoCloseable {
                                             "candidate app instance stopped");
             }
             project.compilePipeline.discard(snapshot);
-            project.failures = Map.of(project.id, oneLine(e.getMessage()));
+            if (selectedApp == null) project.failures = Map.of(project.id, oneLine(e.getMessage()));
+            else {
+                failures.put(selectedApp, oneLine(e.getMessage()));
+                project.failures = Map.copyOf(failures);
+            }
             project.appState = project.hasApps() ? "running" : "failed";
             updateReloadStatus(project.id, DevSession.ServiceStatus.failed("reload", e.getMessage()));
             updateApplicationsStatus(project.id, e.getMessage());

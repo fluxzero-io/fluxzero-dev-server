@@ -22,7 +22,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div></div>
     <ng-template #componentCard let-component>
     <div class="component-table-scroll"><table role="table" class="component-table" [attr.aria-label]="component.application ? 'Application resources' : 'Infrastructure resources'">
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}@if(!component.application) {<th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th>}</tr></thead>
+      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(component.application) {<th role="columnheader" scope="col" aria-label="Restart app"></th>}@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}@if(!component.application) {<th role="columnheader" scope="col" aria-label="Restart"></th><th role="columnheader" scope="col" aria-label="Actions"></th>}</tr></thead>
       <tbody role="rowgroup">
         <tr role="row" [class.application-component]="component.application">
           <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i>{{component.name}}
@@ -45,15 +45,21 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           </td>}
 
           @if(!component.application) {<td role="cell" class="component-restart">
-            <button class="icon-button" type="button" aria-label="Restart dev server" title="Restart" [attr.aria-busy]="maintenanceAction() === 'restart-devserver'" [disabled]="busy() || !state.maintenance?.restartSupported" (click)="maintain('restart-devserver')">
+            <button class="icon-button" type="button" aria-label="Restart environment" title="Restart the dev server, apps, frontends and supporting services" [attr.aria-busy]="maintenanceAction() === 'restart-devserver'" [disabled]="busy() || !state.maintenance?.restartSupported" (click)="maintain('restart-devserver')">
               @if(maintenanceAction() === 'restart-devserver') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting dev server"></span>}
-              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart</span>
+              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart environment</span>
             </button>
           </td>
           <td role="cell" class="component-actions">
-            <button class="icon-button" type="button" aria-label="Truncate data" title="truncate data" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
+            <button class="icon-button" type="button" aria-label="Reset data" [title]="state.maintenance?.resetSupported ? 'Delete local application and monitoring data and reload startup data' : 'Data reset is not supported by this project’s Fluxzero runtime'" [attr.aria-busy]="maintenanceAction() === 'truncate-data'" [disabled]="busy() || !state.maintenance?.resetSupported" (click)="requestMaintenance('truncate-data')">
               @if(maintenanceAction() === 'truncate-data') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Truncating data"></span>}
-              @else {<i class="bi bi-trash" aria-hidden="true"></i>}
+              @else {<i class="bi bi-trash" aria-hidden="true"></i>}<span>Reset data</span>
+            </button>
+          </td>}
+          @if(component.application) {<td role="cell" class="component-app-restart">
+            <button class="icon-button" type="button" [attr.aria-label]="'Restart ' + component.name" title="Restart only this app from its last successful build" [disabled]="busy() || !component.restartSupported" [attr.aria-busy]="maintenanceAction() === 'restart-app:' + component.id" (click)="maintain('restart-app:' + component.id)">
+              @if(maintenanceAction() === 'restart-app:' + component.id) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting app"></span>}
+              @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart app</span>
             </button>
           </td>}
         </tr>
@@ -62,20 +68,19 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </ng-template>
     <dialog #confirmation class="maintenance-confirm" aria-labelledby="maintenance-title" aria-describedby="maintenance-description" (cancel)="cancelConfirmation()">
     @if(confirmAction(); as action) {
-      <h2 id="maintenance-title">Truncate data?</h2>
-      <p id="maintenance-description">Delete application and monitoring data and restore the initial application data?</p>
-      <div class="dialog-actions"><button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Truncate data</button>
+      <h2 id="maintenance-title">Reset local data?</h2>
+      <p id="maintenance-description">Delete local application and monitoring data and reload startup data?</p>
+      <div class="dialog-actions"><button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Reset data</button>
       <button type="button" class="secondary-button" (click)="cancelConfirmation()" autofocus>Cancel</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
     <section class="applications-section" aria-labelledby="applications-title">
       <header class="applications-heading"><h2 id="applications-title">Applications</h2>
         <div class="application-actions">
-          <button class="icon-button" type="button" aria-label="Restart all applications" [attr.aria-busy]="maintenanceAction() === 'restart-application'" [disabled]="busy() || !state.maintenance?.applicationRestartSupported" (click)="maintain('restart-application')">
+          <button class="icon-button" type="button" aria-label="Restart apps and frontends" title="Restart all backend apps and managed frontend servers; keep shared services running" [attr.aria-busy]="maintenanceAction() === 'restart-application'" [disabled]="busy() || !state.maintenance?.applicationRestartSupported" (click)="maintain('restart-application')">
             @if(maintenanceAction() === 'restart-application') {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting applications"></span>}
-            @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart all</span>
+            @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}<span>Restart apps &amp; frontends</span>
           </button>
-          @if(applicationUrl()) {<a class="icon-button application-link" href="#application" (click)="openApplication($event)" aria-label="Open app preview"><span>App preview</span><i class="bi bi-arrow-up-right" aria-hidden="true"></i></a>}
         </div>
       </header>
       <div class="application-overview">
@@ -83,6 +88,17 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: application}"/>
         } @empty {<p class="applications-empty">No applications configured for this environment.</p>}
       </div>
+    </section>
+    <section class="infrastructure-section" aria-labelledby="infrastructure-title">
+      <header><h2 id="infrastructure-title">Development infrastructure</h2>
+        <p>Combined usage of the dev server, Fluxzero runtime, monitoring and supporting services.</p></header>
+      <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
+    @if(state.monitoring.resources; as r) {
+      @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
+      @if(r.error || r.auditlog?.storage?.retentionError) {<p role="alert">{{r.error || r.auditlog.storage.retentionError}}</p>}
+    }
+    @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
+    @if(!state.maintenance?.resetSupported) {<p class="maintenance-help">Data reset is unavailable: this project's Fluxzero runtime does not support it.</p>}
     </section>
     <section class="environment-tests" aria-label="Tests"><div class="test-summary">
       <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Test results for this workspace.</p></div></div>
@@ -111,16 +127,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
     <dev-test-output [lines]="state.testOutput || []"/></section>
-    <section class="infrastructure-section" aria-labelledby="infrastructure-title">
-      <header><h2 id="infrastructure-title">Development infrastructure</h2>
-        <p>Combined usage of the dev server, Fluxzero runtime, monitoring and supporting services.</p></header>
-      <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
-    @if(state.monitoring.resources; as r) {
-      @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
-      @if(r.error || r.auditlog?.storage?.retentionError) {<p role="alert">{{r.error || r.auditlog.storage.retentionError}}</p>}
-    }
-    @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
-    </section></section>}`})
+    </section>}`})
 @Handler()
 export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -129,7 +136,6 @@ export class EnvironmentComponent {
   readonly applications = computed(() => (this.status()?.components || []).filter(c => c.application && !c.id.startsWith('frontend-')).map(c => ({
     ...c, memoryBytes: usedMemory(c)
   })));
-  readonly applicationUrl = computed(() => this.status()?.components?.find(c => c.application && c.url)?.url);
   readonly infrastructure = computed(() => {
     const components = (this.status()?.components || []).filter(c => !c.application || c.id.startsWith('frontend-'));
     const running = components.reduce((sum, c) => sum + (c.runningProcesses ?? (c.state === 'running' ? 1 : 0)), 0);
@@ -206,11 +212,6 @@ export class EnvironmentComponent {
     return results.totalKnown === false ? '?' : String(results.total);
   }
   percentage(value: number, total: number) { return total > 0 ? value * 100 / total : 0; }
-  openApplication(event: MouseEvent) {
-    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    sendCommand(event.currentTarget as Element, 'navigate', 'application');
-  }
   openProjects(event: MouseEvent) {
     if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     event.preventDefault();

@@ -129,6 +129,11 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
   @HandleCommand('maintainEnvironment') async maintainEnvironment(action: string) {
+    if (action.startsWith('restart-app:')) {
+      await firstValueFrom(this.http.post('actions/restart-app', {componentId: action.slice('restart-app:'.length)},
+        {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+      return;
+    }
     if (!['truncate-data', 'restart-devserver', 'restart-application'].includes(action)) return;
     await firstValueFrom(this.http.post('actions/' + action, null,
       {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
