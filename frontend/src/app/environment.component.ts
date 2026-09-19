@@ -89,8 +89,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       <header><h2 id="tests-title">Tests</h2></header>
       <div class="tests-card"><div class="test-summary">
       <div class="test-controls">
-        <button class="icon-button" type="button" aria-label="Run tests" title="Run tests"
-          [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-rocket-takeoff" aria-hidden="true"></i></button>
+        <button class="icon-button" type="button" aria-label="Rerun tests" title="Rerun tests"
+          [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
         <div class="test-bar" [class.empty-tests]="!state.testResults?.available" [class.running-tests]="state.testResults?.available && state.testResults.running" role="img"
           [attr.aria-label]="state.testResults?.available ? state.testResults.passed + ' passed, ' + state.testResults.failed + ' failed, ' + testTotal(state.testResults) + ' total' + (state.testResults.skipped ? ', ' + state.testResults.skipped + ' skipped' : '') : 'No test results available'">
           @if(!state.testResults?.available) {<span class="test-empty-label">No test results yet</span>}
@@ -112,7 +112,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       }
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
-    <dev-test-output [lines]="state.testOutput || []"/></div></section>
+    @if(buildPauseState() !== 'running') {<p class="build-pause-status" role="status">{{buildPauseState() === 'paused' ? 'Automatic builds and tests paused. Managed UI servers are stopped.' : buildPauseState() === 'pausing' ? 'Pausing after current build work…' : 'Resuming automatic builds and tests…'}}</p>}
+    <dev-test-output [lines]="state.testOutput || []" [pauseState]="buildPauseState()" [pauseBusy]="buildPauseBusy()" (toggleBuilds)="toggleBuilds()"/></div></section>
     </section>}`})
 @Handler()
 export class EnvironmentComponent {
@@ -185,6 +186,20 @@ export class EnvironmentComponent {
       this.finishMaintenance();
     }
     finally { this.maintenanceStatus = this.status(); this.submitting.set(false); }
+  }
+  readonly buildPauseState = computed(() => this.status()?.maintenance?.buildPauseState || 'running');
+  readonly changingBuildPause = signal(false);
+  buildPauseBusy() {
+    return this.changingBuildPause() || ['pausing', 'resuming'].includes(this.buildPauseState())
+      || (this.buildPauseState() !== 'paused' && this.busy());
+  }
+  async toggleBuilds() {
+    if (this.buildPauseBusy()) return;
+    this.changingBuildPause.set(true); this.testError.set('');
+    try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment',
+      this.buildPauseState() === 'paused' ? 'resume-builds' : 'pause-builds'); }
+    catch (error: any) { this.testError.set(error?.error?.error || 'Unable to change automatic builds and tests.'); }
+    finally { this.changingBuildPause.set(false); }
   }
   testState() { const state = this.status(); return ['idle', 'stopped'].includes(state?.tests || '') && state?.testResults?.available ? state.testResults.state || state.tests : state?.tests; }
   readonly startingTests = signal(false);

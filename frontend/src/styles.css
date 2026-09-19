@@ -182,7 +182,12 @@ dev-resource-chart>svg {display:block;width:100%;height:100%;overflow:visible;}
 .test-output-toolbar {grid-column:1;grid-row:1;display:flex;flex-direction:column;justify-content:flex-start;gap:4px;}
 .test-output>[role=alert] {grid-column:2;grid-row:2;margin:8px 0 0;}
 .empty-test-output {color:var(--dashboard-muted);}
-.test-output pre {grid-column:2;grid-row:1;margin:0;min-width:0;height:80px;min-height:80px;max-height:80vh;resize:vertical;box-sizing:border-box;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px;background:var(--dashboard-sidebar-bg);border:1px solid var(--dashboard-border);border-radius:6px;font-size:12px;}
+.test-output-area {grid-column:2;grid-row:1;position:relative;min-width:0;}
+.clear-test-output {position:absolute;right:8px;top:6px;opacity:0;background:var(--dashboard-sidebar-bg);z-index:1;}
+.test-output-area:hover .clear-test-output,.test-output-area:focus-within .clear-test-output {opacity:1;}
+@media(hover:none) {.clear-test-output {opacity:1;}}
+.build-pause-status {margin:12px 0 0 38px;color:var(--dashboard-muted);font-size:12px;}
+.test-output pre {margin:0;min-width:0;height:80px;min-height:80px;max-height:80vh;resize:vertical;box-sizing:border-box;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 44px 12px 12px;background:var(--dashboard-sidebar-bg);border:1px solid var(--dashboard-border);border-radius:6px;font-size:12px;}
 
 /* Match the monitoring content container, using the available main-column width. */
 dev-projects {display:block;container-type:inline-size;}
@@ -237,14 +242,14 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 
 /* Customer work and shared infrastructure have separate visual scopes. */
 .applications-section {margin-top:24px;}
-.applications-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+.applications-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
 .applications-heading h2 {font-size:17px;}
 .application-overview {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:20px;min-width:0;}
 .application-overview .component-table-scroll {margin:0;min-width:0;max-width:420px;}
 .application-overview .component-memory {grid-column:1/-1;}
 .applications-empty {margin:0;}
 .environment-tests {margin-top:24px;min-width:0;}
-.infrastructure-section {margin-top:32px;padding-top:24px;border-top:1px solid var(--dashboard-border);}
+.infrastructure-section {margin-top:24px;}
 .infrastructure-section header,.environment-tests header {margin-bottom:16px;}
 .infrastructure-section h2,.environment-tests h2 {font-size:17px;}
 .infrastructure-section .component-table-scroll {margin:0;}

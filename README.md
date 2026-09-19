@@ -30,6 +30,11 @@ The dashboard's dev server selector only links to sessions whose gateway adverti
 listed with a dashboard-unavailable message instead of routing into the customer app.
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
+The Tests panel follows new output while scrolled to the bottom, and preserves your reading position when
+scrolled up. Its pause control pauses managed builds and tests after active work finishes, stopping managed UI
+servers while keeping the application and Test Server running. Resume restarts those UI servers and lets queued
+work continue. Rerun tests requests a fresh test run; clearing output only clears the displayed log.
+
 ## Requirements
 
 - JDK 25 for building and running the dev server

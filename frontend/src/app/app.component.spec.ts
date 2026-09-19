@@ -294,15 +294,11 @@ describe('Dev console navigation', () => {
     expect(output.querySelector('script')).toBeNull();
     expect(output.scrollWidth).toBeLessThanOrEqual(output.clientWidth+1);
   });
-  it('pauses and resumes scrolling and clears output through its DOM command', async () => {
+  it('clears output without changing test results', async () => {
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testOutput:[{sequence:1,module:'app',text:'example'}]},environments:[]});
     fixture.detectChanges();await fixture.whenStable();
     const root:HTMLElement=fixture.nativeElement;
-    (root.querySelector('[aria-label="Pause scrolling"]') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(root.querySelector('[aria-label="Resume scrolling"]')).not.toBeNull();
-    (root.querySelector('[aria-label="Resume scrolling"]') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(root.querySelector('[aria-label="Pause scrolling"]')).not.toBeNull();
     (root.querySelector('[aria-label="Clear test output"]') as HTMLButtonElement).click();fixture.detectChanges();
     const request=TestBed.inject(HttpTestingController).expectOne('actions/clear-test-output');
     expect(request.request.method).toBe('POST');expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
@@ -312,6 +308,44 @@ describe('Dev console navigation', () => {
     expect((root.querySelector('[aria-label="Clear test output"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(fixture.componentInstance.status()?.testResults).toEqual(state.testResults);
   });
+  it('pauses builds and allows resuming while maintenance is busy', async () => {
+    const state=fixture.componentInstance.status()!;
+    const root:HTMLElement=fixture.nativeElement;
+    const http=TestBed.inject(HttpTestingController);
+    (root.querySelector('[aria-label="Pause automatic builds and tests"]') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    const pause=http.expectOne('actions/pause-builds');
+    expect(pause.request.method).toBe('POST');
+    pause.flush(null); await fixture.whenStable();
+    push({status:{...state,maintenance:{busy:true,error:'',buildPauseState:'pausing'}},environments:[]});fixture.detectChanges();
+    expect((root.querySelector('[aria-label="Pausing automatic builds and tests"]') as HTMLButtonElement).disabled).toBeTrue();
+    push({status:{...state,maintenance:{busy:true,error:'',buildPauseState:'paused'}},environments:[]});fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const resume=root.querySelector('[aria-label="Resume automatic builds and tests"]') as HTMLButtonElement;
+    expect(resume.disabled).toBeFalse();
+    expect(root.querySelector('.build-pause-status')?.textContent).toContain('paused');
+    resume.click();fixture.detectChanges();
+    http.expectOne('actions/resume-builds').flush(null);await fixture.whenStable();
+    push({status:{...state,maintenance:{busy:false,error:'',buildPauseState:'running'}},environments:[]});fixture.detectChanges();
+    expect(root.querySelector('.build-pause-status')).toBeNull();
+  });
+  it('follows output at the bottom and preserves a scrolled-up viewport', async () => {
+    const state=fixture.componentInstance.status()!;
+    const update=async (count:number) => {
+      push({status:{...state,testOutput:Array.from({length:count},(_,i)=>({sequence:i,module:'app',text:'line '+i}))},environments:[]});
+      fixture.detectChanges();await fixture.whenStable();
+    };
+    await update(1);
+    const output=fixture.nativeElement.querySelector('.test-output pre') as HTMLElement;
+    await update(40);
+    expect(output.scrollTop).toBeGreaterThan(0);
+    expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
+    output.scrollTop=20;output.dispatchEvent(new Event('scroll'));
+    await update(50);
+    expect(output.scrollTop).toBe(20);
+    output.scrollTop=output.scrollHeight;output.dispatchEvent(new Event('scroll'));
+    await update(60);
+    expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
+  });
   it('starts tests through the dev server with output always visible', async () => {
     const state=fixture.componentInstance.status()!;
     push({status:{...state,testResults:{...state.testResults!,runnable:true},testOutput:[{sequence:1,module:'app',text:'retained'}]},environments:[]});
@@ -320,15 +354,15 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.page-heading .count')).toBeNull();
     expect(root.querySelector('.test-output summary')).toBeNull();
     expect(root.querySelector('[aria-label="Hide test output"]')).toBeNull();
-    expect(root.querySelector('[aria-label="Run tests"] .bi-rocket-takeoff')).not.toBeNull();
+    expect(root.querySelector('[aria-label="Rerun tests"] .bi-arrow-clockwise')).not.toBeNull();
     expect((root.querySelector('dev-test-output') as HTMLElement).hidden).toBeFalse();
     expect(root.querySelector('.test-output pre')?.textContent).toContain('retained');
-    (root.querySelector('[aria-label="Run tests"]') as HTMLButtonElement).click();fixture.detectChanges();
+    (root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).click();fixture.detectChanges();
     const request=TestBed.inject(HttpTestingController).expectOne('actions/run-tests');
     expect(request.request.method).toBe('POST');expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
     request.flush(null);await fixture.whenStable();
     push({status:{...state,testResults:{...state.testResults!,runnable:true,running:true}},environments:[]});fixture.detectChanges();
-    expect((root.querySelector('[aria-label="Run tests"]') as HTMLButtonElement).disabled).toBeTrue();
+    expect((root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(root.querySelector('.test-counts')?.textContent).toContain('/');
   });
   it('keeps the projects page when selecting the current environment through the DOM', async () => {

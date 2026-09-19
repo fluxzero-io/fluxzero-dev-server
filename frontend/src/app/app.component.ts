@@ -127,7 +127,7 @@ export class AppComponent implements OnInit, OnDestroy {
         {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
       return;
     }
-    if (!['truncate-data', 'restart-devserver', 'restart-application'].includes(action)) return;
+    if (!['truncate-data', 'restart-devserver', 'restart-application', 'pause-builds', 'resume-builds'].includes(action)) return;
     await firstValueFrom(this.http.post('actions/' + action, null,
       {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
   }
