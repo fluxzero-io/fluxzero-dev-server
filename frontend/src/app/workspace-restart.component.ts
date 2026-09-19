@@ -26,7 +26,6 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
-  .restart-control {width:192px;}
   .restart-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
     border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
   .restart-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
@@ -34,7 +33,7 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
   .restart-menu button:hover:not(:disabled) {background:var(--dashboard-action-hover);}
   .restart-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
   .restart-menu strong {font-size:13px;font-weight:600;}
-  @media(max-width:650px) {.restart-control {width:148px;}.restart-verb {display:none;}}
+  @media(max-width:650px) {.restart-verb {display:none;}}
   .restart-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
 `})
 export class WorkspaceRestartComponent {
@@ -47,7 +46,7 @@ export class WorkspaceRestartComponent {
   readonly open = signal(false);
   readonly options = [
     {key:'restart-application', label:'Apps', description:'Restart backend apps and UI servers. Keep shared services running.'},
-    {key:'restart-devserver', label:'Environment', description:'Restart apps, UI, the dev server and all supporting services. Resets in-memory app data.'}
+    {key:'restart-devserver', label:'All', description:'Restart apps, UI, the dev server and all supporting services. Resets in-memory app data.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   readonly restarting = computed(() => this.action() === 'restart-application' || this.action() === 'restart-devserver');
