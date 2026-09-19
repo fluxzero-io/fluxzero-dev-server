@@ -14,8 +14,8 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           @if(test.variants; as variants) {
             <button type="button" class="scenario-row scenario-group" [attr.aria-expanded]="expanded().has(test.key)"
               [attr.aria-controls]="'variants-' + test.key" (click)="toggle(test.key)">
-              <i class="bi scenario-chevron" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" role="img" [attr.aria-label]="label(test.state)"></i>
+              <i class="bi scenario-chevron" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
               <span class="scenario-name"><strong>{{test.name}}</strong><small>{{test.suite}} · {{test.project}}</small></span>
               <span class="scenario-group-summary">{{variants['passed'] || 0}} / {{total(variants)}} passed</span>
             </button>
