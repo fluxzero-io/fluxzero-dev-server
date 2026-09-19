@@ -156,7 +156,8 @@ no external archive tool is required there. Windows ARM64 has no pinned native
 artifact in this version. `victoriaLogsBinary` can point to an existing compatible binary for
 offline operation. Each dev-server instance owns its own loopback port and
 project/worktree-local `.fluxzero/dev/monitoring/victorialogs` directory. Data
-survives a normal stop/restart. Docker and a shared VictoriaLogs service are
+survives ordinary stop/start and profile switches. The dashboard’s confirmed **Restart All** action
+stops monitoring and deletes this stored history before restarting the environment. Docker and a shared VictoriaLogs service are
 not needed. Separate projects do not share their audit database.
 VictoriaLogs buffers recent writes before its default five-second disk flush;
 an abrupt kill can lose those last seconds. Local monitoring does not promise

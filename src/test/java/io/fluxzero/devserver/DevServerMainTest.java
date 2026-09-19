@@ -97,6 +97,7 @@ class DevServerMainTest {
             var before = mapper.readTree(sessionFile(projectDirectory).toFile());
             String base = before.path("gateway").path("url").asText();
             long runtimePid = before.path("runtime").path("pid").asLong();
+            Path history = seedMonitoringHistory(projectDirectory);
             assertEquals(409, dashboardAction(http, base, "start-workspace"));
             assertEquals(202, dashboardAction(http, base, "stop-workspace"));
             var stopped = awaitDashboardState(http, base, "idle");
@@ -123,6 +124,7 @@ class DevServerMainTest {
             awaitDashboardState(http, base, "running");
             var resumed = mapper.readTree(sessionFile(projectDirectory).toFile());
             assertEquals(process.pid(), resumed.path("pid").asLong());
+            assertEquals("saved monitoring history", Files.readString(history), "Stop/Start must preserve history");
             assertEquals(202, dashboardAction(http, base, "stop-devserver"));
             assertTrue(process.waitFor(10, TimeUnit.SECONDS));
             assertFalse(ProcessHandle.of(resumed.path("runtime").path("pid").asLong()).map(ProcessHandle::isAlive).orElse(false));
@@ -165,7 +167,7 @@ class DevServerMainTest {
     }
 
     @Test
-    void restartsManagedEnvironmentOnTheSamePublicPort(@TempDir Path projectDirectory) throws Exception {
+    void restartsManagedEnvironmentOnTheSamePublicPortAndClearsMonitoringHistory(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         ObjectMapper mapper = new ObjectMapper();
         try (var http = java.net.http.HttpClient.newHttpClient()) {
@@ -173,6 +175,7 @@ class DevServerMainTest {
             var before = mapper.readTree(sessionFile(projectDirectory).toFile());
             String base = before.path("gateway").path("url").asText();
             long runtimePid = before.path("runtime").path("pid").asLong();
+            Path history = seedMonitoringHistory(projectDirectory);
             var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/restart-devserver"))
                     .header("Origin", base).header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
             assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
@@ -190,8 +193,43 @@ class DevServerMainTest {
             assertEquals(process.pid(), after.path("pid").asLong());
             assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
             assertTrue(after.path("runtime").path("pid").asLong() != runtimePid);
+            assertFalse(Files.exists(history), "Restart All must delete persisted VictoriaLogs history");
             assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json")).build(),
                                         java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+        } finally {
+            runControl(projectDirectory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void failedMonitoringResetKeepsEnvironmentRunningAndReportsFailure(@TempDir Path projectDirectory) throws Exception {
+        Files.createDirectories(projectDirectory.resolve(".fluxzero"));
+        Files.writeString(projectDirectory.resolve(DevProjectConfig.FILE), "version: 1\nmonitoring: {enabled: false}\n");
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            Path external = Files.createDirectory(projectDirectory.resolve("external-history"));
+            Path history = Files.writeString(external.resolve("records"), "keep");
+            Path monitoringDirectory = Files.createDirectories(projectDirectory.resolve(".fluxzero/dev/monitoring"));
+            Files.createSymbolicLink(monitoringDirectory.resolve("victorialogs"), external);
+            assertEquals(202, dashboardAction(http, base, "restart-devserver"));
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            String error = "";
+            while (System.nanoTime() < deadline) {
+                var status = awaitDashboardState(http, base, "running");
+                error = status.path("maintenance").path("error").asText();
+                if (!error.isBlank()) break;
+                Thread.sleep(25);
+            }
+            assertTrue(error.contains("Refusing to clear linked monitoring storage"), error);
+            assertEquals("keep", Files.readString(history));
+            assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(projectDirectory).toFile()).path("sessionId"));
+            assertTrue(ProcessHandle.of(before.path("runtime").path("pid").asLong()).map(ProcessHandle::isAlive).orElse(false));
         } finally {
             runControl(projectDirectory, "stop");
             if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
@@ -237,6 +275,7 @@ class DevServerMainTest {
                     .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"missing\"}")).build();
             assertEquals(409, http.send(unknown, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
             assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(directory).toFile()).path("sessionId"));
+            Path history = seedMonitoringHistory(directory);
             for (String action : List.of("switch-profile", "restart-devserver")) {
                 long previousRuntime = before.path("runtime").path("pid").asLong();
                 var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
@@ -252,6 +291,8 @@ class DevServerMainTest {
                 }
                 assertFalse(before.path("sessionId").equals(after.path("sessionId")));
                 assertEquals("running", after.path("status").asText());
+                assertEquals("switch-profile".equals(action), Files.exists(history),
+                             "Only Restart All should clear monitoring history");
                 assertEquals(base, after.path("gateway").path("url").asText());
                 assertEquals(process.pid(), after.path("pid").asLong());
                 assertFalse(ProcessHandle.of(previousRuntime).map(ProcessHandle::isAlive).orElse(false));
@@ -473,6 +514,11 @@ class DevServerMainTest {
                 action, "--project-dir", projectDirectory.toString()));
         command.addAll(List.of(options));
         return new ProcessBuilder(command);
+    }
+
+    private static Path seedMonitoringHistory(Path project) throws IOException {
+        Path directory = Files.createDirectories(project.resolve(".fluxzero/dev/monitoring/victorialogs"));
+        return Files.writeString(directory.resolve("test-history-marker"), "saved monitoring history");
     }
 
     private static Path sessionFile(Path projectDirectory) {

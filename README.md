@@ -497,12 +497,13 @@ rather than the observed storage peak. Totals, limits and component details auto
 MiB, GiB and larger). Cards show labeled memory and storage measurements and reflow into a single column on
 narrow screens. Long names and paths wrap, and component popovers stay within the visible viewport.
 
-The workspace restart control offers **Apps** and **Environment**. The selected scope is remembered in localStorage; the initial default is Apps.
+The workspace restart control offers **Apps** and **All**. The selected scope is remembered in localStorage; the initial default is Apps.
 Choosing a scope does not execute the action. Apps reuses the last ready backend builds and replaces
 managed frontend processes while retaining their ports and the Test Server. Each app also has an individual restart.
-Environment replaces the managed environment within the standalone launcher JVM, retaining the public
+All replaces the managed environment within the standalone launcher JVM, retaining the public
 port. It always asks for confirmation and warns that in-memory application data is reset because a fresh Test Server
-is started. Configured initial commands run again; on-disk VictoriaLogs monitoring history is retained, subject to its retention policy.
+is started. Configured initial commands run again; on-disk VictoriaLogs monitoring history is deleted after stopping its writers.
+Profile switches and ordinary stop/start preserve this history. A failed storage reset is reported without restarting.
 The five-minute resource graph history and process-local counters start fresh. With `monitoring.storage: testserver`,
 monitoring data is in-memory and resets too. The launcher PID stays unchanged.
 There is no separate Reset data action in the dashboard. Legacy per-store HTTP maintenance actions remain for

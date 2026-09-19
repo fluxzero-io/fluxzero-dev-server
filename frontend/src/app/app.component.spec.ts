@@ -638,6 +638,7 @@ describe('Dev console navigation', () => {
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('actions/restart-devserver');
     expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')?.textContent).toContain('In-memory application data will be reset');
+    expect(root.querySelector('dev-environment .maintenance-confirm')?.textContent).toContain('Stored monitoring history (VictoriaLogs) is deleted too');
     (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
     const request = http.expectOne('actions/restart-devserver');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
@@ -917,6 +918,7 @@ describe('Dev console navigation', () => {
     const trigger = root.querySelector('[aria-label="Choose restart scope"]') as HTMLButtonElement;
     trigger.click(); fixture.detectChanges();
     const options = root.querySelectorAll<HTMLButtonElement>('#restart-scope-menu button');
+    expect(options[1].querySelector('small strong')?.textContent).toBe('This resets all data.');
     expect(document.activeElement).toBe(options[0]);
     options[0].dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
     expect(document.activeElement).toBe(options[1]);

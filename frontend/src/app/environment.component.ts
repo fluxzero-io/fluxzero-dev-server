@@ -153,7 +153,7 @@ export class EnvironmentComponent {
       ? 'This stops apps, UI servers, automatic builds and tests, and supporting services. In-memory application data is lost. Dashboard controls remain available so you can start again here. Monitoring history on disk is retained.'
       : this.confirmAction() === 'stop-devserver'
       ? 'This stops the entire workspace and closes the dev server, including this dashboard connection. In-memory application data is lost. To start again, run fz dev in this workspace or use another active dashboard. Monitoring history on disk is retained.'
-      : 'This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Monitoring history stored on disk is retained; resource graphs start fresh.';
+      : 'This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Stored monitoring history (VictoriaLogs) is deleted too; resource graphs start fresh.';
   }
   cancelConfirmation() { this.confirmation?.nativeElement.close(); this.confirmAction.set(null); }
   confirmMaintenance(action: string) {

@@ -768,6 +768,10 @@ public class DevServer implements AutoCloseable {
     }
 
     private synchronized Runnable requestMaintenance(String action) {
+        return requestMaintenance(action, true);
+    }
+
+    private synchronized Runnable requestMaintenance(String action, boolean resetMonitoring) {
         if (Set.of("stop-workspace", "stop-devserver", "start-workspace").contains(action)) {
             if (!restartSupported) throw new IllegalStateException("Workspace controls require the standalone dev server.");
             if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
@@ -821,7 +825,7 @@ public class DevServer implements AutoCloseable {
                 throw new IllegalStateException("Unable to load the selected profile. Check .fluxzero/dev.yaml.");
             }
             if (profile.equals(config.profile())) return () -> {};
-            Runnable restart = requestMaintenance("restart-devserver");
+            Runnable restart = requestMaintenance("restart-devserver", false);
             requestedProfile = profile;
             return restart;
         }
@@ -849,7 +853,10 @@ public class DevServer implements AutoCloseable {
                     if (closed.get()) return;
                     switch (action) {
                         case "pause-builds" -> pauseBuildsForVerification();
-                        case "restart-devserver" -> requestShutdown(RESTART_REQUESTED);
+                        case "restart-devserver" -> {
+                            if (resetMonitoring) clearMonitoringForRestart();
+                            requestShutdown(RESTART_REQUESTED);
+                        }
                         case "restart-application" -> restartCustomerApplications();
                         case "truncate-data" -> truncateEnvironment();
                         case "truncate-testserver-data" -> testServer.truncateData(Duration.ofSeconds(30));
@@ -912,6 +919,19 @@ public class DevServer implements AutoCloseable {
         if (index == coordinators.size()) return action.get();
         return coordinators.get(index).withMaintenanceLock(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())),
                 () -> withBuildLocks(coordinators, index + 1, deadline, action));
+    }
+
+    private void clearMonitoringForRestart() throws Exception {
+        // Stop every writer before deleting storage, while this workspace still owns its session lock.
+        // Profile switches and ordinary stop/start deliberately bypass this reset.
+        if (monitoring != null) monitoring.close();
+        try {
+            MonitoringStorage.clear(config.projectDirectory());
+        } catch (Exception failure) {
+            try { if (monitoring != null && !closed.get()) startMonitoring(); }
+            catch (Exception recoveryFailure) { failure.addSuppressed(recoveryFailure); }
+            throw failure;
+        }
     }
 
     private void truncateEnvironment() throws Exception {

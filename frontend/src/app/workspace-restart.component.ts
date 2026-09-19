@@ -3,7 +3,7 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
 @Component({selector: 'dev-workspace-restart', standalone: true, template: `
   <div class="restart-control split-action">
     <button class="restart-action split-action-main" type="button" [attr.aria-label]="'Restart ' + selected().label"
-      [title]="selected().description" [disabled]="busy() || !supported(selected().key)" [attr.aria-busy]="restarting()"
+      [title]="selected().description + (selected().warning ? ' ' + selected().warning : '')" [disabled]="busy() || !supported(selected().key)" [attr.aria-busy]="restarting()"
       (click)="restart.emit(selected().key)">
       @if(restarting()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting"></span>}
       @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
@@ -19,7 +19,7 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
       @for(option of options; track option.key) {
         <button type="button" role="menuitemradio" [attr.aria-checked]="scope() === option.key" tabindex="-1"
           [disabled]="busy() || !supported(option.key)" (click)="choose(option.key)">
-          <span><strong>{{option.label}}</strong><small>{{option.description}}</small></span>
+          <span><strong>{{option.label}}</strong><small>{{option.description}} @if(option.warning) {<strong class="reset-warning">{{option.warning}}</strong>}</small></span>
           @if(scope() === option.key) {<i class="bi bi-check2" aria-hidden="true"></i>}
         </button>
       }
@@ -33,6 +33,7 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
   .restart-menu button:hover:not(:disabled) {background:var(--dashboard-action-hover);}
   .restart-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
   .restart-menu strong {font-size:13px;font-weight:600;}
+  .restart-menu .reset-warning {font-size:inherit;font-weight:700;}
   @media(max-width:650px) {.restart-verb {display:none;}}
   .restart-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
 `})
@@ -45,8 +46,8 @@ export class WorkspaceRestartComponent {
   readonly scope = signal(this.savedScope());
   readonly open = signal(false);
   readonly options = [
-    {key:'restart-application', label:'Apps', description:'Restart backend apps and UI servers. Keep shared services running.'},
-    {key:'restart-devserver', label:'All', description:'Restart apps, UI, the dev server and all supporting services. Resets in-memory app data.'}
+    {key:'restart-application', label:'Apps', warning:'', description:'Restart backend apps and UI servers. Keep shared services running.'},
+    {key:'restart-devserver', label:'All', description:'Restart apps, UI, the dev server and all supporting services.', warning:'This resets all data.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   readonly restarting = computed(() => this.action() === 'restart-application' || this.action() === 'restart-devserver');
