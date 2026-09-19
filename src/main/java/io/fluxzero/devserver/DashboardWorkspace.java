@@ -16,12 +16,38 @@ package io.fluxzero.devserver;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.stream.Stream;
 
 /** Small, non-technical dashboard projection of current lifecycle state, not historical log errors. */
 final class DashboardWorkspace {
     private static final Set<String> FAILURES = Set.of("failed", "exited", "incomplete");
+
+    record StartupAction(String id, String name, String state) {}
+    record Startup(String state, List<StartupAction> actions) {}
+
+    static Startup startup(DevCommandStatus status, String sessionId) {
+        if (status == null || !java.util.Objects.equals(status.sessionId(), sessionId)) return new Startup("idle", List.of());
+        return new Startup(status.state(), status.commands().stream()
+                .map(entry -> new StartupAction(entry.path(), commandName(entry), entry.state())).toList());
+    }
+
+    private static String commandName(DevCommandStatus.Entry entry) {
+        String name = entry.path().replace('\\', '/');
+        name = name.startsWith("commands.") ? name.substring(9) : name.substring(name.lastIndexOf('/') + 1);
+        name = name.replaceFirst("(?i)\\.json$", "").replaceFirst("^\\d+[-_. ]+", "");
+        if (name.isBlank()) {
+            name = java.util.Objects.toString(entry.type(), "Startup action");
+            name = name.substring(Math.max(name.lastIndexOf('.'), name.lastIndexOf('$')) + 1);
+        }
+        name = name.replaceAll("([a-z0-9])([A-Z])", "$1 $2").replaceAll("([A-Z])([A-Z][a-z])", "$1 $2")
+                .replaceAll("[-_]+", " ").replaceAll("\\s+", " ").strip();
+        name = java.util.regex.Pattern.compile("\\b[A-Z][a-z]+\\b").matcher(name)
+                .replaceAll(match -> match.group().toLowerCase(Locale.ROOT));
+        return name.isBlank() ? "Startup action" : Character.toUpperCase(name.charAt(0)) + name.substring(1);
+    }
 
     static Map<String, String> versions(DevSession session) {
         Map<String, String> result = new LinkedHashMap<>();

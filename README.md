@@ -36,6 +36,11 @@ or update failures add a short notice and a navigation indicator; Tests has a se
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
 Detailed diagnostics remain available through MCP.
 
+Workspace also shows the server's relative start time, with its exact local timestamp on hover.
+The Startup section lists reported startup actions in execution order with readable names and individual results.
+Successful runs stay collapsed behind a completion count; failed runs expand by default. Raw command payloads
+and diagnostic details remain in the existing agent tools rather than the dashboard.
+
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
 Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups
 and scenarios appear first. Show more adds 50 entries at a time and live refresh preserves expanded lists.

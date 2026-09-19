@@ -18,12 +18,26 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DashboardWorkspaceTest {
     @TempDir Path directory;
     private DevSession session() { return DevSession.empty(DevServerConfig.defaults(directory)).withStatus("running"); }
     private DevSession.ServiceStatus status(String state) { return DevSession.ServiceStatus.stopped("service").withState(state, "private technical detail"); }
+
+    @Test void projectsReadableStartupNamesInExecutionOrderWithoutDiagnostics() {
+        var status = new DevCommandStatus("failed", "current", 3, 1, 1, 1, 0, List.of(
+                new DevCommandStatus.Entry("examples/01-create-home.json", "hash", "a.CreateHome", "succeeded", "private detail", 1),
+                new DevCommandStatus.Entry("commands.seedDemoProgramme", "hash", "a.Seed", "failed", "private detail", 2),
+                new DevCommandStatus.Entry("examples/03-configure-HTTP.json", "hash", "a.Configure", "blocked", "private detail", 0)), 3);
+        var view = DashboardWorkspace.startup(status, "current");
+        assertEquals(List.of("Create home", "Seed demo programme", "Configure HTTP"), view.actions().stream().map(DashboardWorkspace.StartupAction::name).toList());
+        assertEquals(List.of("succeeded", "failed", "blocked"), view.actions().stream().map(DashboardWorkspace.StartupAction::state).toList());
+        assertFalse(view.toString().contains("private detail"));
+        assertTrue(DashboardWorkspace.startup(status, "new-session").actions().isEmpty());
+        assertTrue(DashboardWorkspace.startup(null, "current").actions().isEmpty());
+    }
 
     @Test void usesTheSelectedSdkWithoutGuessingUnknownVersions() {
         var session = session();

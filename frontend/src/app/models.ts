@@ -13,6 +13,8 @@ export interface TestOutputLine {sequence:number; module:string; text:string;}
 export interface Status {
   versions?: {devServer?: string; fluxzero?: string};
   workspaceIssue?: string;
+  startedAt?: number;
+  startup?: {state:string; actions:{id:string; name:string; state:string}[]};
   profiles?: {active: string | null; available: string[]; switchSupported: boolean; error?: string};
   testOutput?: TestOutputLine[];
   resourceHistory?: ResourceSample[];

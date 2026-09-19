@@ -623,6 +623,7 @@ public class DevServer implements AutoCloseable {
     private volatile java.util.concurrent.CountDownLatch buildResume;
     private final TestOutput testOutput = new TestOutput();
     private final Map<String, TestStatus> lastTestResults = new ConcurrentHashMap<>();
+    private volatile DevCommandStatus dashboardCommands;
 
     private Map<String, Object> consoleStatus() {
         var stopped = stoppedWorkspaceStatus;
@@ -703,6 +704,8 @@ public class DevServer implements AutoCloseable {
         result.put("project", config.projectDirectory().getFileName().toString());
         result.put("versions", DashboardWorkspace.versions(session));
         result.put("workspaceIssue", DashboardWorkspace.issue(session));
+        result.put("startedAt", session.startedAt());
+        result.put("startup", DashboardWorkspace.startup(dashboardCommands, session.sessionId()));
         result.put("projectDirectory", config.projectDirectory().toString()); result.put("state", session.status());
         result.put("runtime", session.runtime().state()); result.put("applications", session.app().state());
         result.put("tests", session.tests().state()); result.put("frontend", session.frontend().state());
@@ -1572,6 +1575,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void updateCommandStatus(DevCommandStatus status) {
+        dashboardCommands = status;
         updateSession(current -> current.withCommands(new DevSession.ServiceStatus(
                 "commands", status.state(), null, null, null, status.summary())));
         devLogStore.observeStatus("commands", "seed", config.applicationName(), null, status.state(),

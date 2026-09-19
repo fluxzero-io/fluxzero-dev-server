@@ -9,14 +9,16 @@ import {ResourceGraphComponent} from './resource-graph.component';
 import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
+import {StartupComponent} from './startup.component';
+import {StartedAgoComponent} from './started-ago.component';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [StartupComponent, StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
     </div>
-    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
+    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/>@if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-started-ago [startedAt]="state.startedAt"/>}</div>
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
@@ -89,6 +91,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     }
     @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
     </section>
+    <dev-startup [startup]="state.startup"/>
     }</section>}`})
 @Handler()
 export class EnvironmentComponent {
