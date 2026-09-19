@@ -36,7 +36,7 @@
           <button class="icon-button" (click)="preview.go(1)" [disabled]="!preview.canForward()" aria-label="Forward in preview" title="Forward"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
           <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
         </div>
-        <span class="preview-location" [title]="preview.url() || applicationUrl() || currentName()">{{currentName()}}</span>
+        <span class="preview-location" [title]="preview.url() || applicationUrl() || currentName()">{{previewAddress()}}</span>
         @if(applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }

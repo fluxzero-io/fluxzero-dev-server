@@ -36,6 +36,11 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   readonly preview = new PreviewNavigation();
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
+  previewAddress() {
+    const address=this.preview.url() || this.applicationUrl();
+    if(!address) return this.currentName();
+    try {const url=new URL(address);return url.host + url.pathname + url.search + url.hash;} catch {return this.currentName();}
+  }
   applicationLoaded() {
     if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!);
   }
