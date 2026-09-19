@@ -11,8 +11,12 @@ import {sendCommand} from './dom-handlers';
         </button>
       </div>
       <div class="test-output-area">
+        <div class="test-output-actions">
+        <button type="button" class="icon-button" aria-label="Scroll to bottom" title="Scroll to bottom"
+          [disabled]="!lines().length" (click)="scrollToBottom()"><i class="bi bi-arrow-bar-down" aria-hidden="true"></i></button>
         <button type="button" class="icon-button clear-test-output" aria-label="Clear test output" title="Clear test output"
           [disabled]="clearing() || !lines().length" (click)="clear()"><i class="bi bi-slash-circle" aria-hidden="true"></i></button>
+        </div>
       <pre #output tabindex="0" aria-label="Live test output" (scroll)="scrolled()">@for(line of lines();track line.sequence) {<span>{{'[' + line.module + '] ' + line.text + '\n'}}</span>} @empty {<span class="empty-test-output">No test output.</span>}</pre>
       </div>
       @if(error()) {<p role="alert">{{error()}}</p>}
@@ -39,6 +43,11 @@ export class TestOutputComponent {
   scrolled() {
     const element=this.output?.nativeElement;
     if(element)this.following=element.scrollHeight-element.scrollTop-element.clientHeight<=4;
+  }
+  scrollToBottom() {
+    this.following=true;
+    const element=this.output?.nativeElement;
+    if(element)element.scrollTop=element.scrollHeight;
   }
   async clear() {
     this.clearing.set(true); this.error.set('');

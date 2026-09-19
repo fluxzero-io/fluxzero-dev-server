@@ -351,6 +351,11 @@ describe('Dev console navigation', () => {
     output.scrollTop=output.scrollHeight;output.dispatchEvent(new Event('scroll'));
     await update(60);
     expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
+    output.scrollTop=0;output.dispatchEvent(new Event('scroll'));
+    (fixture.nativeElement.querySelector('[aria-label="Scroll to bottom"]') as HTMLButtonElement).click();
+    expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
+    await update(70);
+    expect(output.scrollHeight-output.scrollTop-output.clientHeight).toBeLessThanOrEqual(4);
   });
   it('starts tests through the dev server with output always visible', async () => {
     const state=fixture.componentInstance.status()!;
