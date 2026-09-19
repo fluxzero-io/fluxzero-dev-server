@@ -17,6 +17,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       @else {<h1>{{displayName() || state.project}}</h1>}
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
+    @if(state.versions; as versions) {<div class="workspace-versions">@if(versions.devServer) {<span>Dev server {{versions.devServer}}</span>}@if(versions.fluxzero) {<span>Fluxzero {{versions.fluxzero}}</span>}</div>}
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
@@ -24,6 +25,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
         @if(state.maintenance?.stopSupported && !fullyStopped()) {<dev-workspace-stop [working]="!!maintenanceAction()?.startsWith('stop-') || maintenanceAction() === 'start-workspace'" [busy]="busy()" [stopped]="!!state.maintenance?.workspaceStopped" (actionRequested)="requestMaintenance($event)"/>}
       </div>
     </div></div>
+    @if(state.workspaceIssue && !state.maintenance?.workspaceStopped && !fullyStopped()) {<p class="workspace-issue" role="status"><i class="bi bi-exclamation-circle" aria-hidden="true"></i>{{state.workspaceIssue}}</p>}
     <ng-template #componentCard let-component>
     <div class="component-table-scroll"><table role="table" class="component-table" [attr.aria-label]="component.application ? 'Application resources' : 'Infrastructure resources'">
       <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(component.application) {<th role="columnheader" scope="col" aria-label="Restart app"></th>}@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}</tr></thead>

@@ -628,6 +628,7 @@ public class DevServer implements AutoCloseable {
         var stopped = stoppedWorkspaceStatus;
         if (stopped != null) {
             var result = new LinkedHashMap<>(stopped);
+            result.put("workspaceIssue", "");
             result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
                     "stopSupported", restartSupported, "workspaceStopped", "idle".equals(stopped.get("state"))));
             return result;
@@ -700,6 +701,8 @@ public class DevServer implements AutoCloseable {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("project", config.projectDirectory().getFileName().toString());
+        result.put("versions", DashboardWorkspace.versions(session));
+        result.put("workspaceIssue", DashboardWorkspace.issue(session));
         result.put("projectDirectory", config.projectDirectory().toString()); result.put("state", session.status());
         result.put("runtime", session.runtime().state()); result.put("applications", session.app().state());
         result.put("tests", session.tests().state()); result.put("frontend", session.frontend().state());

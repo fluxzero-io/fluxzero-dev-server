@@ -64,6 +64,25 @@ describe('Dev console navigation', () => {
     (fixture.nativeElement.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
+  it('shows quiet versions and current problem badges, clearing them on recovery and disconnect', () => {
+    const component = fixture.componentInstance;
+    const root: HTMLElement = fixture.nativeElement;
+    component.status.update(s => ({...s!, versions:{devServer:'1.2.3',fluxzero:'2.0.0-RC1'}, workspaceIssue:''}));
+    fixture.detectChanges();
+    expect(root.querySelector('.workspace-versions')?.textContent).toContain('Dev server 1.2.3');
+    expect(root.querySelector('.workspace-versions')?.textContent).toContain('Fluxzero 2.0.0-RC1');
+    expect(root.querySelector('.workspace-versions')?.textContent).not.toContain('Java');
+    expect(root.querySelector('.workspace-issue')).toBeNull();
+    expect(root.querySelector('a[href="#projects"] .nav-issue-badge')).toBeNull();
+    expect(root.querySelector('a[href="#tests"] .nav-issue-badge')?.textContent).toBe('2');
+    component.status.update(s => ({...s!, workspaceIssue:'Your app could not start.'}));fixture.detectChanges();
+    expect(root.querySelector('.workspace-issue')?.textContent).toContain('Your app could not start.');
+    expect(root.querySelector('a[href="#projects"] .nav-issue-badge')?.getAttribute('aria-label')).toBe('Workspace needs attention');
+    connected(false);fixture.detectChanges();expect(root.querySelector('.nav-issue-badge')).toBeNull();
+    component.status.update(s => ({...s!, workspaceIssue:'',testResults:{...s!.testResults!,failed:0}}));
+    connected(true);fixture.detectChanges();
+    expect(root.querySelector('.workspace-issue')).toBeNull();expect(root.querySelector('.nav-issue-badge')).toBeNull();
+  });
   it('confirms a profile switch, keeps the active label until reconnect, and refreshes the preview', async () => {
     const component = fixture.componentInstance;
     component.status.update(s => ({...s!, profiles: {active: 'local', available: ['local', 'demo'], switchSupported: true}}));
@@ -139,7 +158,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');
