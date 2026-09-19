@@ -97,6 +97,7 @@ public final class DevMcpStdioMain {
             var workspace = new DevMcpWorkspace(directory, selected, docs, mapper);
             try {
                 var tools = new ArrayList<>(DevMcpTools.tools(request -> workspace.current().project().call(request)));
+                tools.addAll(MonitoringTools.tools(request -> workspace.current().project().call(request)));
                 tools.addAll(ProgressTools.tools(() -> workspace.current().directory(), mapper));
                 tools.add(new McpServerFeatures.SyncToolSpecification(
                         McpSchema.Tool.builder("start_dev", Map.of("type", "object", "properties", Map.of(),

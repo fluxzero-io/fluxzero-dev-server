@@ -93,6 +93,7 @@ final class DevMcpServer implements AutoCloseable {
                                           .build())
                     .tools(DevMcpTools.tools(queryService, objectMapper))
                     .tools(ProgressTools.tools(() -> projectDirectory, objectMapper))
+                    .tools(MonitoringTools.tools(new MonitoringQueryService(() -> queryService.getStatus().session()), objectMapper))
                     .resources(DevMcpTools.diagnosticsResource(queryService, objectMapper))
                     .build();
 

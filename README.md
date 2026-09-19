@@ -248,6 +248,15 @@ When an agent sandbox cannot write that shared location, the stdio server automa
 Only the `sdk` namespace is currently provided. See [the documentation API reference](docs/agent-documentation.md)
 for selectors, limits, cache validation, and local archive configuration.
 
+### Agent Monitoring
+
+Agents can search the audit trail and application logs, follow traces and issues,
+inspect Insights and resource metrics, and discover stored documents through
+read-only MCP tools. Results are bounded and scoped to the selected project;
+message payloads and document content are requested separately. See the
+[monitoring MCP reference](docs/monitoring-mcp.md) for tools, examples, limits,
+redaction and unavailable-backend behavior.
+
 ### Agent Problem Deltas
 
 The MCP `wait_for_change` tool is a cursor delta. Its `problemChanges` field contains only selected problems that were
