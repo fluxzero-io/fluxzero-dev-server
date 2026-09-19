@@ -63,7 +63,8 @@ public class DevGatewayTest {
         var registry = new DevEnvironmentRegistry(assets.resolve("registry"));
         var project = assets.resolve("example");
         var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
-                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public"));
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public")
+                        .withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
         new DevSessionStore(project).writeSession(session);
         registry.register(session);
         var console = new DevConsole(() -> java.util.Map.of("project", "example", "monitoring", java.util.Map.of("enabled", true)), assets, registry);
@@ -189,6 +190,13 @@ public class DevGatewayTest {
             assertEquals(202, projectPost(url, base, true).statusCode());
             assertEquals("truncate-testserver-data", called.get());
             assertEquals(409, projectPost(url, base, true).statusCode());
+            for (String action : List.of("pause-tests", "resume-tests")) {
+                called.set(null);
+                String testAction = base + DevConsole.ROOT + "actions/" + action;
+                assertEquals(403, projectPost(testAction, "https://example.com", true).statusCode());
+                assertEquals(202, projectPost(testAction, base, true).statusCode());
+                assertEquals(action, called.get());
+            }
         }
     }
 

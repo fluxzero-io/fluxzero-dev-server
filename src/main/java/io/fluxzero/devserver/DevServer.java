@@ -614,6 +614,7 @@ public class DevServer implements AutoCloseable {
     private final AtomicBoolean maintenanceBusy = new AtomicBoolean();
     private volatile String maintenanceError = "";
     private volatile Thread maintenanceThread;
+    private volatile boolean automaticTestsPaused;
     private volatile String buildPauseState = "running";
     private volatile java.util.concurrent.CountDownLatch buildResume;
     private final TestOutput testOutput = new TestOutput();
@@ -715,6 +716,7 @@ public class DevServer implements AutoCloseable {
             testResults.put("available", true);
         }
         testResults.put("live",liveEvents);
+        testResults.put("paused", automaticTestsPaused);
         testResults.put("runnable", projects.values().stream().anyMatch(p -> p.config.testsEnabled()));
         testResults.put("incomplete", testsIncomplete);
         testResults.put("label", testsRunning
@@ -760,6 +762,13 @@ public class DevServer implements AutoCloseable {
             var resume = buildResume;
             if (resume == null) throw new IllegalStateException("Builds are not paused");
             return resume::countDown;
+        }
+        if ("pause-tests".equals(action) || "resume-tests".equals(action)) {
+            return () -> {
+                automaticTestsPaused = "pause-tests".equals(action);
+                projects.values().forEach(p -> p.testPipeline.setAutomaticPaused(automaticTestsPaused));
+                if (devGateway != null) devGateway.refreshConsole();
+            };
         }
         if ("clear-test-output".equals(action)) return () -> {testOutput.clear(); if(devGateway!=null)devGateway.refreshConsole();};
         if ("run-tests".equals(action)) {
@@ -2131,6 +2140,7 @@ public class DevServer implements AutoCloseable {
                     config, projectStore, buildCoordinator, status -> updateTestStatus(id, status),
                     message -> {testOutput.add(id,message);printProjectOutput(id,message);if(devGateway!=null)devGateway.refreshConsole();},
                     ()->{if(devGateway!=null)devGateway.refreshConsole();});
+            this.testPipeline.setAutomaticPaused(automaticTestsPaused);
         }
 
         private String launchPrefix() {

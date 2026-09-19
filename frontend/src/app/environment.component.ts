@@ -112,8 +112,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       }
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
-    @if(buildPauseState() !== 'running') {<p class="build-pause-status" role="status">{{buildPauseState() === 'paused' ? 'Automatic builds and tests paused. Managed UI servers are stopped.' : buildPauseState() === 'pausing' ? 'Pausing after current build work…' : 'Resuming automatic builds and tests…'}}</p>}
-    <dev-test-output [lines]="state.testOutput || []" [pauseState]="buildPauseState()" [pauseBusy]="buildPauseBusy()" (toggleBuilds)="toggleBuilds()"/></div></section>
+    @if(state.testResults?.paused) {<p class="test-pause-status" role="status">Automatic tests paused.@if(state.testResults.running) { Current test run will finish.}</p>}
+    <dev-test-output [lines]="state.testOutput || []" [paused]="!!state.testResults?.paused" [pauseBusy]="changingTestPause() || !state.testResults?.runnable" (toggleTests)="toggleTests()"/></div></section>
     </section>}`})
 @Handler()
 export class EnvironmentComponent {
@@ -187,19 +187,14 @@ export class EnvironmentComponent {
     }
     finally { this.maintenanceStatus = this.status(); this.submitting.set(false); }
   }
-  readonly buildPauseState = computed(() => this.status()?.maintenance?.buildPauseState || 'running');
-  readonly changingBuildPause = signal(false);
-  buildPauseBusy() {
-    return this.changingBuildPause() || ['pausing', 'resuming'].includes(this.buildPauseState())
-      || (this.buildPauseState() !== 'paused' && this.busy());
-  }
-  async toggleBuilds() {
-    if (this.buildPauseBusy()) return;
-    this.changingBuildPause.set(true); this.testError.set('');
+  readonly changingTestPause = signal(false);
+  async toggleTests() {
+    if (this.changingTestPause()) return;
+    this.changingTestPause.set(true); this.testError.set('');
     try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment',
-      this.buildPauseState() === 'paused' ? 'resume-builds' : 'pause-builds'); }
-    catch (error: any) { this.testError.set(error?.error?.error || 'Unable to change automatic builds and tests.'); }
-    finally { this.changingBuildPause.set(false); }
+      this.status()?.testResults?.paused ? 'resume-tests' : 'pause-tests'); }
+    catch (error: any) { this.testError.set(error?.error?.error || 'Unable to change automatic tests.'); }
+    finally { this.changingTestPause.set(false); }
   }
   testState() { const state = this.status(); return ['idle', 'stopped'].includes(state?.tests || '') && state?.testResults?.available ? state.testResults.state || state.tests : state?.tests; }
   readonly startingTests = signal(false);

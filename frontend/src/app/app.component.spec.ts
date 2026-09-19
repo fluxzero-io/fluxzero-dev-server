@@ -308,25 +308,31 @@ describe('Dev console navigation', () => {
     expect((root.querySelector('[aria-label="Clear test output"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(fixture.componentInstance.status()?.testResults).toEqual(state.testResults);
   });
-  it('pauses builds and allows resuming while maintenance is busy', async () => {
+  it('pauses only automatic tests and keeps manual runs and restarts available', async () => {
     const state=fixture.componentInstance.status()!;
     const root:HTMLElement=fixture.nativeElement;
     const http=TestBed.inject(HttpTestingController);
-    (root.querySelector('[aria-label="Pause automatic builds and tests"]') as HTMLButtonElement).click();
+    push({status:{...state,testResults:{...state.testResults!,runnable:true}},environments:[]});
+    fixture.detectChanges();await fixture.whenStable();
+    (root.querySelector('[aria-label="Pause automatic tests"]') as HTMLButtonElement).click();
     fixture.detectChanges();
-    const pause=http.expectOne('actions/pause-builds');
+    const pause=http.expectOne('actions/pause-tests');
     expect(pause.request.method).toBe('POST');
     pause.flush(null); await fixture.whenStable();
-    push({status:{...state,maintenance:{busy:true,error:'',buildPauseState:'pausing'}},environments:[]});fixture.detectChanges();
-    expect((root.querySelector('[aria-label="Pausing automatic builds and tests"]') as HTMLButtonElement).disabled).toBeTrue();
-    push({status:{...state,maintenance:{busy:true,error:'',buildPauseState:'paused'}},environments:[]});fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    const resume=root.querySelector('[aria-label="Resume automatic builds and tests"]') as HTMLButtonElement;
+    push({status:{...state,testResults:{...state.testResults!,runnable:true,paused:true}},environments:[]});
+    fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const resume=root.querySelector('[aria-label="Resume automatic tests"]') as HTMLButtonElement;
     expect(resume.disabled).toBeFalse();
-    expect(root.querySelector('.build-pause-status')?.textContent).toContain('paused');
+    expect(root.querySelector('.test-pause-status')?.textContent).toContain('Automatic tests paused');
+    expect((root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).disabled).toBeFalse();
+    expect((root.querySelector('.restart-action') as HTMLButtonElement).disabled).toBeFalse();
+    (root.querySelector('[aria-label="Rerun tests"]') as HTMLButtonElement).click();
+    http.expectOne('actions/run-tests').flush(null);await fixture.whenStable();
     resume.click();fixture.detectChanges();
-    http.expectOne('actions/resume-builds').flush(null);await fixture.whenStable();
-    push({status:{...state,maintenance:{busy:false,error:'',buildPauseState:'running'}},environments:[]});fixture.detectChanges();
-    expect(root.querySelector('.build-pause-status')).toBeNull();
+    http.expectOne('actions/resume-tests').flush(null);await fixture.whenStable();
+    push({status:state,environments:[]});fixture.detectChanges();
+    expect(root.querySelector('.test-pause-status')).toBeNull();
+    http.expectNone('actions/pause-builds');
   });
   it('follows output at the bottom and preserves a scrolled-up viewport', async () => {
     const state=fixture.componentInstance.status()!;

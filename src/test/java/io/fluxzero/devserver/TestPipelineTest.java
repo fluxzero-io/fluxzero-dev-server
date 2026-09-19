@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @EnabledOnOs({OS.LINUX, OS.MAC})
@@ -122,6 +123,60 @@ class TestPipelineTest {
         }
         assertEquals("3", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
         assertEquals("build/resource change fallback", store.readTestStatus().orElseThrow().reason());
+    }
+
+    @Test
+    void pausedTestsKeepChangesAndAllowCompilesAndManualRuns(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.writeString(projectDirectory.resolve("pom.xml"), "v1");
+        Path test = projectDirectory.resolve("src/test/java/com/acme/OrderHandlerTest.java");
+        Files.createDirectories(test.getParent());
+        Files.writeString(test, "v1");
+        var statuses = new CopyOnWriteArrayList<TestStatus>();
+        var store = new DevSessionStore(projectDirectory);
+        try (var coordinator = new MavenBuildCoordinator();
+             var pipeline = new TestPipeline(config(projectDirectory), store, coordinator, statuses::add, ignored -> {})) {
+            pipeline.setAutomaticPaused(true);
+            pipeline.requestInitial();
+            pipeline.request(Set.of(test));
+            assertEquals("compiled", coordinator.withCompileLock(() -> "compiled"));
+            assertFalse(await(() -> Files.exists(projectDirectory.resolve("started-1")), Duration.ofMillis(200)));
+            pipeline.requestFullRun();
+            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            assertTrue(awaitBaseline(store, projectDirectory));
+            assertEquals("manual test run", statuses.getLast().reason());
+            statuses.clear();
+            Files.writeString(test, "v2");
+            pipeline.request(Set.of(test));
+            pipeline.request(Set.of(test));
+            assertFalse(await(() -> Files.exists(projectDirectory.resolve("started-2")), Duration.ofMillis(200)));
+            pipeline.setAutomaticPaused(false);
+            assertTrue(awaitStatus(statuses, "passed", List.of("com.acme.OrderHandlerTest")));
+            assertTrue(awaitBaseline(store, projectDirectory));
+            assertEquals("2", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+        }
+    }
+
+    @Test
+    void pausingLetsActiveRunFinishAndDefersItsFollowup(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.writeString(projectDirectory.resolve("pom.xml"), "v1");
+        Files.createFile(projectDirectory.resolve("wait"));
+        var statuses = new CopyOnWriteArrayList<TestStatus>();
+        try (var pipeline = new TestPipeline(config(projectDirectory), new DevSessionStore(projectDirectory),
+                statuses::add, ignored -> {})) {
+            pipeline.requestInitial();
+            assertTrue(awaitFile(projectDirectory.resolve("started-1")));
+            pipeline.setAutomaticPaused(true);
+            pipeline.request(Set.of(projectDirectory.resolve("pom.xml")));
+            Files.createFile(projectDirectory.resolve("release"));
+            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            assertFalse(await(() -> Files.exists(projectDirectory.resolve("started-2")), Duration.ofMillis(200)));
+            statuses.clear();
+            pipeline.setAutomaticPaused(false);
+            assertTrue(awaitStatus(statuses, "passed", List.of()));
+            assertEquals("2", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+        }
     }
 
     @Test
@@ -525,6 +580,7 @@ class TestPipelineTest {
                 package com.acme;
                 import org.junit.jupiter.api.Test;
                 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
                 class ReactorVersionTest {
                     @Test void usesCurrentReactorClass() {
                         assertEquals("current-reactor", ModelVersion.value());

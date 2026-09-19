@@ -148,7 +148,7 @@ final class DevConsole implements AutoCloseable {
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Maintenance requires the local console.");
         String action = path.substring((ROOT + "actions/").length());
-        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "restart-app", "clear-test-output", "run-tests", "pause-builds", "resume-builds", "switch-profile").contains(action))
+        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "restart-application", "restart-app", "clear-test-output", "run-tests", "pause-tests", "resume-tests", "pause-builds", "resume-builds", "switch-profile").contains(action))
             return actionResult(response, callback, 404, "Unknown maintenance action.");
         if ("switch-profile".equals(action)) {
             try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {

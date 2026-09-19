@@ -44,6 +44,7 @@ final class TestPipeline implements AutoCloseable {
     private final Set<String> failingSelectors = new LinkedHashSet<>();
     private final Set<String> incompleteSelectors = new LinkedHashSet<>();
     private final AtomicBoolean running = new AtomicBoolean();
+    private boolean automaticPaused;
     private boolean initialRequested;
     private boolean manualRequested;
     private boolean moduleFailurePending;
@@ -78,7 +79,7 @@ final class TestPipeline implements AutoCloseable {
         }
         synchronized (pendingChanges) {
             pendingChanges.addAll(changedFiles);
-            manualRequested = false; // A newer automatic run supersedes a queued manual run.
+            if (!automaticPaused) manualRequested = false; // A newer automatic run supersedes a queued manual run.
         }
         schedule();
     }
@@ -99,9 +100,18 @@ final class TestPipeline implements AutoCloseable {
         schedule();
     }
 
+    void setAutomaticPaused(boolean paused) {
+        synchronized (pendingChanges) { automaticPaused = paused; }
+        schedule();
+    }
+
     private void schedule() {
-        if (running.compareAndSet(false, true)) {
-            executor.submit(this::drain);
+        synchronized (pendingChanges) {
+            if ((!automaticPaused || manualRequested) && !executor.isShutdown()
+                    && (!pendingChanges.isEmpty() || initialRequested || manualRequested)
+                    && running.compareAndSet(false, true)) {
+                executor.submit(this::drain);
+            }
         }
     }
 
@@ -111,6 +121,7 @@ final class TestPipeline implements AutoCloseable {
                 Set<Path> changes;
                 boolean initial, manual;
                 synchronized (pendingChanges) {
+                    if (automaticPaused && !manualRequested) return;
                     changes = Set.copyOf(pendingChanges);
                     pendingChanges.clear();
                     initial = initialRequested;
@@ -161,11 +172,7 @@ final class TestPipeline implements AutoCloseable {
             }
         } finally {
             running.set(false);
-            synchronized (pendingChanges) {
-                if ((!pendingChanges.isEmpty() || initialRequested || manualRequested) && running.compareAndSet(false, true)) {
-                    executor.submit(this::drain);
-                }
-            }
+            schedule();
         }
     }
 

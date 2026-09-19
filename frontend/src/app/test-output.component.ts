@@ -6,8 +6,8 @@ import {sendCommand} from './dom-handlers';
   <div class="test-output">
       <div class="test-output-toolbar">
         <button type="button" class="icon-button" [attr.aria-label]="pauseLabel()" [title]="pauseLabel()"
-          [disabled]="pauseBusy()" [attr.aria-pressed]="pauseState() === 'paused'" (click)="toggleBuilds.emit()">
-          <i [class]="pauseState() === 'paused' ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
+          [disabled]="pauseBusy()" [attr.aria-pressed]="paused()" (click)="toggleTests.emit()">
+          <i [class]="paused() ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
         </button>
       </div>
       <div class="test-output-area">
@@ -21,14 +21,12 @@ import {sendCommand} from './dom-handlers';
 export class TestOutputComponent {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   lines=input<TestOutputLine[]>([]);
-  pauseState=input('running');
+  paused=input(false);
   pauseBusy=input(false);
-  toggleBuilds=outputEvent<void>();
+  toggleTests=outputEvent<void>();
   private following=true;
   pauseLabel() {
-    return this.pauseState() === 'paused' ? 'Resume automatic builds and tests'
-      : this.pauseState() === 'pausing' ? 'Pausing automatic builds and tests'
-      : this.pauseState() === 'resuming' ? 'Resuming automatic builds and tests' : 'Pause automatic builds and tests';
+    return this.paused() ? 'Resume automatic tests' : 'Pause automatic tests';
   }
   clearing=signal(false);
   error=signal('');

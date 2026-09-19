@@ -31,9 +31,9 @@ listed with a dashboard-unavailable message instead of routing into the customer
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
 The Tests panel follows new output while scrolled to the bottom, and preserves your reading position when
-scrolled up. Its pause control pauses managed builds and tests after active work finishes, stopping managed UI
-servers while keeping the application and Test Server running. Resume restarts those UI servers and lets queued
-work continue. Rerun tests requests a fresh test run; clearing output only clears the displayed log.
+scrolled up. Its pause control pauses automatic tests; an active test run is allowed to finish. Builds, application reloads
+and UI servers continue normally. Resume tests the changes collected during the pause. Rerun tests remains
+available for a manual run while paused; clearing output only clears the displayed log.
 
 ## Requirements
 
