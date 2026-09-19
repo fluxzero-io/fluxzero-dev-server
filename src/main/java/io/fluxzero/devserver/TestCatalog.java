@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 final class TestCatalog {
     static final int PAGE_SIZE = 50;
     private static final Pattern SEGMENT = Pattern.compile("\\[([^:]+):([^\\]]*)]");
-    record Case(String key, String project, String suite, String name, String state, String source) {}
+    record Case(String key, String project, String suite, String name, String state, String source, String groupKey, String groupName, Map<String, Long> variants) {}
     record Page(List<Case> items, int total, int offset, int pageSize, Map<String, Long> counts) {}
 
     static Case describe(String project, String scope, String id, String displayName, String state) {
@@ -78,25 +78,49 @@ final class TestCatalog {
         try {key = java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
                 .digest((project + "\0" + scope + "\0" + id).getBytes(StandardCharsets.UTF_8)));}
         catch (java.security.NoSuchAlgorithmException e) {throw new IllegalStateException(e);}
-        return new Case(key, clipped(project, 200), clipped(suite, 1000), clipped(name, 1000), state, clipped(decoded, 2000));
+        int template = id.lastIndexOf("/[test-template-invocation:");
+        Case parent = template < 0 ? null : describe(project, scope, id.substring(0, template),
+                displayName != null && displayName.contains(" · ") ? displayName.substring(0, displayName.indexOf(" · ")) : null, state);
+        return new Case(key, clipped(project, 200), clipped(suite, 1000), clipped(name, 1000), state, clipped(decoded, 2000),
+                        parent == null ? null : parent.key(), parent == null ? null : parent.name(), null);
     }
 
     static Page page(List<Case> cases, String state, String query, String requestedOffset) {
+        return page(cases, state, query, requestedOffset, false, null);
+    }
+
+    static Page page(List<Case> cases, String state, String query, String requestedOffset, boolean grouped, String group) {
         String filter = state == null ? "all" : state;
         String search = clipped(query == null ? "" : query, 256).strip().toLowerCase(Locale.ROOT);
         Map<String, Long> counts = new LinkedHashMap<>();
         for (String kind : List.of("failed", "passed", "pending", "skipped")) counts.put(kind, 0L);
         cases.forEach(test -> counts.merge(test.state(), 1L, Long::sum));
-        var matching = cases.stream().filter(test -> filter.equals("all") || filter.equals(test.state())
+        var matching = cases.stream().filter(test -> group == null || group.equals(test.groupKey())).filter(test -> filter.equals("all") || filter.equals(test.state())
                         || filter.equals("attention") && (test.state().equals("failed") || test.state().equals("pending")))
-                .filter(test -> search.isEmpty() || (test.name() + " " + test.suite() + " " + test.project() + " " + test.source())
+                .filter(test -> search.isEmpty() || (test.name() + " " + java.util.Objects.toString(test.groupName(), "") + " " + test.suite() + " " + test.project() + " " + test.source())
                         .toLowerCase(Locale.ROOT).contains(search))
-                .sorted(Comparator.comparingInt((Case test) -> switch(test.state()) {case "failed" -> 0; case "pending" -> 1; case "skipped" -> 2; default -> 3;})
-                        .thenComparing(Case::suite).thenComparing(Case::name).thenComparing(Case::key)).toList();
+                .sorted(order()).toList();
+        if (grouped && group == null) {
+            Map<String, List<Case>> groups = new LinkedHashMap<>();
+            for (Case test : matching) groups.computeIfAbsent(test.groupKey() == null ? test.key() : test.groupKey(),
+                    ignored -> new java.util.ArrayList<>()).add(test);
+            matching = groups.values().stream().map(members -> {
+                Case first = members.getFirst();
+                if (first.groupKey() == null) return first;
+                Map<String, Long> variants = new LinkedHashMap<>();
+                members.forEach(test -> variants.merge(test.state(), 1L, Long::sum));
+                return new Case(first.groupKey(), first.project(), first.suite(), first.groupName(), first.state(),
+                                first.source(), first.groupKey(), first.groupName(), variants);
+            }).sorted(order()).toList();
+        }
         int offset = 0;
         try {offset = Math.max(0, Integer.parseInt(requestedOffset));} catch (NumberFormatException ignored) {}
         offset = Math.min(offset, Math.max(0, ((matching.size() - 1) / PAGE_SIZE) * PAGE_SIZE));
         return new Page(matching.subList(offset, Math.min(matching.size(), offset + PAGE_SIZE)), matching.size(), offset, PAGE_SIZE, counts);
+    }
+    private static Comparator<Case> order() {
+        return Comparator.comparingInt((Case test) -> switch(test.state()) {case "failed" -> 0; case "pending" -> 1; case "skipped" -> 2; default -> 3;})
+                .thenComparing(Case::suite).thenComparing(Case::name).thenComparing(Case::key);
     }
     private static String clipped(String value, int length) {return value.substring(0, Math.min(value.length(), length));}
 }

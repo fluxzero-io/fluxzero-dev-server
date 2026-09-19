@@ -30,6 +30,10 @@ The dashboard's dev server selector only links to sessions whose gateway adverti
 listed with a dashboard-unavailable message instead of routing into the customer app.
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
+The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
+Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups
+and scenarios appear first. Show more adds 50 entries at a time and live refresh preserves expanded lists.
+
 The Tests panel follows new output while scrolled to the bottom, and preserves your reading position when
 scrolled up. Its pause control pauses automatic tests; an active test run is allowed to finish. Builds, application reloads
 and UI servers continue normally. Resume tests the changes collected during the pause. Rerun tests remains

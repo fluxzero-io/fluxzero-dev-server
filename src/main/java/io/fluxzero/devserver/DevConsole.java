@@ -107,7 +107,8 @@ final class DevConsole implements AutoCloseable {
         } else if (path.equals(ROOT + "tests.json")) {
             var query = Request.extractQueryParameters(request);
             content = new ObjectMapper().writeValueAsBytes(TestCatalog.page(testCases.get(),
-                    query.getValue("state"), query.getValue("q"), query.getValue("offset")));
+                    query.getValue("state"), query.getValue("q"), query.getValue("offset"),
+                    "true".equals(query.getValue("grouped")), query.getValue("group")));
             type = "application/json";
         } else if (path.equals(ROOT + "environments.json")) {
             content = new ObjectMapper().writeValueAsBytes(Map.of("environments", environments.listKnown()));

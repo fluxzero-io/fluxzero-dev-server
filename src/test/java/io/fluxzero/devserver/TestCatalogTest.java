@@ -84,6 +84,31 @@ class TestCatalogTest {
         assertTrue(new TestInventory(directory).cases("app").isEmpty());
     }
 
+    @Test void groupsTemplatesBeforePagingAndFindsHiddenVariants() {
+        var tests = new java.util.ArrayList<TestCatalog.Case>();
+        String template = "[engine:junit-jupiter]/[class:demo.Validation]/[test-template:validatesInput(java.lang.String)]";
+        for (int i=0;i<75;i++) tests.add(TestCatalog.describe("app", "m", template + "/[test-template-invocation:#" + i + "]",
+                "validatesInput(String) · rule " + i, i==74 ? "failed" : "passed"));
+        tests.add(TestCatalog.describe("app", "m", "demo.Other#works", null, "passed"));
+        tests.add(TestCatalog.describe("app", "other-module", template + "/[test-template-invocation:#0]",
+                "validatesInput(String) · same method in another module", "passed"));
+        var page = TestCatalog.page(tests, "all", "", "0", true, null);
+        assertEquals(3, page.total(), "A whole template occupies one catalog entry");
+        assertEquals(76L, page.counts().get("passed"));assertEquals(1L, page.counts().get("failed"));
+        var group = page.items().getFirst();
+        assertEquals("Validates input", group.name());assertEquals("failed", group.state());
+        assertEquals(Map.of("passed",74L,"failed",1L),group.variants());
+        var children = TestCatalog.page(tests,"all","","0",true,group.key());
+        assertEquals(75,children.total());assertEquals(50,children.items().size());
+        assertEquals("rule 74",children.items().getFirst().name());
+        assertTrue(children.items().stream().allMatch(test -> test.variants()==null));
+        assertEquals(25,TestCatalog.page(tests,"all","","50",true,group.key()).items().size());
+        var search = TestCatalog.page(tests,"all","rule 74","0",true,null);
+        assertEquals(1,search.total());assertEquals(Map.of("failed",1L),search.items().getFirst().variants());
+        assertEquals(1,TestCatalog.page(tests,"failed","","0",true,group.key()).total());
+        assertEquals(0,TestCatalog.page(tests,"all","","0",true,"unknown").total());
+    }
+
     @Test void defaultsToAllWithFailuresFirstAndFiltersResults() {
         var tests = new java.util.ArrayList<TestCatalog.Case>();
         for (int i = 0; i < 123; i++) tests.add(TestCatalog.describe("app", "m", "demo.A#scenario" + i, null, "passed"));
