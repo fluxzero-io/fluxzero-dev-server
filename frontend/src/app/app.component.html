@@ -34,7 +34,6 @@
     @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">
-      @if(previewExpanded()) {<button type="button" class="secondary-button preview-restore" (click)="setPreviewExpanded(false)" aria-label="Restore preview" title="Restore preview"><i class="bi bi-fullscreen-exit" aria-hidden="true"></i><span>Restore</span></button>}
       <header class="application-heading" aria-label="Preview navigation">
         <div class="application-tools">
           <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
@@ -47,7 +46,7 @@
           <span class="preview-copy-status" role="status">{{previewCopyError() || (previewCopied() ? 'URL copied' : '')}}</span>
         </div>
         <div class="application-tools preview-display-tools">
-          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(true)" aria-label="Expand preview" title="Expand preview"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
+          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-fullscreen-exit]="previewExpanded()" aria-hidden="true"></i></button>
         @if(applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }

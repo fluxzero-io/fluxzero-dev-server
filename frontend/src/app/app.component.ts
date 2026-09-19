@@ -42,7 +42,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.menuOpen.set(false);
     this.previewExpanded.set(expanded);
     setTimeout(() => this.elementRef.nativeElement.querySelector<HTMLElement>(
-      expanded ? '.preview-restore' : '.preview-expand')?.focus());
+      '.preview-expand')?.focus());
   }
   readonly previewCopied=signal(false);
   readonly previewCopyError=signal('');

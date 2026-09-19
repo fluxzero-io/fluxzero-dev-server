@@ -542,13 +542,15 @@ describe('Dev console navigation', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
       await fixture.whenStable(); fixture.detectChanges();
       expect(app.navigationHidden()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('.preview-expand').getAttribute('aria-label')).toBe('Restore preview');
+      expect(fixture.nativeElement.querySelector('.application-heading')).not.toBeNull();
       expect(fixture.nativeElement.querySelector('.dashboard-shell').classList.contains('preview-expanded')).toBeTrue();
-      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.preview-restore'));
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.preview-expand'));
       const escape = new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true});
       document.dispatchEvent(escape);
       expect(escape.defaultPrevented).toBeFalse();
       expect(app.previewExpanded()).toBeTrue();
-      fixture.nativeElement.querySelector('.preview-restore').click(); fixture.detectChanges();
+      fixture.nativeElement.querySelector('.preview-expand').click(); fixture.detectChanges();
       await new Promise(resolve => setTimeout(resolve, 0));
       await fixture.whenStable(); fixture.detectChanges();
       expect(app.previewExpanded()).toBeFalse();

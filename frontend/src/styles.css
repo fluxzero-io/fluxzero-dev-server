@@ -363,6 +363,6 @@ dev-project-rename small {color:var(--dashboard-muted);}
 .preview-display-tools {justify-self:end;}
 .preview-expanded .dashboard-sidebar,.preview-expanded .sidebar-resizer,.preview-expanded .navigation-bar {display:none;}
 .preview-expanded .application-page {position:fixed;inset:0;z-index:30;height:100dvh;background:var(--dashboard-surface);}
-.preview-expanded .application-heading {display:none;}
-.preview-restore {position:absolute;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:1;display:flex;align-items:center;gap:8px;min-height:36px;background:var(--dashboard-surface);box-shadow:0 2px 12px #10203926;}
 body:has(.preview-expanded) {overflow:hidden;}
+
+.application-heading .icon-button:active:not(:disabled) {background:var(--dashboard-active-soft);color:var(--dashboard-active);transform:translateY(1px);}
