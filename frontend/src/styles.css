@@ -265,7 +265,7 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
   .infrastructure-section .component-table tbody .component-storage {grid-column:2;grid-row:3;}
 }
 
-.resource-reading {display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;}
+.resource-reading {display:flex;align-items:center;justify-content:flex-start;gap:20px;width:100%;min-width:0;}
 .resource-reading > dev-resource-detail {min-width:0;}
 .resource-reading .resource-value {overflow-wrap:anywhere;}
 
@@ -278,4 +278,13 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 @media(max-width:900px) {
   .workspace-actions {margin-left:auto;align-self:flex-end;}
   .workspace-action-buttons {justify-content:flex-end;}
+}
+
+@media(max-width:650px) {
+  .workspace-heading {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px 8px;align-items:center;}
+  .workspace-heading > .workspace-summary {display:contents;}
+  .workspace-heading .environment-eyebrow {grid-column:1;grid-row:1;align-self:center;font-size:10px;letter-spacing:.6px;gap:6px;}
+  .workspace-heading .environment-eyebrow i {font-size:13px;}
+  .workspace-heading > .workspace-actions {grid-column:2;grid-row:1;align-self:center;}
+  .workspace-heading .project-title-row,.workspace-heading .project-path {grid-column:1/-1;}
 }

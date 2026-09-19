@@ -51,7 +51,7 @@ export class WorkspaceRestartComponent {
   readonly open = signal(false);
   readonly options = [
     {key:'restart-application', label:'Apps', description:'Restart backend apps and UI servers. Keep shared services running.'},
-    {key:'restart-devserver', label:'Environment', description:'Restart apps, UI, the dev server and all supporting services.'}
+    {key:'restart-devserver', label:'Environment', description:'Restart apps, UI, the dev server and all supporting services. Resets all data.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   readonly restarting = computed(() => this.action() === 'restart-application' || this.action() === 'restart-devserver');
