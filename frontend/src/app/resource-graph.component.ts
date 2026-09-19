@@ -5,7 +5,8 @@ import {HISTORY_BUCKETS, resourceChart, ResourceMetric, ResourceSample, SAMPLE_I
 @Component({selector: 'dev-resource-graph', standalone: true, template: `
   <button #trigger class="icon-button graph-button" type="button" [attr.aria-label]="'Show ' + title() + ' graph'"
     title="Show graph" aria-haspopup="dialog" (click)="open()"><i class="bi bi-graph-up" aria-hidden="true"></i></button>
-  <dialog #dialog class="resource-graph-dialog" [attr.aria-labelledby]="titleId" (close)="closed()" (cancel)="$event.preventDefault(); $event.stopPropagation(); close()">
+  <dialog #dialog class="resource-graph-dialog" [attr.aria-labelledby]="titleId" (close)="closed()" (cancel)="$event.preventDefault(); $event.stopPropagation(); close()"
+    (pointerdown)="backdropPressed = isBackdrop($event)" (click)="dismissBackdrop($event)">
     @if(visible()) {
       <header><div><h2 [id]="titleId">{{title()}}</h2><p>Last 5 minutes · Updates every 5 seconds</p></div>
         <button class="icon-button" type="button" aria-label="Close graph" autofocus (click)="close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
@@ -65,6 +66,7 @@ export class ResourceGraphComponent {
   readonly limit = input<number | null>();
   readonly visible = signal(false);
   readonly openedChange = output<boolean>();
+  backdropPressed = false;
   @ViewChild('dialog') dialog!: ElementRef<HTMLDialogElement>;
   @ViewChild('trigger') trigger!: ElementRef<HTMLButtonElement>;
   private readonly changeDetector = inject(ChangeDetectorRef);
@@ -92,6 +94,7 @@ export class ResourceGraphComponent {
       new Date(latest - offset * SAMPLE_INTERVAL).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
   });
   open() {
+    this.backdropPressed = false;
     this.openedChange.emit(true);
     this.visible.set(true);
     this.changeDetector.detectChanges();
@@ -100,6 +103,17 @@ export class ResourceGraphComponent {
   close() {
     this.dialog.nativeElement.close();
     this.closed();
+  }
+  isBackdrop(event: MouseEvent) {
+    const dialog = this.dialog.nativeElement;
+    if (event.target !== dialog) return false;
+    const rect = dialog.getBoundingClientRect();
+    return event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom;
+  }
+  dismissBackdrop(event: MouseEvent) {
+    const dismiss = this.backdropPressed && this.isBackdrop(event);
+    this.backdropPressed = false;
+    if (dismiss) this.close();
   }
   closed() {
     if (!this.visible()) return;

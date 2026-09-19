@@ -42,7 +42,7 @@ import {sendCommand} from './dom-handlers';
       </div>
     </div>
   }
-  <dialog #startDialog class="start-dialog" aria-labelledby="server-start-title" (close)="restoreFocus()" (cancel)="cancelStart($event)">
+  <dialog #startDialog class="start-dialog" aria-labelledby="server-start-title" (close)="restoreFocus()">
     <h2 id="server-start-title">{{selectedToStart()?.directoryExists ? 'Start dev server?' : 'Dev server unavailable'}}</h2>
     @if(selectedToStart()?.directoryExists) {<p>{{selectedToStart()?.projectName}} is inactive. Would you like to start it?</p>}
     @else {<p>The folder for {{selectedToStart()?.projectName}} no longer exists.</p>}
@@ -145,7 +145,6 @@ export class EnvironmentSelectorComponent {
     this.changeDetector.detectChanges();
     this.startDialog?.nativeElement.showModal();
   }
-  cancelStart(event: Event) { if (this.starting() || this.removing()) event.preventDefault(); }
   async startServer() {
     if (this.starting() || this.removing() || !this.selectedToStart()?.directoryExists) return;
     this.starting.set(true);

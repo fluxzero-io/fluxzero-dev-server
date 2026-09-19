@@ -58,4 +58,27 @@ describe('Resource graph dialog', () => {
     expect(dialog.open).toBeFalse();
     expect(document.activeElement).toBe(trigger);
   });
+  it('dismisses only a complete backdrop click, not padding or a drag out of the graph', () => {
+    fixture.componentInstance.open(); fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    const rect = dialog.getBoundingClientRect();
+    const inside = {clientX:rect.left + 4,clientY:rect.top + 4,bubbles:true};
+    const outside = {clientX:rect.left - 8,clientY:rect.top - 8,bubbles:true};
+    dialog.dispatchEvent(new PointerEvent('pointerdown', inside));
+    dialog.dispatchEvent(new MouseEvent('click', inside));
+    expect(dialog.open).toBeTrue();
+    dialog.dispatchEvent(new PointerEvent('pointerdown', inside));
+    dialog.dispatchEvent(new MouseEvent('click', outside));
+    expect(dialog.open).toBeTrue();
+    dialog.dispatchEvent(new PointerEvent('pointerdown', outside));
+    dialog.dispatchEvent(new MouseEvent('click', outside));
+    expect(dialog.open).toBeFalse();
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.graph-button'));
+  });
+  it('closes on the native Escape cancel event', () => {
+    fixture.componentInstance.open(); fixture.detectChanges();
+    const dialog = fixture.nativeElement.querySelector('dialog') as HTMLDialogElement;
+    dialog.dispatchEvent(new Event('cancel', {cancelable:true}));
+    expect(dialog.open).toBeFalse();
+  });
 });

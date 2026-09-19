@@ -96,6 +96,10 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
   the visible order. Keep any additional actions to the right, before the primary action.
 - Preserve this separation on mobile, with compact controls and enough space between title, body and footer.
   Informational dialogs without footer actions may retain a close icon in the header.
+- Graph modals close when clicking or tapping the backdrop; clicks inside the modal (including its padding)
+  must not dismiss it. A drag that starts inside the modal must not become a backdrop dismissal.
+- Confirmation modals stay open when clicking outside. Both graph and confirmation modals close with Escape
+  and restore focus to their trigger. Dismissing a modal must never confirm its action.
 
 ## Commit Messages
 
