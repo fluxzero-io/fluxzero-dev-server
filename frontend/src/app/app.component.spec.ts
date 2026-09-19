@@ -28,7 +28,7 @@ describe('Dev console navigation', () => {
     const status: Status = {resourceHistory: [], project: 'repair-cafe', projectDirectory: '/projects/repair-cafe', state: 'running',
       runtime: 'running', applications: 'running', tests: 'passed', frontend: 'stopped', monitoring: {enabled: false},
       maintenance: {busy: false, stopSupported: true, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},
-      components: [{id: 'devserver', name: 'Fluxzero Dev Server', state: 'running', memoryBytes: 20971520, application: false, port: 4200, url: 'http://localhost:4200/_fluxzero/dev/#projects'}, {id: 'testserver', name: 'Fluxzero Testserver & Proxy', state: 'running', memoryBytes: 104857600, application: false},
+      components: [{id: 'devserver', name: 'Fluxzero Dev Server', state: 'running', memoryBytes: 20971520, application: false, port: 4200, url: 'http://localhost:4200/_fluxzero/dev/#projects'}, {id: 'testserver', name: 'Fluxzero Test Server', state: 'running', memoryBytes: 104857600, application: false},
         {id: 'app', name: 'Repair Café', state: 'running', memoryBytes: 52428800, application: true, port: 4200, url: 'http://localhost:4200/'}],
       testResults: {available: true, passed: 8, failed: 2, skipped: 1, total: 11, label: 'Latest completed run per module'}};
     const environments: Environment[] = [
@@ -785,7 +785,7 @@ describe('Dev console navigation', () => {
       maintenance:{busy:false, error:'', restartSupported:true, applicationRestartSupported:false}, components:[
         {id:'app',name:'fluxzero-dev-server-monitoring',state:'stopped',application:true,memoryBytes:null,runningProcesses:0,totalProcesses:1},
         {id:'devserver',name:'Fluxzero Dev Server',state:'running',application:false,memoryBytes:20971520,runningProcesses:1,totalProcesses:1},
-        {id:'testserver',name:'Fluxzero Testserver & Proxy',state:'running',application:false,memoryBytes:104857600,runningProcesses:1,totalProcesses:1}
+        {id:'testserver',name:'Fluxzero Test Server',state:'running',application:false,memoryBytes:104857600,runningProcesses:1,totalProcesses:1}
       ]} : s);
     fixture.detectChanges();
     const rows = root.querySelectorAll('.component-table tbody tr');

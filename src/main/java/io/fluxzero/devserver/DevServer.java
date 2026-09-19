@@ -635,9 +635,9 @@ public class DevServer implements AutoCloseable {
             return result;
         }
         List<Map<String, Object>> components = new java.util.ArrayList<>();
+        if (config.backendEnabled()) components.add(component("testserver", "Fluxzero Test Server", session.runtime(), false));
         components.add(component("devserver", "Fluxzero Dev Server",
                 new DevSession.ServiceStatus("devserver", session.status(), publicUrl, session.gateway().port(), session.pid(), null), false));
-        if (config.backendEnabled()) components.add(component("testserver", "Fluxzero Testserver & Proxy", session.runtime(), false));
         if (monitoring != null) {
             components.add(component("auditlog", "Dev dashboard", session.services().get("monitoring-auditlog"), false));
             components.add(component("storage", "Dev dashboard store", session.services().get("monitoring-storage"), false));
