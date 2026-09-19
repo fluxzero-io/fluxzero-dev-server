@@ -48,6 +48,7 @@ final class DevMonitoring implements AutoCloseable {
     private volatile Thread logWorker;
     private volatile Thread resourceWorker;
     private volatile Map<String, Object> resources = Map.of();
+    private final Map<String, String> versions = new ConcurrentHashMap<>();
     private String storageUrl;
     private Long runtimePid;
     private volatile String state = "starting";
@@ -70,6 +71,8 @@ final class DevMonitoring implements AutoCloseable {
             if (sourceNamespaces.contains(DevConsole.NAMESPACE)) {
                 throw new IllegalArgumentException("Application namespace conflicts with isolated monitoring namespace");
             }
+            String auditlogVersion = artifactVersion(jar);
+            if (auditlogVersion != null) versions.put("monitoring-auditlog", auditlogVersion);
             Map<String, String> env = new LinkedHashMap<>();
             env.put("ENVIRONMENT", "local"); env.put("FLUXZERO_BASE_URL", runtimeUrl);
             env.put("FLUXZERO_NAMESPACE", DevConsole.NAMESPACE); env.put("FLUXZERO_APPLICATION_NAME", "dev-auditlog");
@@ -86,6 +89,7 @@ final class DevMonitoring implements AutoCloseable {
             if (config.storage().equals("victorialogs")) {
                 Path binary = config.victoriaLogsBinary() == null ? VictoriaLogsArtifact.resolve(log)
                         : config.resolve(project, config.victoriaLogsBinary());
+                if (config.victoriaLogsBinary() == null) versions.put("monitoring-storage", VictoriaLogsArtifact.VERSION);
                 Path data = project.resolve(".fluxzero/dev/monitoring/victorialogs"); Files.createDirectories(data);
                 int port = ProcessUtils.availablePort();
                 String url = "http://127.0.0.1:" + port;
@@ -145,9 +149,26 @@ final class DevMonitoring implements AutoCloseable {
     }
 
     private void publish(String id, Process child, String state, String url) {
-        statuses.accept(id, new DevSession.ServiceStatus(id, state, url, null, child.pid(), "local monitoring " + state,
-                Map.of("mode", "managed", ProcessUtils.PROCESS_STARTED_AT,
-                       Long.toString(ProcessUtils.startedAt(child).orElse(0L)))));
+        Map<String, String> metadata = new LinkedHashMap<>();
+        metadata.put("mode", "managed");
+        metadata.put(ProcessUtils.PROCESS_STARTED_AT, Long.toString(ProcessUtils.startedAt(child).orElse(0L)));
+        if (versions.containsKey(id)) metadata.put("version", versions.get(id));
+        statuses.accept(id, new DevSession.ServiceStatus(id, state, url, null, child.pid(), "local monitoring " + state, metadata));
+    }
+
+    static String artifactVersion(Path path) {
+        try (var jar = new java.util.jar.JarFile(path.toFile())) {
+            String version = jar.getManifest() == null ? null
+                    : jar.getManifest().getMainAttributes().getValue("Implementation-Version");
+            if (version == null || version.isBlank()) {
+                var entry = jar.getJarEntry("META-INF/maven/io.fluxzero/auditlog/pom.properties");
+                if (entry != null) try (var input = jar.getInputStream(entry)) {
+                    var properties = new java.util.Properties();
+                    properties.load(input); version = properties.getProperty("version");
+                }
+            }
+            return version == null || version.isBlank() ? null : version.strip();
+        } catch (java.io.IOException ignored) { return null; }
     }
 
     Path assets() { return config.resolve(project, config.uiDirectory()); }

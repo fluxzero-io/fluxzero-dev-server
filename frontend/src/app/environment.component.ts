@@ -17,7 +17,6 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       @else {<h1>{{displayName() || state.project}}</h1>}
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
-    @if(state.versions; as versions) {<div class="workspace-versions">@if(versions.devServer) {<span>Dev server {{versions.devServer}}</span>}@if(versions.fluxzero) {<span>Fluxzero {{versions.fluxzero}}</span>}</div>}
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">

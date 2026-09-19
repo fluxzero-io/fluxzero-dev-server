@@ -30,7 +30,8 @@ The dashboard's dev server selector only links to sessions whose gateway adverti
 listed with a dashboard-unavailable message instead of routing into the customer app.
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
-Workspace shows the Dev Server and selected Fluxzero versions quietly below the project path. Current startup
+The Total memory breakdown shows known versions below each service name, including the Dev Server,
+selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
 or update failures add a short notice and a navigation indicator; Tests has a separate failed-test count.
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
 Detailed diagnostics remain available through MCP.

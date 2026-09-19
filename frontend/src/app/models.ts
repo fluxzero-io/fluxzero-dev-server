@@ -24,7 +24,7 @@ export interface Status {
   applications: string;
   tests: string;
   frontend: string;
-  components?: {restartSupported?: boolean; runningProcesses?: number; totalProcesses?: number; id: string; name: string; state: string; application: boolean; memoryBytes: number | null; memoryUsedBytes?: number | null; memoryMaxBytes?: number | null; port?: number | null; url?: string | null}[];
+  components?: {version?: string | null; restartSupported?: boolean; runningProcesses?: number; totalProcesses?: number; id: string; name: string; state: string; application: boolean; memoryBytes: number | null; memoryUsedBytes?: number | null; memoryMaxBytes?: number | null; port?: number | null; url?: string | null}[];
   maintenance?: {stopSupported?: boolean; workspaceStopped?: boolean; restartSupported?: boolean; applicationRestartSupported?: boolean; resetSupported?: boolean; busy: boolean; error: string};
   testResults?: {paused?: boolean; totalKnown?: boolean; runnable?: boolean; live?: boolean; incomplete?: boolean; state?: string; running?: boolean; expectedTotal?: number; available: boolean; passed: number; failed: number; skipped: number; total: number; label: string};
   monitoring: {enabled: boolean; storage?: string; state?: string; detail?: string; droppedLogLines?: number; resources?: any};

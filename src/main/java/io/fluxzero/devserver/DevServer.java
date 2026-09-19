@@ -748,6 +748,11 @@ public class DevServer implements AutoCloseable {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("id", id); result.put("name", name); result.put("application", application);
         result.put("state", service == null ? "stopped" : service.state());
+        result.put("version", switch (id) {
+            case "devserver" -> session.devServerVersion();
+            case "testserver" -> session.runtime().metadata().get("runtimeSdkVersion");
+            default -> service == null ? null : service.metadata().get("version");
+        });
         result.put("pid", service == null ? null : service.pid());
         Integer port = service == null ? null : service.port();
         String url = service == null ? null : service.url();

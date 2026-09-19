@@ -64,14 +64,12 @@ describe('Dev console navigation', () => {
     (fixture.nativeElement.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();
     fixture.detectChanges();
   }
-  it('shows quiet versions and current problem badges, clearing them on recovery and disconnect', () => {
+  it('keeps versions out of the workspace heading and shows current problem badges, clearing them on recovery and disconnect', () => {
     const component = fixture.componentInstance;
     const root: HTMLElement = fixture.nativeElement;
     component.status.update(s => ({...s!, versions:{devServer:'1.2.3',fluxzero:'2.0.0-RC1'}, workspaceIssue:''}));
     fixture.detectChanges();
-    expect(root.querySelector('.workspace-versions')?.textContent).toContain('Dev server 1.2.3');
-    expect(root.querySelector('.workspace-versions')?.textContent).toContain('Fluxzero 2.0.0-RC1');
-    expect(root.querySelector('.workspace-versions')?.textContent).not.toContain('Java');
+    expect(root.querySelector('.workspace-versions')).toBeNull();
     expect(root.querySelector('.workspace-issue')).toBeNull();
     expect(root.querySelector('a[href="#projects"] .nav-issue-badge')).toBeNull();
     expect(root.querySelector('a[href="#tests"] .nav-issue-badge')?.textContent).toBe('2');
@@ -804,7 +802,7 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.status.update(s => s ? {...s, resourceHistory:[{at:5000,applicationMemory:1048576,devserverMemory:2097152,monitoringStorage:0,componentMemory:{devserver:2097152,storage:0}}], components: [
       {id:'app', name:'Customer', state:'running', application:true, memoryBytes:1048576, runningProcesses:2, totalProcesses:2},
-      {id:'devserver', name:'Supervisor', state:'running', application:false, memoryBytes:2097152, memoryUsedBytes:1048576, memoryMaxBytes:4194304, runningProcesses:1, totalProcesses:1},
+      {id:'devserver', name:'Supervisor', version:'1.2.3', state:'running', application:false, memoryBytes:2097152, memoryUsedBytes:1048576, memoryMaxBytes:4194304, runningProcesses:1, totalProcesses:1},
       {id:'storage', name:'Monitoring database', state:'failed', application:false, memoryBytes:null, runningProcesses:0, totalProcesses:2}
     ]} : s);
     fixture.detectChanges();
@@ -817,6 +815,7 @@ describe('Dev console navigation', () => {
     statusDetail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('Monitoring database');
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('failed');
+    expect(statusDetail.querySelector('.resource-version')).toBeNull();
     statusDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')).toBeNull();
     const memoryDetail = rows[1].querySelector('.component-memory dev-resource-detail')!;
@@ -824,6 +823,8 @@ describe('Dev console navigation', () => {
     expect(rows[1].querySelector('.component-memory dev-resource-graph button')).not.toBeNull();
     memoryDetail.dispatchEvent(new FocusEvent('focus')); fixture.detectChanges();
     expect(memoryDetail.querySelector('[role=dialog]')?.textContent).toContain('Supervisor');
+    expect(memoryDetail.querySelectorAll('.resource-version').length).toBe(1);
+    expect(memoryDetail.querySelector('.resource-version')?.textContent).toBe('1.2.3');
     expect(memoryDetail.querySelector('[role=dialog]')?.textContent).toContain('1.0 MiB / 4.0 MiB');
     expect(memoryDetail.querySelectorAll('.resource-tooltip dev-resource-graph button.graph-button').length).toBe(2);
     const graphButton = memoryDetail.querySelector<HTMLButtonElement>('.resource-tooltip dev-resource-graph button.graph-button')!;
