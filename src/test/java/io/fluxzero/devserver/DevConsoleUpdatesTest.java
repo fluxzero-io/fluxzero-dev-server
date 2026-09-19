@@ -58,6 +58,25 @@ class DevConsoleUpdatesTest {
         }
     }
 
+    @Test void includesResidentMemoryWhenManagedHeapMetricsAreUnavailable() throws Exception {
+        var state = JSON.readTree("""
+                {"components":[
+                  {"id":"devserver","state":"running","memoryBytes":900,"memoryUsedBytes":100,"memoryMaxBytes":400},
+                  {"id":"frontend-ui","application":true,"state":"running","memoryBytes":200,"memoryUsedBytes":null,"memoryMaxBytes":null},
+                  {"id":"service-mailpit","state":"running","memoryBytes":50,"memoryUsedBytes":null,"memoryMaxBytes":null},
+                  {"id":"service-stripe","state":"running","memoryBytes":75,"memoryUsedBytes":null,"memoryMaxBytes":null}
+                ]}
+                """);
+        try (var updates = new DevConsoleUpdates(() -> state, List::of, () -> 0)) {
+            JsonNode sample = updates.snapshot().path("status").path("resourceHistory").get(0);
+            assertEquals(425, sample.path("devserverMemory").asLong());
+            assertTrue(sample.path("devserverMemoryMax").isNull());
+            assertEquals(200, sample.path("componentMemory").path("frontend-ui").asLong());
+            assertEquals(50, sample.path("componentMemory").path("service-mailpit").asLong());
+            assertEquals(75, sample.path("componentMemory").path("service-stripe").asLong());
+        }
+    }
+
     @Test void includesManagedFrontendsInInfrastructureHistory() {
         var state = Map.of("components", List.of(
                 Map.of("id", "app-orders", "application", true, "state", "running", "memoryUsedBytes", 100, "memoryMaxBytes", 400),

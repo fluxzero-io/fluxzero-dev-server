@@ -159,7 +159,8 @@ public final class DevConsoleUpdates implements AutoCloseable {
     }
 
     private JsonNode memory(JsonNode component, String field) {
-        JsonNode value = "memoryUsedBytes".equals(field) && !component.has(field) ? component.path("memoryBytes") : component.path(field);
+        JsonNode value = "memoryUsedBytes".equals(field) && (!component.has(field)
+                || (component.path(field).isNull() && !component.path("memoryMaxBytes").isNumber())) ? component.path("memoryBytes") : component.path(field);
         if (value.isNumber()) return value;
         return component.path("runningProcesses").asInt("running".equals(component.path("state").asText()) ? 1 : 0) > 0
                 ? mapper.nullNode() : mapper.valueToTree(0L);

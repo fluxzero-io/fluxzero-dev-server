@@ -164,7 +164,11 @@ dev-resource-detail:focus-visible {outline:2px solid var(--dashboard-active);out
 dev-resource-chart {position:absolute;inset:6px 3px 0;pointer-events:none;color:var(--dashboard-active);}
 dev-resource-chart>svg {display:block;width:100%;height:100%;overflow:visible;}
 .component-memory dev-resource-detail>dev-resource-chart {pointer-events:auto;}
-.resource-tooltip-memory {position:relative;display:flex;align-items:center;justify-content:flex-end;min-width:108px;min-height:32px;}
+.resource-tooltip-memory {display:flex;align-items:center;justify-content:flex-end;gap:20px;min-width:0;min-height:32px;}
+.resource-tooltip[role=dialog] {width:min(540px,calc(100% - 16px));}
+.resource-tooltip[role=dialog] .resource-tooltip-row>:first-child {flex:1;}
+.resource-tooltip[role=dialog] .resource-tooltip-row>:last-child {flex-shrink:1;}
+@media(max-width:450px) {.resource-tooltip[role=dialog] .resource-tooltip-row {flex-wrap:wrap;gap:8px;}.resource-tooltip[role=dialog] .resource-tooltip-row>:first-child {flex-basis:100%;}.resource-tooltip-memory {justify-content:flex-start;}}
 .component-table .resource-tooltip-memory dev-resource-chart {inset:2px 0 0;}
 .resource-chart-area {fill:currentColor;fill-opacity:.14;}
 .resource-chart-line {fill:none;stroke:currentColor;stroke-opacity:.5;stroke-width:1;}

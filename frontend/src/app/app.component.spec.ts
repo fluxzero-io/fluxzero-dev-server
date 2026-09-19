@@ -473,9 +473,9 @@ describe('Dev console navigation', () => {
     expect(cards.length).toBe(2);
     expect(Array.from(cards, c => c.querySelector('.component-name')!.textContent!.trim())).toEqual(['Orders','Billing']);
     expect(Array.from(cards, c => c.querySelector('.badge')!.textContent)).toEqual(['running','failed']);
-    expect(Array.from(cards, c => c.querySelector('.resource-value')!.textContent)).toEqual(['1.0 MiB / —','2.0 MiB / —']);
+    expect(Array.from(cards, c => c.querySelector('.resource-value')!.textContent)).toEqual(['1.0 MiB','2.0 MiB']);
     expect(root.querySelectorAll('.application-overview dev-resource-graph').length).toBe(2);
-    expect(root.querySelector('.infrastructure-section .resource-value')!.textContent).toBe('12.0 MiB / —');
+    expect(root.querySelector('.infrastructure-section .resource-value')!.textContent).toBe('12.0 MiB');
     const detail = root.querySelector('.infrastructure-section dev-resource-detail')!;
     detail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(detail.querySelector('[role=tooltip]')!.textContent).toContain('Frontend (store)');
@@ -505,7 +505,7 @@ describe('Dev console navigation', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
     expect(fixture.nativeElement.querySelector('nav a[href="#application"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB / —');
+    expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB');
   });
   it('restarts only the selected backend app without a separate data reset action', async () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:[
@@ -606,7 +606,7 @@ describe('Dev console navigation', () => {
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('actions/restart-devserver');
     expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')?.textContent).toContain('In-memory application data will be reset');
-    (root.querySelector('dev-environment .maintenance-confirm button') as HTMLButtonElement).click();
+    (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
     const request = http.expectOne('actions/restart-devserver');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
     request.flush(null);
@@ -747,7 +747,7 @@ describe('Dev console navigation', () => {
     expect(rows[0].querySelector('.application-link')).toBeNull();
     expect((root.querySelector('[aria-label="Restart Apps"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(rows[1].querySelector('.badge')?.textContent).toBe('running');
-    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB / —');
+    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB');
   });
   it('groups processes and exposes component counts and memory in tooltips', () => {
     const root: HTMLElement = fixture.nativeElement;
@@ -772,11 +772,19 @@ describe('Dev console navigation', () => {
     expect(memoryDetail.querySelector(':scope > dev-resource-chart')).toBeNull();
     expect(rows[1].querySelector('.component-memory dev-resource-graph button')).not.toBeNull();
     memoryDetail.dispatchEvent(new FocusEvent('focus')); fixture.detectChanges();
-    expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('Supervisor');
-    expect(memoryDetail.querySelector('[role=tooltip]')?.textContent).toContain('1.0 MiB / 4.0 MiB');
-    expect(memoryDetail.querySelectorAll('[role=tooltip] dev-resource-chart .resource-chart-line').length).toBe(2);
+    expect(memoryDetail.querySelector('[role=dialog]')?.textContent).toContain('Supervisor');
+    expect(memoryDetail.querySelector('[role=dialog]')?.textContent).toContain('1.0 MiB / 4.0 MiB');
+    expect(memoryDetail.querySelectorAll('.resource-tooltip dev-resource-graph button.graph-button').length).toBe(2);
+    const graphButton = memoryDetail.querySelector<HTMLButtonElement>('.resource-tooltip dev-resource-graph button.graph-button')!;
+    graphButton.click(); fixture.detectChanges();
+    memoryDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
+    const graph = memoryDetail.querySelector<HTMLDialogElement>('dialog')!;
+    expect(graph.open).toBeTrue();
+    expect(graph.textContent).toContain('Supervisor · Memory');
+    (graph.querySelector('[aria-label="Close graph"]') as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(document.activeElement).toBe(graphButton);
     memoryDetail.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'})); fixture.detectChanges();
-    expect(memoryDetail.querySelector('[role=tooltip]')).toBeNull();
+    expect(memoryDetail.querySelector('[role=dialog]')).toBeNull();
     expect(rows[1].querySelector('.component-storage .resource-value[title]')).toBeNull();
     fixture.componentInstance.status.update(s => s ? {...s, components:s.components!.map(c => ({...c, memoryBytes:null, memoryUsedBytes:null}))} : s);
     fixture.detectChanges();

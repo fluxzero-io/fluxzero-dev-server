@@ -64,6 +64,16 @@ describe('Resource history projection', () => {
     expect(totalMemory([{...components[0],memoryUsedBytes:null}])).toBeNull();
     expect(totalMemory([{...components[0],memoryMaxBytes:null}],true)).toBeNull();
   });
+  it('includes resident memory for processes without managed heap metrics or limits', () => {
+    const components = [
+      {id:'jvm',name:'JVM',state:'running',application:false,memoryBytes:900,memoryUsedBytes:100,memoryMaxBytes:400},
+      ...['frontend-ui','service-mailpit','service-stripe'].map(id => ({id,name:id,state:'running',application:false,
+        memoryBytes:200,memoryUsedBytes:null,memoryMaxBytes:null}))
+    ];
+    expect(totalMemory(components)).toBe(700);
+    expect(totalMemory(components,true)).toBeNull();
+    expect(totalMemory([{...components[1],memoryBytes:null}])).toBeNull();
+  });
   it('counts stopped components as zero but keeps unmeasured live processes unknown', () => {
     const component={id:'app',name:'App',state:'stopped',application:true,memoryBytes:null,runningProcesses:0};
     expect(totalMemory([component])).toBe(0);

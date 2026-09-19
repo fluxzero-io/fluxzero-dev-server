@@ -17,7 +17,9 @@ export const HISTORY_BUCKETS = 60;
 
 type ComponentMemory = NonNullable<Status['components']>[number];
 export function usedMemory(component: ComponentMemory): number | null {
-  return component.memoryUsedBytes === undefined ? component.memoryBytes : component.memoryUsedBytes;
+  // Never pair RSS with a known heap limit when a heap sample is temporarily unavailable.
+  return component.memoryUsedBytes === undefined ? component.memoryBytes
+    : component.memoryUsedBytes ?? (component.memoryMaxBytes == null ? component.memoryBytes : null);
 }
 export function totalMemory(components: ComponentMemory[], maximum = false): number | null {
   const value = (c: ComponentMemory) => maximum ? c.memoryMaxBytes : usedMemory(c);

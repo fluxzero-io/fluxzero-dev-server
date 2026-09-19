@@ -478,8 +478,12 @@ Graph buttons open dialogs with a time axis and byte scale for memory and monito
 Memory shows used / maximum: Java components report actual heap usage and the effective JVM heap limit;
 VictoriaLogs reports Go-managed memory (Sys minus HeapReleased) and its exported Go memory limit. The dev server
 reads its own heap directly and samples managed Java processes through local JMX. Attach and sampling run in a
-bounded background pool; unavailable or stale measurements remain unknown. Existing RSS fields stay available
-in the console API for compatibility. The charts keep one color and scale memory to its limit at each sample.
+bounded background pool. Components without a managed heap measurement or limit (such as Node frontends, Mailpit
+and webhook forwarders) use measured process-tree RSS on Unix or working set on Windows. The infrastructure total
+adds these displayed measurements; an unknown limit remains unknown and is omitted from the usage label. If a
+heap limit is known but its usage is unavailable, RSS is not substituted against that limit. Missing process
+measurements also remain unknown.
+The memory breakdown provides a graph button per service, opening a dialog with the component's history.
 The dev server retains at most 60 five-second samples in memory, including usage and limits per component ID,
 even with no browsers connected. Missing samples leave gaps. Navigation, reload and reconnect restore the same
 history; restarting the dev server starts a new history. Monitoring storage shows its on-disk size

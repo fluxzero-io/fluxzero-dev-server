@@ -39,13 +39,13 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
           </td>
           <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
             <div class="resource-reading">
-              @if(component.application) {<span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span>}
-              @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><span class="resource-value">{{formatBytes(component.memoryBytes)}} / {{formatBytes(component.memoryMaxBytes)}}</span></dev-resource-detail>}
+              @if(component.application) {<span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span>}
+              @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span></dev-resource-detail>}
               <dev-resource-graph [title]="component.name + ' · Memory'" [samples]="state.resourceHistory || []" [metric]="component.application ? 'applicationMemory' : 'devserverMemory'" [componentId]="component.application ? component.id : undefined" [current]="component.memoryBytes" [limit]="component.memoryMaxBytes"/>
             </div>
           </td>
           @if(!component.application) {<td role="cell" class="component-storage" data-label="Monitoring storage">
-            <div class="resource-reading"><span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}} / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}</span>
+            <div class="resource-reading"><span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}}@if(state.monitoring.resources?.diskRetentionThresholdBytes != null) { / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}}</span>
               <dev-resource-graph title="Monitoring storage" [samples]="state.resourceHistory || []" metric="monitoringStorage" [current]="state.monitoring.resources?.storageDiskBytes" [limit]="state.monitoring.resources?.diskRetentionThresholdBytes"/>
             </div>
           </td>}

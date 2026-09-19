@@ -1,11 +1,11 @@
-import {ChangeDetectorRef, Component, computed, ElementRef, inject, input, signal, ViewChild} from '@angular/core';
+import {ChangeDetectorRef, Component, computed, ElementRef, inject, input, output, signal, ViewChild} from '@angular/core';
 import {formatBytes} from './format-bytes';
 import {HISTORY_BUCKETS, resourceChart, ResourceMetric, ResourceSample, SAMPLE_INTERVAL} from './resource-history';
 
 @Component({selector: 'dev-resource-graph', standalone: true, template: `
   <button #trigger class="icon-button graph-button" type="button" [attr.aria-label]="'Show ' + title() + ' graph'"
     title="Show graph" aria-haspopup="dialog" (click)="open()"><i class="bi bi-graph-up" aria-hidden="true"></i></button>
-  <dialog #dialog class="resource-graph-dialog" [attr.aria-labelledby]="titleId" (close)="closed()" (cancel)="$event.preventDefault(); close()">
+  <dialog #dialog class="resource-graph-dialog" [attr.aria-labelledby]="titleId" (close)="closed()" (cancel)="$event.preventDefault(); $event.stopPropagation(); close()">
     @if(visible()) {
       <header><div><h2 [id]="titleId">{{title()}}</h2><p>Last 5 minutes · Updates every 5 seconds</p></div>
         <button class="icon-button" type="button" aria-label="Close graph" autofocus (click)="close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
@@ -64,6 +64,7 @@ export class ResourceGraphComponent {
   readonly current = input<number | null>();
   readonly limit = input<number | null>();
   readonly visible = signal(false);
+  readonly openedChange = output<boolean>();
   @ViewChild('dialog') dialog!: ElementRef<HTMLDialogElement>;
   @ViewChild('trigger') trigger!: ElementRef<HTMLButtonElement>;
   private readonly changeDetector = inject(ChangeDetectorRef);
@@ -91,6 +92,7 @@ export class ResourceGraphComponent {
       new Date(latest - offset * SAMPLE_INTERVAL).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'}));
   });
   open() {
+    this.openedChange.emit(true);
     this.visible.set(true);
     this.changeDetector.detectChanges();
     this.dialog.nativeElement.showModal();
@@ -103,5 +105,6 @@ export class ResourceGraphComponent {
     if (!this.visible()) return;
     this.visible.set(false);
     this.trigger.nativeElement.focus();
+    this.openedChange.emit(false);
   }
 }
