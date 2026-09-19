@@ -35,7 +35,7 @@ export function progressCount(progress:ProjectProgress|undefined) {
               <span class="milestone-title">{{milestone.title}}</span><span class="count">{{completed(milestone)}} / {{milestone.features.length}} completed</span>
             </button>
             @if(isOpen(milestone)) {
-              @if(milestone.description) {<details class="milestone-description"><summary>About this group</summary><p>{{milestone.description}}</p></details>}
+              @if(milestone.description) {<p class="milestone-description">{{milestone.description}}</p>}
               <div class="features">
               @for(feature of visibleFeatures(milestone); track feature.id) {
                 <div class="feature">
