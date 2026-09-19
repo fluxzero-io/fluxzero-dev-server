@@ -21,8 +21,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
-        @if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-workspace-restart [busy]="busy()" [action]="maintenanceAction()" [appsSupported]="!!state.maintenance?.applicationRestartSupported" [environmentSupported]="!!state.maintenance?.restartSupported" (restart)="requestMaintenance($event)"/>}
         @if(state.maintenance?.stopSupported && !fullyStopped()) {<dev-workspace-stop [working]="!!maintenanceAction()?.startsWith('stop-') || maintenanceAction() === 'start-workspace'" [busy]="busy()" [stopped]="!!state.maintenance?.workspaceStopped" (actionRequested)="requestMaintenance($event)"/>}
+        @if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-workspace-restart [busy]="busy()" [action]="maintenanceAction()" [appsSupported]="!!state.maintenance?.applicationRestartSupported" [environmentSupported]="!!state.maintenance?.restartSupported" (restart)="requestMaintenance($event)"/>}
       </div>
     </div></div>
     <ng-template #componentCard let-component>

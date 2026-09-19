@@ -275,11 +275,10 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table tbody .component-app-restart {grid-column:2;grid-row:2;justify-content:flex-end;}
 .component-app-restart .icon-button {width:auto;gap:6px;padding:0 6px;white-space:nowrap;font-size:12px;}
 .workspace-actions {margin-left:auto;}
-.workspace-action-buttons {display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;}
+.workspace-action-buttons {display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
 .current-project > .page-heading {flex-wrap:wrap;}
 @media(max-width:900px) {
   .workspace-actions {margin-left:auto;align-self:flex-end;}
-  .workspace-action-buttons {justify-content:flex-end;}
 }
 
 @media(max-width:650px) {
@@ -293,6 +292,5 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 
 .workspace-stopped {margin:24px 0 0;padding:20px 24px;border:1px solid var(--dashboard-border);border-radius:16px;background:var(--dashboard-surface);font-size:13px;line-height:1.6;}
 @media(max-width:650px) {
-  .workspace-action-buttons {gap:2px;flex-wrap:nowrap;}
   .workspace-heading .environment-eyebrow {letter-spacing:0;gap:4px;}
 }
