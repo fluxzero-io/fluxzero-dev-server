@@ -252,7 +252,8 @@ for selectors, limits, cache validation, and local archive configuration.
 
 Agents can search the audit trail and application logs, follow traces and issues,
 inspect Insights and resource metrics, and discover stored documents through
-read-only MCP tools. Results are bounded and scoped to the selected project;
+MCP tools. Four explicit issue actions also support resolve, reopen, mute and unmute.
+Results are bounded and scoped to the selected project;
 message payloads and document content are requested separately. See the
 [monitoring MCP reference](docs/monitoring-mcp.md) for tools, examples, limits,
 redaction and unavailable-backend behavior.

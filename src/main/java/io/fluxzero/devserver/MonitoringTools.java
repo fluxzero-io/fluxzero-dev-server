@@ -24,9 +24,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/** Storage-neutral, read-only monitoring tools shared by both transports. */
+/** Storage-neutral monitoring and individual issue-management tools shared by both transports. */
 final class MonitoringTools {
     record Definition(String name, String description, Map<String, Object> properties) {}
+
+    static boolean mutating(String name) {
+        return List.of("resolve_issue", "reopen_issue", "mute_issue", "unmute_issue").contains(name);
+    }
 
     static List<Definition> definitions() {
         var result = new ArrayList<Definition>();
@@ -53,6 +57,11 @@ final class MonitoringTools {
         issues.put("status", Map.of("type", "string", "enum", List.of("OPEN", "RESOLVED", "MUTED", "ALL")));
         result.add(new Definition("list_issues", "List recent issues, newest first; defaults to OPEN and the last hour. A limitReached result requires a narrower time range or query. Use get_issue for occurrences.", issues));
         result.add(new Definition("get_issue", "Read one issue and its latest occurrences, including available trace references. Does not resolve or mute it.", Map.of("issueId", string("Required issue id from list_issues."), "limit", limit())));
+        var issueId = Map.<String, Object>of("issueId", string("Required exact issue id from get_issue in the selected project."));
+        result.add(new Definition("resolve_issue", "Mark one issue resolved after fixing and verifying the reported behavior. A code edit alone is insufficient. State the reason and verification in the conversation. Retains the issue and its occurrences; does not delete data. Read get_issue before retrying an uncertain outcome.", issueId));
+        result.add(new Definition("reopen_issue", "Reopen one resolved issue when the problem still exists. Use unmute_issue for a muted issue. Retains existing issue data. Read get_issue before retrying an uncertain outcome.", issueId));
+        result.add(new Definition("mute_issue", "Mute one issue only when the user explicitly wants it ignored. Do not use this to hide an unresolved failure. No expiry is scheduled by this tool; existing backend schedules are unchanged. Read get_issue before retrying an uncertain outcome.", issueId));
+        result.add(new Definition("unmute_issue", "Unmute one issue and return it to OPEN when the user explicitly wants it monitored again. Does not resolve the issue. Read get_issue before retrying an uncertain outcome.", issueId));
         var metrics = window(); metrics.putAll(page());
         metrics.put("application", string("Optional exact application name to inspect."));
         metrics.put("includeDetails", Map.of("type", "boolean", "default", false, "description", "Include consumer, handler and tracker detail; default returns application totals and durations."));
@@ -72,14 +81,14 @@ final class MonitoringTools {
             List<String> required = switch (d.name()) {
                 case "get_message" -> List.of("messageType", "messageIndex");
                 case "get_trace" -> List.of("traceId");
-                case "get_issue" -> List.of("issueId");
+                case "get_issue", "resolve_issue", "reopen_issue", "mute_issue", "unmute_issue" -> List.of("issueId");
                 case "search_documents" -> List.of("collection");
                 default -> List.of();
             };
             var schema = Map.<String, Object>of("type", "object", "properties", d.properties(), "required", required, "additionalProperties", false);
             var tool = McpSchema.Tool.builder(d.name(), schema).description(d.description())
-                    .annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(true).destructiveHint(false)
-                            .idempotentHint(true).openWorldHint(false).build()).build();
+                    .annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(!mutating(d.name())).destructiveHint(false)
+                            .idempotentHint(!mutating(d.name())).openWorldHint(false).build()).build();
             return new McpServerFeatures.SyncToolSpecification(tool, (exchange, request) -> handler.apply(request));
         }).toList();
     }

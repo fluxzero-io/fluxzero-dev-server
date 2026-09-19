@@ -197,6 +197,83 @@ class MonitoringQueryServiceTest {
         assertTrue(details.toString().contains("payments")); assertFalse(details.toString().contains("encoded"));
     }
 
+    @Test void issueMutationsUseOnlyTheMatchingCommandRouteAndPreserveReturnedDetails() {
+        var commands = Map.of("resolve", "ResolveIssue", "reopen", "ReopenIssue", "mute", "MuteIssue", "unmute", "UnmuteIssue");
+        for (var entry : commands.entrySet()) {
+            String action = entry.getKey();
+            String expected = action.equals("resolve") ? "RESOLVED" : action.equals("mute") ? "MUTED" : "OPEN";
+            response = "{\"issueId\":\"issue-1\",\"status\":\"" + expected + "\",\"count\":7}";
+            var result = service.query(action + "_issue", Map.of("issueId", "issue-1"));
+            assertEquals("/logs/issues/" + action, path.get());
+            assertEquals(DevConsole.NAMESPACE, namespace.get());
+            assertEquals("io.fluxzero.auditlog.issues.api." + entry.getValue(), request.get().get(0).asText());
+            assertEquals(json.valueToTree(Map.of("issueId", "issue-1")), request.get().get(1));
+            assertEquals(expected, ((JsonNode) result.get("data")).path("status").asText());
+            assertEquals(7, ((JsonNode) result.get("data")).path("count").asInt());
+        }
+        assertEquals(4, calls.get());
+    }
+
+    @Test void failedOrUnconfirmedWritesNeverRetryAndRequireAReadBeforeRetry() {
+        status = 500;
+        var error = assertThrows(IllegalStateException.class, () -> service.query("resolve_issue", Map.of("issueId", "issue")));
+        assertTrue(error.getMessage().contains("get_issue before")); assertEquals(1, calls.get());
+        status = 200; response = "{\"issueId\":\"another\",\"status\":\"RESOLVED\"}";
+        error = assertThrows(IllegalStateException.class, () -> service.query("resolve_issue", Map.of("issueId", "issue")));
+        assertTrue(error.getMessage().contains("issue-update-unconfirmed")); assertEquals(2, calls.get());
+        response = "{\"issueId\":\"issue\",\"status\":\"OPEN\"}";
+        assertThrows(IllegalStateException.class, () -> service.query("resolve_issue", Map.of("issueId", "issue")));
+        assertEquals(3, calls.get());
+    }
+
+    @Test void mutationsRejectMissingIdsBulkArgumentsAndArbitraryActionsBeforeSending() {
+        assertThrows(IllegalArgumentException.class, () -> service.query("resolve_issue", Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> service.query("mute_issue", Map.of("issueId", " ")));
+        assertThrows(IllegalArgumentException.class, () -> service.query("resolve_issue", Map.of("issueIds", java.util.List.of("a", "b"))));
+        assertThrows(IllegalArgumentException.class, () -> service.query("delete_issue", Map.of("issueId", "a")));
+        assertEquals(0, calls.get());
+    }
+
+    @Test void issueActionsAreAdvertisedAsWritesInTheSharedToolCatalogue() {
+        var tools = MonitoringTools.tools(request -> null);
+        assertEquals(14, tools.size());
+        for (var specification : tools) {
+            var tool = specification.tool();
+            boolean write = MonitoringTools.mutating(tool.name());
+            assertEquals(!write, tool.annotations().readOnlyHint());
+            assertEquals(!write, tool.annotations().idempotentHint());
+            assertEquals(false, tool.annotations().destructiveHint());
+        }
+    }
+
+    @Test void authenticatedMcpReturnsConfirmedWritesAndToolErrors() throws Exception {
+        try (var store = new DevLogStore(project, session.get().sessionId(), "orders");
+             var mcp = DevMcpServer.start(project, new AgentQueryService(session::get, store), store)) {
+            var endpoint = java.net.URI.create(mcp.url());
+            var transport = io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport
+                    .builder(endpoint.getScheme() + "://" + endpoint.getAuthority()).endpoint(endpoint.getPath())
+                    .httpRequestCustomizer((builder, method, uri, body, context) ->
+                            builder.header("Authorization", "Bearer " + mcp.token())).build();
+            try (var client = io.modelcontextprotocol.client.McpClient.sync(transport).build()) {
+                client.initialize();
+                for (String action : java.util.List.of("resolve", "reopen", "mute", "unmute")) {
+                    String expected = action.equals("resolve") ? "RESOLVED" : action.equals("mute") ? "MUTED" : "OPEN";
+                    response = "{\"issueId\":\"issue-1\",\"status\":\"" + expected + "\",\"count\":7}";
+                    var result = client.callTool(new io.modelcontextprotocol.spec.McpSchema.CallToolRequest(
+                            action + "_issue", Map.of("issueId", "issue-1")));
+                    assertFalse(Boolean.TRUE.equals(result.isError()));
+                    var data = json.valueToTree(result.structuredContent()).path("data");
+                    assertEquals(expected, data.path("status").asText()); assertEquals(7, data.path("count").asInt());
+                }
+                status = 500;
+                var error = client.callTool(new io.modelcontextprotocol.spec.McpSchema.CallToolRequest(
+                        "resolve_issue", Map.of("issueId", "issue-1")));
+                assertTrue(Boolean.TRUE.equals(error.isError()));
+                assertEquals(5, calls.get());
+            }
+        }
+    }
+
     @Test void sanitizerMarksOversizedResultsAndHandlesNestedSecretFields() throws Exception {
         var sanitizer = new MonitoringResultSanitizer();
         var result = sanitizer.sanitize(json.readTree("{\"text\":\"" + "x".repeat(10000) + "\",\"nested\":{\"api_key\":\"hidden\"}}"));

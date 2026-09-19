@@ -136,6 +136,31 @@ final class MonitoringQueryService {
                 output.set("entries", page(requireArray(entries), 0, limit, false, result));
                 result.put("limitReached", result.remove("hasMore")); result.remove("nextOffset"); data = output;
             }
+            case "resolve_issue", "reopen_issue", "mute_issue", "unmute_issue" -> {
+                String id = required(args, "issueId");
+                String action = tool.substring(0, tool.length() - "_issue".length());
+                String type = switch (tool) {
+                    case "resolve_issue" -> "ResolveIssue";
+                    case "reopen_issue" -> "ReopenIssue";
+                    case "mute_issue" -> "MuteIssue";
+                    default -> "UnmuteIssue";
+                };
+                String expectedStatus = switch (tool) {
+                    case "resolve_issue" -> "RESOLVED";
+                    case "mute_issue" -> "MUTED";
+                    default -> "OPEN";
+                };
+                try {
+                    data = post(session, "/logs/issues/" + action, "issues.api." + type, Map.of("issueId", id));
+                    if (!id.equals(data.path("issueId").asText()) || !expectedStatus.equals(data.path("status").asText())) {
+                        throw new IllegalStateException("Backend did not confirm the requested issue status");
+                    }
+                } catch (RuntimeException e) {
+                    throw new IllegalStateException("issue-update-unconfirmed: " + e.getMessage()
+                            + ". The issue may have changed; call get_issue before deciding whether to retry.");
+                }
+                result.put("action", action);
+            }
             case "get_insights" -> {
                 var window = window(args); result.put("window", window);
                 boolean details = bool(args, "includeDetails");
@@ -182,7 +207,11 @@ final class MonitoringQueryService {
             }
             default -> throw new IllegalArgumentException("Unknown monitoring tool");
         }
-        if (!session.sessionId().equals(sessions.get().sessionId())) throw new IllegalStateException("monitoring-session-changed: Retry the query in the new session");
+        if (!session.sessionId().equals(sessions.get().sessionId())) {
+            throw new IllegalStateException(MonitoringTools.mutating(tool)
+                    ? "issue-update-unconfirmed: Session changed; the issue may have changed. Check the selected project and get_issue before retrying."
+                    : "monitoring-session-changed: Retry the query in the new session");
+        }
         var bounded = new MonitoringResultSanitizer();
         result.put("data", bounded.sanitize(data));
         result.put("truncated", bounded.truncated());

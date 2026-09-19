@@ -1,6 +1,6 @@
 # Monitoring through MCP
 
-The Devboard monitoring tools read the same Auditlog backend used by Audit trail,
+The Devboard monitoring tools use the same Auditlog backend used by Audit trail,
 Logs, Traces, Issues, Documents and Insights. Agents do not need to scrape the UI,
 construct Java request types or query VictoriaLogs directly. These tools are
 available over the authenticated loopback HTTP MCP endpoint and forwarded by
@@ -21,6 +21,10 @@ authentication and authorization are **not** provided by this dev-server feature
 | `get_trace` | Branch summaries and a bounded page of messages, including traces without branches. |
 | `list_issues` | Issues in a time window, defaulting to open issues. |
 | `get_issue` | A selected issue and its latest occurrences. |
+| `resolve_issue` | Mark one verified fixed issue resolved. |
+| `reopen_issue` | Return one resolved issue to open. |
+| `mute_issue` | Mute one issue the user explicitly wants ignored. |
+| `unmute_issue` | Return one muted issue to open at the user’s request. |
 | `get_insights` | Persisted application metrics from the Insights backend. |
 | `get_resource_metrics` | Current Workspace process memory and monitoring storage samples. |
 | `list_document_collections` | Discover collections in Devboard’s configured document namespace (locally `public` by default). |
@@ -28,8 +32,42 @@ authentication and authorization are **not** provided by this dev-server feature
 
 `get_logs` remains the dev-server orchestration log delta. It is useful for builds,
 startup and process failures; `search_application_logs` is for recorded application
-behavior. No monitoring mutation, export, arbitrary endpoint or raw storage-query
-tool is exposed.
+behavior. Only the four individual issue actions write data. Bulk actions, deletion,
+exports, arbitrary endpoints and raw storage queries are not exposed.
+
+## Handling an issue
+
+Read the selected issue with `get_issue` before acting. Each action takes exactly
+one `issueId` and returns the updated issue in the normal response envelope, plus
+`action`. The backend response must confirm both the requested id and status.
+Existing occurrence counts, details and records remain governed by the same
+backend commands used by the UI; these tools do not delete them.
+
+- Resolve after implementing **and verifying** the reported behavior. An authorized
+  bugfix includes resolving its corresponding issue without a separate approval
+  step. Explain the reason and observed verification in the conversation; merely
+  editing code, starting a test run or seeing no recent logs is insufficient.
+- Reopen a resolved issue if the problem persists or recurs. For muted issues,
+  use unmute instead; both return the issue to `OPEN`.
+- Mute/unmute only with explicit user intent to ignore or monitor that issue.
+  Muting is not a substitute for a fix. No deadline is set by this tool; existing
+  schedules in the backend are unchanged. There is no bulk action or
+  resolve-in-next-version shortcut.
+
+```json
+{"tool":"resolve_issue","arguments":{"issueId":"<verified issue id>"}}
+{"tool":"reopen_issue","arguments":{"issueId":"<resolved issue id>"}}
+{"tool":"mute_issue","arguments":{"issueId":"<user-selected issue id>"}}
+{"tool":"unmute_issue","arguments":{"issueId":"<muted issue id>"}}
+```
+
+The shared HTTP/stdio catalogue marks these actions `readOnlyHint: false` and
+`idempotentHint: false`. They change status without destructive deletion
+(`destructiveHint: false`). The adapter never automatically retries writes.
+If a timeout, session change or invalid response leaves an update unconfirmed,
+read `get_issue` again in the intended project before deciding whether to retry.
+The issue may already have changed. The agent's explanation is conversational;
+these endpoints do not store a separate resolution note.
 
 ## Bounds and response semantics
 
