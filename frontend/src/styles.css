@@ -152,7 +152,6 @@ dev-resource-detail:focus-visible {outline:2px solid var(--dashboard-active);out
 .resource-tooltip-content {display:block;padding:8px 12px;border:1px solid var(--dashboard-border);border-radius:6px;background:var(--dashboard-popover-bg);color:var(--dashboard-text);box-shadow:var(--dashboard-popover-shadow);max-height:calc(50vh - 24px);overflow:auto;}
 .resource-tooltip-row {display:flex;align-items:center;justify-content:space-between;gap:16px;padding:5px 0;}
 .resource-tooltip-row>:last-child {flex-shrink:0;font-variant-numeric:tabular-nums;}
-.component-table .component-actions {white-space:nowrap;}
 .component-memory,.component-storage {position:relative;}
 .resource-value {position:relative;}
 dev-resource-chart {position:absolute;inset:6px 3px 0;pointer-events:none;color:var(--dashboard-active);}
@@ -219,10 +218,6 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table tbody .component-memory,.component-table tbody .component-storage {display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;padding:14px 0;min-height:78px;white-space:normal;border-top:1px solid var(--dashboard-border);}
 .component-memory::before,.component-storage::before {content:attr(data-label);display:block;font-size:12px;color:var(--dashboard-muted);margin-bottom:8px;}
 .component-table .resource-value {font-variant-numeric:tabular-nums;font-size:13px;line-height:1.5;}
-.component-table tbody .component-restart {justify-content:flex-start;}
-.component-table tbody .component-actions {justify-content:flex-end;}
-.component-restart .icon-button,.component-actions .application-link {width:auto;padding:0 10px;gap:7px;border-radius:9px;font-size:12px;}
-.component-actions .application-link {color:var(--dashboard-active);background:var(--dashboard-active-soft);}
 .environment-tests {padding:24px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
 .environment-tests .test-summary {margin-top:0;}
 .environment-tests .test-heading {padding:0;margin-bottom:8px;}
@@ -239,9 +234,6 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .applications-section {margin-top:24px;}
 .applications-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
 .applications-heading h2 {font-size:17px;}
-.application-actions {display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-.application-actions .icon-button {display:inline-flex;align-items:center;gap:6px;width:auto;min-height:32px;padding:6px 10px;}
-.application-actions .application-link {background:var(--dashboard-active-soft);color:var(--dashboard-active);border-radius:9px;}
 .application-overview {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:20px;min-width:0;}
 .application-overview .component-table-scroll {margin:0;min-width:0;max-width:420px;}
 .application-overview .component-memory {grid-column:1/-1;}
@@ -252,28 +244,31 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .infrastructure-section h2 {font-size:17px;}
 .infrastructure-section header p {font-size:12px;margin-top:6px;}
 .infrastructure-section .component-table-scroll {margin:0;}
-.infrastructure-section .component-table tbody tr {grid-template-columns:minmax(150px,1.2fr) repeat(2,minmax(0,1fr)) auto auto;gap:12px 20px;box-shadow:none;background:var(--dashboard-panel-soft);border-radius:14px;}
+.infrastructure-section .component-table tbody tr {grid-template-columns:minmax(150px,1.2fr) repeat(2,minmax(0,1fr));gap:12px 20px;box-shadow:none;background:var(--dashboard-panel-soft);border-radius:14px;}
 .infrastructure-section .component-table tbody .component-name {grid-column:1;grid-row:1;font-size:14px;}
 .infrastructure-section .component-name > i {flex-basis:32px;height:32px;font-size:17px;border-radius:10px;}
 .infrastructure-section .component-table tbody .component-status {grid-column:1;grid-row:2;margin-bottom:0;}
 .infrastructure-section .component-table tbody .component-memory {grid-column:2;grid-row:1/3;border-top:0;justify-content:center;}
 .infrastructure-section .component-table tbody .component-storage {grid-column:3;grid-row:1/3;border-top:0;justify-content:center;}
-.infrastructure-section .component-table tbody .component-restart {grid-column:4;grid-row:1/3;}
-.infrastructure-section .component-table tbody .component-actions {grid-column:5;grid-row:1/3;}
 @media(max-width:1100px) {
   .infrastructure-section .component-table tbody tr {grid-template-columns:repeat(2,minmax(0,1fr));}
   .infrastructure-section .component-table tbody .component-name {grid-column:1/-1;grid-row:1;}
   .infrastructure-section .component-table tbody .component-status {grid-column:1/-1;grid-row:2;}
   .infrastructure-section .component-table tbody .component-memory {grid-column:1;grid-row:3;}
   .infrastructure-section .component-table tbody .component-storage {grid-column:2;grid-row:3;}
-  .infrastructure-section .component-table tbody .component-restart {grid-column:1;grid-row:4;}
-  .infrastructure-section .component-table tbody .component-actions {grid-column:2;grid-row:4;}
 }
 
 .resource-reading {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-width:0;}
 .resource-reading > dev-resource-detail {min-width:0;}
 .resource-reading .resource-value {overflow-wrap:anywhere;}
 
-.component-table tbody .component-app-restart {grid-column:1/-1;justify-content:flex-end;}
-.component-app-restart .icon-button,.component-actions > .icon-button {width:auto;display:inline-flex;gap:6px;padding:0 8px;white-space:nowrap;}
-.maintenance-help {font-size:12px;color:var(--dashboard-muted);margin:12px 0 0;}
+.component-table tbody .application-component .component-status {grid-column:1;grid-row:2;margin-bottom:0;}
+.component-table tbody .component-app-restart {grid-column:2;grid-row:2;justify-content:flex-end;}
+.component-app-restart .icon-button {width:auto;gap:6px;padding:0 6px;white-space:nowrap;font-size:12px;}
+.workspace-actions {margin-left:auto;}
+.workspace-action-buttons {display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;}
+.current-project > .page-heading {flex-wrap:wrap;}
+@media(max-width:900px) {
+  .workspace-actions {flex-basis:100%;margin-left:0;text-align:left;}
+  .workspace-action-buttons {justify-content:flex-start;}
+}
