@@ -265,7 +265,7 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
   .infrastructure-section .component-table tbody .component-storage {grid-column:2;grid-row:3;}
 }
 
-.resource-reading {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;min-width:0;}
+.resource-reading {display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;min-width:0;}
 .resource-reading > dev-resource-detail {min-width:0;}
 .resource-reading .resource-value {overflow-wrap:anywhere;}
 
