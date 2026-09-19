@@ -16,7 +16,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
               [attr.aria-controls]="'variants-' + test.key" (click)="toggle(test.key)">
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" role="img" [attr.aria-label]="label(test.state)"></i>
               <i class="bi scenario-chevron" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
-              <span class="scenario-name"><strong>{{test.name}}</strong><small>{{test.suite}} · {{test.project}}</small></span>
+              <span class="scenario-name"><strong>{{test.name}}</strong><small>{{suiteName(test.suite)}} · {{test.project}}</small></span>
               <span class="scenario-group-summary">{{variants['passed'] || 0}} / {{total(variants)}} passed</span>
             </button>
             <div [id]="'variants-' + test.key" [hidden]="!expanded().has(test.key)" class="scenario-variants">
@@ -25,7 +25,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           } @else {
             <div class="scenario-row">
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" aria-hidden="true"></i>
-              <div class="scenario-name"><strong>{{displayName(test)}}</strong>@if(!group()) {<small [title]="test.source">{{test.suite}} · {{test.project}}</small>}</div>
+              <div class="scenario-name"><strong>{{displayName(test)}}</strong>@if(!group()) {<small [title]="test.source">{{suiteName(test.suite)}} · {{test.project}}</small>}</div>
               <span class="scenario-state">{{label(test.state)}}</span>
             </div>
           }
@@ -115,6 +115,7 @@ export class ScenarioListComponent implements OnInit, OnChanges, OnDestroy {
     });
   }
   total(counts:Record<string,number>) {return Object.values(counts).reduce((a,b)=>a+b,0);}
+  suiteName(suite:string) {return suite.slice(suite.lastIndexOf('.') + 1).replaceAll('$', '.');}
   displayName(test:TestCase) {
     const prefix=test.groupName ? test.groupName + ' · ' : '';
     return this.group() && prefix && test.name.startsWith(prefix) ? test.name.slice(prefix.length).trim() || test.name : test.name;
