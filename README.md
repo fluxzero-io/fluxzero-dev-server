@@ -43,6 +43,10 @@ Actions are visible by default, with search and All, Completed, Failed and Pendi
 actions, whose rows retain their Blocked status. Large lists offer Show more after 50 entries. Expand a command to load its JSON (type, revision and payload), then use Copy to copy the displayed JSON.
 Command details are loaded only on demand for the active session; diagnostic details remain in the agent tools.
 
+App preview uses a compact navigation bar with Back, Forward, Refresh and Open in new tab.
+Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
+preview URL; external pages that cannot expose their location fall back to the application entry point.
+
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
 Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups
 and scenarios appear first. Show more adds 50 entries at a time and live refresh preserves expanded lists.

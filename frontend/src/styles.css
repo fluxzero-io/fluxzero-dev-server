@@ -196,14 +196,16 @@ dev-projects {display:block;container-type:inline-size;}
 @container (max-width:575.98px) {.project-page {width:calc(100% - 24px);}}
 
 .application-page { display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
-.application-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 32px; border-bottom: 1px solid var(--dashboard-border); }
-.application-heading h1 { margin-bottom: 4px; }
-.application-heading p { overflow-wrap: anywhere; }
-.application-tools { display: flex; gap: 8px; flex-shrink: 0; }
+.application-heading { display:flex;align-items:center;gap:12px;min-height:48px;padding:6px 20px;border-bottom:1px solid var(--dashboard-border);box-sizing:border-box;background:var(--dashboard-surface); }
+.application-tools {display:flex;gap:4px;flex-shrink:0;}
+.application-heading .icon-button {width:30px;height:30px;border:0;color:var(--dashboard-muted);background:transparent;}
+.application-heading .icon-button:hover:not(:disabled) {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+.application-heading .icon-button:disabled {opacity:.3;cursor:default;}
+.preview-location {flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--dashboard-muted);}
 .application-page iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: #fff; }
 .application-empty { padding: 32px; }
 .application-empty h2 { margin-bottom: 8px; }
-@media(max-width: 650px) { .application-heading { padding: 24px 16px; }.application-empty { padding: 24px 16px; } }
+@media(max-width: 650px) { .application-heading {padding:6px 12px 6px 48px;}.application-empty { padding: 24px 16px; } }
 
 /* Environment overview: reuse dashboard colors, with a softer workspace hierarchy. */
 select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}

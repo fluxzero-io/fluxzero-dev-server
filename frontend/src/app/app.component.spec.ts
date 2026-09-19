@@ -175,7 +175,7 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', location.pathname);
     fixture.componentInstance.readRoute(); fixture.detectChanges();
     expect(fixture.componentInstance.route()).toBe('application');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('App preview');
+    expect(fixture.nativeElement.querySelector('.application-heading').getAttribute('aria-label')).toBe('Preview navigation');
     fixture.componentInstance.navigate('projects'); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Workspace');
     fixture.nativeElement.querySelector('.dashboard-brand').click(); fixture.detectChanges();
@@ -498,7 +498,7 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBe(frame);
     expect(app.applicationSource()).toBe(source);
     expect(frame.closest('section')!.hidden).toBeFalse();
-    expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBeNull();
+    expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBe('_blank');
   });
   it('handles direct app routes and shows an unavailable state without a frame URL', () => {
     history.replaceState(null, '', '#application');

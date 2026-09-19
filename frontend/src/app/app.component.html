@@ -29,18 +29,20 @@
     @if(route() === 'tests') {<dev-tests [status]="status()"/>}
     @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
-    <section class="application-page" [hidden]="route() !== 'application'" aria-labelledby="application-title">
-      <header class="application-heading">
-        <div><h1 id="application-title">App preview</h1><p>{{currentName()}}</p></div>
+    <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">
+      <header class="application-heading" aria-label="Preview navigation">
+        <div class="application-tools">
+          <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="preview.go(1)" [disabled]="!preview.canForward()" aria-label="Forward in preview" title="Forward"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+        </div>
+        <span class="preview-location" [title]="preview.url() || applicationUrl() || currentName()">{{currentName()}}</span>
         @if(applicationUrl(); as url) {
-          <div class="application-tools">
-            <button class="icon-button" (click)="reloadApplication()" aria-label="Reload application" title="Reload application"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
-            <a class="icon-button" [href]="url" aria-label="Open application full page" title="Open application full page"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
-          </div>
+          <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }
       </header>
       @if(applicationSource(); as source) {
-        <iframe #applicationFrame name="dev-application" [title]="currentName() + ' application'" [src]="source"></iframe>
+        <iframe #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
       } @else {
         <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
       }

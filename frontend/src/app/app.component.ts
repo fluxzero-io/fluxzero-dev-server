@@ -1,3 +1,4 @@
+import {PreviewNavigation} from './preview-navigation';
 import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
@@ -33,11 +34,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const url = this.applicationUrl();
     return this.applicationOpened() && url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : undefined;
   });
+  readonly preview = new PreviewNavigation();
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
-  reloadApplication() {
-    const url = this.applicationUrl();
-    if (url && this.applicationFrame) this.applicationFrame.nativeElement.src = url;
+  applicationLoaded() {
+    if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!);
   }
+  reloadApplication() {if(this.applicationUrl()) this.preview.refresh(this.applicationUrl()!);}
   readonly dark = signal(false);
   readonly themePreference = signal('system');
   private readonly systemTheme = matchMedia('(prefers-color-scheme: dark)');
@@ -82,7 +84,7 @@ export class AppComponent implements OnInit, OnDestroy {
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
   }
-  ngOnDestroy() { this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
+  ngOnDestroy() { this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
   @HandleQuery('getEnvironments') getEnvironments(): Promise<{environments: Environment[]}> {
     return firstValueFrom(this.http.get<{environments: Environment[]}>('environments.json', {timeout: 10000}));
