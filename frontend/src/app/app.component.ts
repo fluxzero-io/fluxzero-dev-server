@@ -210,6 +210,12 @@ export class AppComponent implements OnInit, OnDestroy {
     this.environments.update(projects => projects.map(p => p.id === id ? environment : p));
     this.openEnvironment(environment);
   }
+  @HandleCommand('renameProject') async renameProject({id, name}: {id: string; name: string}) {
+    if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown project.');
+    const environment = await firstValueFrom(this.http.post<Environment>('projects/' + id + '/rename', {name},
+      {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+    this.environments.update(projects => projects.map(p => p.id === id ? environment : p));
+  }
   @HandleCommand('openProjectFolder') openProjectFolder(id: string) { return this.projectAction(id, 'open-folder'); }
   @HandleCommand('forgetProject') forgetProject(id: string) { return this.projectAction(id, 'forget'); }
   private async projectAction(id: string, action: 'open-folder' | 'forget') {

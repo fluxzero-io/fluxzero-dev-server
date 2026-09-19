@@ -9,13 +9,15 @@ import {ResourceGraphComponent} from './resource-graph.component';
 import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
+import {ProjectRenameComponent} from './project-rename.component';
 import {StartedAgoComponent} from './started-ago.component';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [ProjectRenameComponent, StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
+      <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/>@if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-started-ago [startedAt]="state.startedAt"/>}</div>
     </div>
