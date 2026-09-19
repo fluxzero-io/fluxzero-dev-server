@@ -37,8 +37,9 @@ These indicators clear on recovery and do not surface historical log errors or o
 Detailed diagnostics remain available through MCP.
 
 Workspace also shows the server's relative start time, with its exact local timestamp on hover.
-The Startup section lists reported startup actions in execution order with readable names and individual results.
-Successful runs stay collapsed behind a completion count; failed runs expand by default. Raw command payloads
+The Startup data section lists reported startup actions in execution order with readable names and individual results.
+Actions are visible by default, with search and All, Completed, Failed and Pending filters. Pending includes blocked
+actions, whose rows retain their Blocked status. Large lists offer Show more after 50 entries. Raw command payloads
 and diagnostic details remain in the existing agent tools rather than the dashboard.
 
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
