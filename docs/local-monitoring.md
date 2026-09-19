@@ -136,8 +136,12 @@ A local checkout can supply the pinned Git objects without modifying that checko
 ./mvnw -B package -Dauditlog.source=/path/to/fluxzero-auditlog
 ```
 
-CI uses `.github/actions/monitoring-source` and requires `AUDITLOG_SOURCE_TOKEN` with read-only
-contents access to `fluxzero-io/fluxzero-auditlog` (including a Dependabot secret for its workflow).
+CI uses `.github/actions/monitoring-source` with an organization-owned GitHub App installed only on
+`fluxzero-io/fluxzero-auditlog`, with Contents read-only (and the required Metadata read-only).
+Webhooks and user authorization are not needed. Configure `AUDITLOG_APP_CLIENT_ID` and
+`AUDITLOG_APP_PRIVATE_KEY` as Actions secrets in the dev-server repository, and as Dependabot
+secrets for dependency workflows. Each job mints a short-lived token scoped to that repository
+and Contents read-only; the action revokes it when the job ends. No personal access token is used.
 Checkout credentials are not persisted. Fork PRs without this secret cannot produce the complete
 distribution; run qualification on a trusted maintainer branch. No release or upload is performed
 by a local build. End users of the resulting artifact never need these build credentials.
