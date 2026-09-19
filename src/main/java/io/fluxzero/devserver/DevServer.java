@@ -626,7 +626,7 @@ public class DevServer implements AutoCloseable {
         if (config.backendEnabled()) components.add(component("testserver", "Fluxzero Testserver & Proxy", session.runtime(), false));
         if (monitoring != null) {
             components.add(component("auditlog", "Dev dashboard", session.services().get("monitoring-auditlog"), false));
-            components.add(component("storage", "Monitoring database", session.services().get("monitoring-storage"), false));
+            components.add(component("storage", "Dev dashboard store", session.services().get("monitoring-storage"), false));
         }
         lastStartedApps.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
             AppInstance app = entry.getValue();
