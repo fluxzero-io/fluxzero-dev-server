@@ -36,10 +36,21 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   readonly preview = new PreviewNavigation();
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
+  readonly previewCopied=signal(false);
+  readonly previewCopyError=signal('');
+  private previewCopyTimer?:ReturnType<typeof setTimeout>;
+  async copyPreviewUrl() {
+    const url=this.preview.url() || this.applicationUrl();if(!url) return;
+    this.previewCopyError.set('');
+    try {
+      await navigator.clipboard.writeText(url);this.previewCopied.set(true);
+      clearTimeout(this.previewCopyTimer);this.previewCopyTimer=setTimeout(()=>this.previewCopied.set(false),2000);
+    } catch {this.previewCopyError.set('Could not copy the URL.');}
+  }
   previewAddress() {
     const address=this.preview.url() || this.applicationUrl();
-    if(!address) return this.currentName();
-    try {const url=new URL(address);return url.host + url.pathname + url.search + url.hash;} catch {return this.currentName();}
+    if(!address) return '';
+    try {const url=new URL(address);return url.host + url.pathname + url.search + url.hash;} catch {return '';}
   }
   applicationLoaded() {
     if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!);
@@ -89,7 +100,7 @@ export class AppComponent implements OnInit, OnDestroy {
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
   }
-  ngOnDestroy() { this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
+  ngOnDestroy() { clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
   @HandleQuery('getEnvironments') getEnvironments(): Promise<{environments: Environment[]}> {
     return firstValueFrom(this.http.get<{environments: Environment[]}>('environments.json', {timeout: 10000}));

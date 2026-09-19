@@ -500,6 +500,12 @@ describe('Dev console navigation', () => {
     expect(frame.closest('section')!.hidden).toBeFalse();
     expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBe('_blank');
   });
+  it('copies the full current preview URL',async()=>{
+    const app=fixture.componentInstance;app.preview.url.set('http://localhost:4242/#/tickets');
+    const clipboard=spyOn(navigator.clipboard,'writeText').and.resolveTo();
+    await app.copyPreviewUrl();
+    expect(clipboard).toHaveBeenCalledOnceWith('http://localhost:4242/#/tickets');expect(app.previewCopied()).toBeTrue();
+  });
   it('handles direct app routes and shows an unavailable state without a frame URL', () => {
     history.replaceState(null, '', '#application');
     fixture.componentInstance.readRoute(); fixture.detectChanges();

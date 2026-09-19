@@ -44,7 +44,7 @@ actions, whose rows retain their Blocked status. Large lists offer Show more aft
 Command details are loaded only on demand for the active session; diagnostic details remain in the agent tools.
 
 App preview uses a compact navigation bar with Back, Forward, Refresh and Open in new tab.
-Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
+The current URL is centered with an icon-only Copy control. Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
 preview URL; external pages that cannot expose their location fall back to the application entry point.
 
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
