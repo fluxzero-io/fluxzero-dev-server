@@ -183,7 +183,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests', 'Startup data']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests', 'Startup']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');
