@@ -37,6 +37,13 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   readonly preview = new PreviewNavigation();
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
+  readonly previewExpanded = signal(false);
+  setPreviewExpanded(expanded: boolean) {
+    this.menuOpen.set(false);
+    this.previewExpanded.set(expanded);
+    setTimeout(() => this.elementRef.nativeElement.querySelector<HTMLElement>(
+      expanded ? '.preview-restore' : '.preview-expand')?.focus());
+  }
   readonly previewCopied=signal(false);
   readonly previewCopyError=signal('');
   private previewCopyTimer?:ReturnType<typeof setTimeout>;
@@ -67,7 +74,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly sidebarWidth = signal(Math.max(260, Math.min(520, Number(this.preference('devboard.sidebarWidth')) || 300)));
   readonly mobileNavigation = signal(matchMedia('(max-width: 650px)').matches);
   readonly resizingSidebar = signal(false);
-  readonly navigationHidden = computed(() => (this.mobileNavigation() || this.sidebarCollapsed()) && !this.menuOpen());
+  readonly navigationHidden = computed(() => this.previewExpanded() || (this.mobileNavigation() || this.sidebarCollapsed()) && !this.menuOpen());
   private resizePointer?: number;
   private preference(key:string) {try {return localStorage.getItem(key);} catch {return null;}}
   private savePreference(key:string, value:string) {try {localStorage.setItem(key,value);} catch { /* Keep working without storage. */ }}
@@ -285,6 +292,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
     if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
     this.route.set(route);
+    if (route !== 'application') this.previewExpanded.set(false);
     if (route === 'application') this.applicationOpened.set(true);
     if (this.isMonitoring()) {
       if(this.preference('devboard.monitoringExpanded') === null) this.monitoringExpanded.set(true);
@@ -334,6 +342,7 @@ export class AppComponent implements OnInit, OnDestroy {
         else history.replaceState(null, '', '#' + route);
       }
       this.route.set(route);
+    if (route !== 'application') this.previewExpanded.set(false);
     }
   }
 }

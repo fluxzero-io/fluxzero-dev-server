@@ -531,6 +531,36 @@ describe('Dev console navigation', () => {
     expect(frame.closest('section')!.hidden).toBeFalse();
     expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBe('_blank');
   });
+  it('expands preview without replacing the app, changing navigation preferences or consuming Escape', async () => {
+    const app = fixture.componentInstance;
+    app.navigate('application'); fixture.detectChanges();
+    const frame = fixture.nativeElement.querySelector('iframe[name="dev-application"]');
+    const saved = localStorage.getItem('devboard.sidebarCollapsed');
+    for (const collapsed of [false, true]) {
+      app.sidebarCollapsed.set(collapsed); fixture.detectChanges();
+      fixture.nativeElement.querySelector('.preview-expand').click(); fixture.detectChanges();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await fixture.whenStable(); fixture.detectChanges();
+      expect(app.navigationHidden()).toBeTrue();
+      expect(fixture.nativeElement.querySelector('.dashboard-shell').classList.contains('preview-expanded')).toBeTrue();
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.preview-restore'));
+      const escape = new KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true});
+      document.dispatchEvent(escape);
+      expect(escape.defaultPrevented).toBeFalse();
+      expect(app.previewExpanded()).toBeTrue();
+      fixture.nativeElement.querySelector('.preview-restore').click(); fixture.detectChanges();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      await fixture.whenStable(); fixture.detectChanges();
+      expect(app.previewExpanded()).toBeFalse();
+      expect(app.sidebarCollapsed()).toBe(collapsed);
+      expect(localStorage.getItem('devboard.sidebarCollapsed')).toBe(saved);
+      expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBe(frame);
+      expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.preview-expand'));
+    }
+    app.setPreviewExpanded(true);
+    app.navigate('projects'); fixture.detectChanges();
+    expect(app.previewExpanded()).toBeFalse();
+  });
   it('copies the full current preview URL',async()=>{
     const app=fixture.componentInstance;app.preview.url.set('http://localhost:4242/#/tickets');
     const clipboard=spyOn(navigator.clipboard,'writeText').and.resolveTo();

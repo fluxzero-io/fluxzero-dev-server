@@ -1,4 +1,4 @@
-<div class="dashboard-shell" [class.navigation-collapsed]="sidebarCollapsed()" [class.sidebar-resizing]="resizingSidebar()" [class.drawer-open]="menuOpen()" [style.--sidebar-width]="sidebarWidth() + 'px'">
+<div class="dashboard-shell" [class.preview-expanded]="previewExpanded()" [class.navigation-collapsed]="sidebarCollapsed()" [class.sidebar-resizing]="resizingSidebar()" [class.drawer-open]="menuOpen()" [style.--sidebar-width]="sidebarWidth() + 'px'">
   @if(menuOpen()) {<button class="nav-backdrop" (click)="closeNavigation()" aria-label="Close navigation" tabindex="-1"></button>}
   <aside id="devboard-navigation" class="dashboard-sidebar" [class.open]="menuOpen()" [attr.inert]="navigationHidden() ? '' : null" aria-label="Primary navigation" [attr.role]="menuOpen() ? 'dialog' : null" [attr.aria-modal]="menuOpen() ? 'true' : null">
     <div class="dashboard-brand">
@@ -34,6 +34,7 @@
     @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">
+      @if(previewExpanded()) {<button type="button" class="secondary-button preview-restore" (click)="setPreviewExpanded(false)" aria-label="Restore preview" title="Restore preview"><i class="bi bi-fullscreen-exit" aria-hidden="true"></i><span>Restore</span></button>}
       <header class="application-heading" aria-label="Preview navigation">
         <div class="application-tools">
           <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
@@ -45,9 +46,12 @@
           @if(applicationUrl()) {<button class="icon-button preview-copy" (click)="copyPreviewUrl()" [attr.aria-label]="previewCopied() ? 'URL copied' : 'Copy URL'" [title]="previewCopied() ? 'Copied' : 'Copy URL'"><i class="bi" [class.bi-copy]="!previewCopied()" [class.bi-check2]="previewCopied()" aria-hidden="true"></i></button>}
           <span class="preview-copy-status" role="status">{{previewCopyError() || (previewCopied() ? 'URL copied' : '')}}</span>
         </div>
+        <div class="application-tools preview-display-tools">
+          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(true)" aria-label="Expand preview" title="Expand preview"><i class="bi bi-arrows-fullscreen" aria-hidden="true"></i></button>
         @if(applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }
+        </div>
       </header>
       @if(applicationSource(); as source) {
         <iframe #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>

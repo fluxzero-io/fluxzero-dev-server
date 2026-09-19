@@ -44,6 +44,10 @@ actions, whose rows retain their Blocked status. Large lists offer Show more aft
 Command details are loaded only on demand for the active session; diagnostic details remain in the agent tools.
 
 App preview uses a compact navigation bar with Back, Forward, Refresh and Open in new tab.
+Expand preview temporarily hides Devboard navigation and the preview toolbar, keeping the same app frame alive.
+A visible Restore button returns to the previous layout without changing the saved sidebar preference.
+Escape remains available to the app; it does not exit expanded preview. Mobile viewports already hide the sidebar.
+
 The current URL is centered with an icon-only Copy control. Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
 preview URL; external pages that cannot expose their location fall back to the application entry point.
 

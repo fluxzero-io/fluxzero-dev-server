@@ -213,7 +213,7 @@ dev-projects {display:block;container-type:inline-size;}
 .application-page iframe { display: block; flex: 1 1 auto; width: 100%; min-height: 0; border: 0; background: #fff; }
 .application-empty { padding: 32px; }
 .application-empty h2 { margin-bottom: 8px; }
-@media(max-width: 650px) { .application-heading {padding:6px 12px 6px 48px;grid-template-columns:98px minmax(0,1fr) 30px;gap:6px;}.application-empty { padding: 24px 16px; } }
+@media(max-width: 650px) { .application-heading {padding:6px 12px 6px 48px;grid-template-columns:98px minmax(0,1fr) 66px;gap:6px;}.application-empty { padding: 24px 16px; } }
 
 /* Environment overview: reuse dashboard colors, with a softer workspace hierarchy. */
 select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
@@ -359,3 +359,10 @@ dev-project-rename {flex-shrink:0;}
 dev-project-rename small {color:var(--dashboard-muted);}
 
 .rename-project-button {width:26px;height:26px;}
+
+.preview-display-tools {justify-self:end;}
+.preview-expanded .dashboard-sidebar,.preview-expanded .sidebar-resizer,.preview-expanded .navigation-bar {display:none;}
+.preview-expanded .application-page {position:fixed;inset:0;z-index:30;height:100dvh;background:var(--dashboard-surface);}
+.preview-expanded .application-heading {display:none;}
+.preview-restore {position:absolute;top:max(12px,env(safe-area-inset-top));right:max(12px,env(safe-area-inset-right));z-index:1;display:flex;align-items:center;gap:8px;min-height:36px;background:var(--dashboard-surface);box-shadow:0 2px 12px #10203926;}
+body:has(.preview-expanded) {overflow:hidden;}
