@@ -488,10 +488,10 @@ rather than the observed storage peak. Totals, limits and component details auto
 MiB, GiB and larger). Cards show labeled memory and storage measurements and reflow into a single column on
 narrow screens. Long names and paths wrap, and component popovers stay within the visible viewport.
 
-The workspace restart control offers **All apps and UI** (the default) and **Complete environment**.
-Choosing a scope does not execute the action. All apps and UI reuses the last ready backend builds and replaces
+The workspace restart control offers **Apps** and **Environment**. The selected scope is remembered in localStorage; the initial default is Apps.
+Choosing a scope does not execute the action. Apps reuses the last ready backend builds and replaces
 managed frontend processes while retaining their ports and the Test Server. Each app also has an individual restart.
-Complete environment replaces the managed environment within the standalone launcher JVM, retaining the public
+Environment replaces the managed environment within the standalone launcher JVM, retaining the public
 port. It always asks for confirmation and warns that in-memory application data is reset because a fresh Test Server
 is started. Configured initial commands run again; on-disk monitoring history is retained. The launcher PID stays unchanged.
 There is no separate Reset data action in the dashboard. Legacy per-store HTTP maintenance actions remain for

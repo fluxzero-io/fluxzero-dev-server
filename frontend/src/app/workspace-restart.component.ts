@@ -7,7 +7,7 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
       (click)="restart.emit(selected().key)">
       @if(restarting()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting"></span>}
       @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
-      <span><small>Restart</small>{{selected().label}}</span>
+      <span>Restart {{selected().label}}</span>
     </button>
     <button #trigger class="restart-choice" type="button" aria-label="Choose restart scope" aria-haspopup="menu"
       aria-controls="restart-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
@@ -26,12 +26,11 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
-  .restart-control {display:flex;border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-active-soft);}
-  .restart-control button {border:0;background:transparent;color:var(--dashboard-active);}
-  .restart-action {display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:9px 0 0 9px;text-align:left;}
-  .restart-action span {font-size:13px;font-weight:600;}
-  .restart-action small {display:block;font-size:10px;font-weight:400;margin-bottom:2px;}
-  .restart-choice {width:34px;border-left:1px solid var(--dashboard-border)!important;border-radius:0 9px 9px 0;}
+  .restart-control {display:flex;align-items:center;}
+  .restart-control button {border:0;background:transparent;color:var(--dashboard-muted);font-size:12px;height:30px;}
+  .restart-action {display:flex;align-items:center;gap:6px;padding:0 4px 0 6px;border-radius:5px;text-align:left;white-space:nowrap;}
+  .restart-action span {font-size:12px;font-weight:400;}
+  .restart-choice {width:24px;border-radius:5px;font-size:10px!important;}
   button:hover:not(:disabled) {background:var(--dashboard-panel-soft);}
   button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
   .restart-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
@@ -41,7 +40,6 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
   .restart-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
   .restart-menu strong {font-size:13px;font-weight:600;}
   .restart-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
-  @media(max-width:900px) {.restart-menu {left:0;right:auto;}}
 `})
 export class WorkspaceRestartComponent {
   readonly busy = input(false);
@@ -49,11 +47,11 @@ export class WorkspaceRestartComponent {
   readonly appsSupported = input(false);
   readonly environmentSupported = input(false);
   readonly restart = output<string>();
-  readonly scope = signal('restart-application');
+  readonly scope = signal(this.savedScope());
   readonly open = signal(false);
   readonly options = [
-    {key:'restart-application', label:'All apps and UI', description:'Restart backend apps and UI servers. Keep shared services running.'},
-    {key:'restart-devserver', label:'Complete environment', description:'Restart apps, UI, the dev server and all supporting services.'}
+    {key:'restart-application', label:'Apps', description:'Restart backend apps and UI servers. Keep shared services running.'},
+    {key:'restart-devserver', label:'Environment', description:'Restart apps, UI, the dev server and all supporting services.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   readonly restarting = computed(() => this.action() === 'restart-application' || this.action() === 'restart-devserver');
@@ -62,6 +60,10 @@ export class WorkspaceRestartComponent {
   @ViewChild('trigger') trigger?: ElementRef<HTMLButtonElement>;
   @ViewChild('menu') menu?: ElementRef<HTMLElement>;
   constructor() { effect(() => { if (this.busy()) this.close(); }); }
+  private savedScope() {
+    try { return localStorage.getItem('devRestartScope') === 'restart-devserver' ? 'restart-devserver' : 'restart-application'; }
+    catch { return 'restart-application'; }
+  }
   supported(key: string) { return key === 'restart-application' ? this.appsSupported() : this.environmentSupported(); }
   toggle() {
     if (this.busy()) return;
@@ -74,7 +76,9 @@ export class WorkspaceRestartComponent {
   }
   choose(key: string) {
     if (this.busy() || !this.supported(key)) return;
+    if (!this.options.some(option => option.key === key)) return;
     this.scope.set(key);
+    try { localStorage.setItem('devRestartScope', key); } catch { /* Selection also works without storage. */ }
     this.close(true);
   }
   private close(restoreFocus = false) {

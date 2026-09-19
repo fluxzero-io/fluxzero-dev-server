@@ -131,12 +131,18 @@ button:disabled { opacity: .35; cursor: default; }
 .test-counts {position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-start;gap:4px;padding:0 8px;color:var(--dashboard-text);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums;}
 .test-summary>small {margin-left:38px;color:var(--dashboard-muted);}
 .maintenance-confirm {padding:16px;border:1px solid var(--dashboard-border);border-radius:8px;}
-.maintenance-confirm button {margin-right:8px;}
+.maintenance-confirm button {margin:0;}
 @media(max-width:650px){.test-heading {padding-left:0;}}
 
-dialog.maintenance-confirm {width:min(540px,calc(100vw - 40px));box-sizing:border-box;background:var(--dashboard-surface);color:var(--dashboard-text);padding:24px;box-shadow:0 20px 80px #0004;}
+dialog.maintenance-confirm {width:min(540px,calc(100vw - 40px));box-sizing:border-box;background:var(--dashboard-surface);color:var(--dashboard-text);padding:32px;box-shadow:0 20px 80px #0004;}
 dialog.maintenance-confirm::backdrop {background:#0007;}
-dialog.maintenance-confirm h2 {margin-top:0;font-size:20px;}
+dialog.maintenance-confirm h2 {margin:0 0 18px;font-size:20px;line-height:1.35;}
+dialog.maintenance-confirm > p {line-height:1.7;}
+dialog.maintenance-confirm .dialog-actions {margin-top:32px;gap:12px;}
+@media(max-width:450px) {
+  dialog.maintenance-confirm {padding:24px;}
+  dialog.maintenance-confirm .dialog-actions {margin-top:24px;}
+}
 .dialog-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:24px;}
 
 .badge::before {content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
@@ -269,6 +275,6 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .workspace-action-buttons {display:flex;justify-content:flex-end;align-items:center;gap:12px;flex-wrap:wrap;}
 .current-project > .page-heading {flex-wrap:wrap;}
 @media(max-width:900px) {
-  .workspace-actions {flex-basis:100%;margin-left:0;text-align:left;}
-  .workspace-action-buttons {justify-content:flex-start;}
+  .workspace-actions {margin-left:auto;align-self:flex-end;}
+  .workspace-action-buttons {justify-content:flex-end;}
 }
