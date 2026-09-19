@@ -20,7 +20,7 @@ describe('Scenario catalog', () => {
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
     expect(fixture.nativeElement.querySelector('.scenario-state').textContent).toBe('Passed');
     const filters=Array.from(fixture.nativeElement.querySelectorAll('.scenario-filters button') as NodeListOf<HTMLButtonElement>);
-    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped','Test output']);
+    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped','Output']);
     expect(filters[0].getAttribute('aria-pressed')).toBe('true');
     filters[2].click();fixture.detectChanges();
     const request=http.expectOne(r=>r.url==='tests.json');expect(request.request.params.get('state')).toBe('failed');

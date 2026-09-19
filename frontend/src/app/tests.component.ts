@@ -14,15 +14,15 @@ import {Handler, sendCommand} from './dom-handlers';
       <div class="tests-card">
         <dev-test-catalog>
           <div test-actions class="test-actions">
-            <button class="icon-button" type="button" aria-label="Rerun tests" title="Rerun tests"
+            <button class="icon-button" type="button" aria-label="Rerun" title="Rerun"
               [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()">
-              <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Rerun tests</span>
+              <i class="bi bi-arrow-clockwise" aria-hidden="true"></i><span>Rerun</span>
             </button>
-            <button class="icon-button" type="button" [attr.aria-label]="state.testResults?.paused ? 'Resume tests' : 'Pause tests'"
+            <button class="icon-button" type="button" [attr.aria-label]="state.testResults?.paused ? 'Resume' : 'Pause'"
               [title]="state.testResults?.paused ? 'Resume automatic tests' : 'Pause automatic tests'"
               [disabled]="changingTestPause() || !state.testResults?.runnable || busy()" [attr.aria-pressed]="!!state.testResults?.paused" (click)="toggleTests()">
               <i [class]="state.testResults?.paused ? 'bi bi-play-fill' : 'bi bi-pause-fill'" aria-hidden="true"></i>
-              <span>{{state.testResults?.paused ? 'Resume tests' : 'Pause tests'}}</span>
+              <span>{{state.testResults?.paused ? 'Resume' : 'Pause'}}</span>
             </button>
           </div>
           <div test-status class="test-status" aria-live="polite">

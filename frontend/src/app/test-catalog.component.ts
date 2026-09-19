@@ -76,7 +76,7 @@ export class TestCatalogComponent implements OnInit, OnDestroy {
   readonly query = signal('');
   readonly loading = signal(false);
   readonly error = signal('');
-  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'},{key:'output',label:'Test output'}];
+  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'},{key:'output',label:'Output'}];
   private readonly http = inject(HttpClient);
   private readonly zone = inject(NgZone);
   private request?: Subscription;

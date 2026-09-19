@@ -527,8 +527,8 @@ Confirmation cannot be disabled, including by preferences saved in earlier versi
 ### Live test progress and output
 
 **Tests** has its own sidebar page. Named scenarios and their latest outcomes appear in one card.
-Compact **Rerun tests** and **Pause tests** / **Resume tests** actions remain available above the tabs.
-Technical logs are available in the **Test output** tab on the right. The default **All** filter shows every discovered test,
+Compact **Rerun** and **Pause** / **Resume** actions remain available above the tabs.
+Technical logs are available in the **Output** tab on the right. The default **All** filter shows every discovered test,
 with failed tests first. Use **Passed**, **Failed**, or **Skipped** to narrow the results. Search works across
 names, suites and modules, with 50 results per page. This inventory is
 loaded only while viewing Tests, separately from the frequent status updates. It describes discovered tests,
