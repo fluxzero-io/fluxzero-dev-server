@@ -2,13 +2,13 @@
   <button class="mobile-menu icon-button" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list"></i></button>
   @if(menuOpen()) {<button class="nav-backdrop" (click)="menuOpen.set(false)" aria-label="Close navigation"></button>}
   <aside class="dashboard-sidebar" [class.open]="menuOpen()">
-    <a class="dashboard-brand" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Dev dashboard home">
-      <img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt="">
-      <span class="brand-title">Fluxzero<span>Dev dashboard</span></span>
-    </a>
+    <div class="dashboard-brand">
+      <a class="brand-home" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Devboard home"><img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt=""></a>
+      <span class="brand-title">Fluxzero<span>Devboard</span></span>
+    </div>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <dev-profile-selector [status]="status()" [connected]="connected()"/>
-    <nav aria-label="Dev dashboard navigation">
+    <nav aria-label="Devboard navigation">
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Workspace</span>@if(connected() && status()?.workspaceIssue) {<span class="nav-issue-badge" role="img" aria-label="Workspace needs attention" [title]="status()?.workspaceIssue">!</span>}</a>
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>

@@ -12,6 +12,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .dashboard-sidebar { width: 300px; flex: 0 0 300px; height: 100dvh; position: sticky; top: 0; padding: 24px 22px 16px; background: var(--dashboard-sidebar-bg); border-right: 1px solid var(--dashboard-border); box-shadow: var(--dashboard-sidebar-shadow); display: flex; flex-direction: column; z-index: 20; }
 .dashboard-brand { display: flex; align-items: center; gap: 12px; min-height: 80px; margin-bottom: 28px; }
 .brand-mark { width: 80px; height: 80px; flex: 0 0 80px; object-fit: contain; }
+.brand-home {display:flex;flex-shrink:0;border-radius:8px;}
+.brand-home:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
 .brand-title { color: var(--dashboard-text); font-size: 20px; font-weight: 600; line-height: 1.25; }
 .brand-title span { display: block; font-size: 18px; font-weight: 500; }
 nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }

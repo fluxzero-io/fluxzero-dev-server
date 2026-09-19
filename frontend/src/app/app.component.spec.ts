@@ -178,7 +178,7 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.application-heading').getAttribute('aria-label')).toBe('Preview navigation');
     fixture.componentInstance.navigate('projects'); fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Workspace');
-    fixture.nativeElement.querySelector('.dashboard-brand').click(); fixture.detectChanges();
+    fixture.nativeElement.querySelector('.brand-home').click(); fixture.detectChanges();
     expect(location.hash).toBe('#application');
   });
   it('scopes the menu and project page to the selected dev server', () => {
