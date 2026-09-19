@@ -99,6 +99,15 @@ final class MavenBuildCoordinator implements AutoCloseable {
         }
     }
 
+    <T> T withMaintenanceLock(Duration timeout, InterruptibleSupplier<T> action) throws Exception {
+        if (!lock.tryLock(timeout.toNanos(), java.util.concurrent.TimeUnit.NANOSECONDS))
+            throw new IllegalStateException("Timed out waiting for active build/test work to finish");
+        try {
+            if (closed.get()) throw new InterruptedException("Build coordinator is closed");
+            return action.get();
+        } finally { lock.unlock(); }
+    }
+
     @Override
     public void close() {
         if (!closed.compareAndSet(false, true)) {

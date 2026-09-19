@@ -1,0 +1,1 @@
+package example;import org.junit.jupiter.api.*;class OtherTest {@Test void another()throws Exception{Thread.sleep(1600);}}

@@ -50,7 +50,8 @@ record DevProjectConfig(
         CommandDefaults commandDefaults,
         @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
         String defaultProfile,
-        Map<String, Profile> profiles
+        Map<String, Profile> profiles,
+        DevMonitoringConfig monitoring
 ) {
     static final Path FILE = Path.of(".fluxzero", "dev.yaml");
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
@@ -73,8 +74,12 @@ record DevProjectConfig(
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
         validateCommands(commands, "commands");
+        validateMonitoringServices(monitoring, services);
         validateFrontendOnly(frontendOnly, mainClass, applicationName, namespace, apps, applicationConfig,
                              projects, idp, fastCompiler, backendPaths, frontend, frontends, commands);
+        if (monitoring != null && monitoring.enabled() && Boolean.TRUE.equals(frontendOnly)) {
+            throw new IllegalArgumentException("monitoring requires a local backend");
+        }
         profiles = profiles == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(profiles));
         profiles.forEach((id, profile) -> {
@@ -90,7 +95,7 @@ record DevProjectConfig(
                 throw new IllegalArgumentException("defaultProfile requires profiles");
             }
         } else {
-            if (legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
+            if (monitoring != null || legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
                                            applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                            backendPaths,
                                            frontend, frontends, services, lifecycle, commandDefaults,
@@ -126,7 +131,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of());
+                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of(), null);
     }
 
     Selection select(String requestedProfile) {
@@ -346,7 +351,8 @@ record DevProjectConfig(
             Map<String, Service> services,
             Lifecycle lifecycle,
             CommandDefaults commandDefaults,
-            @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands
+            @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
+            DevMonitoringConfig monitoring
     ) {
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
@@ -368,6 +374,7 @@ record DevProjectConfig(
             commands = commands == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
             validateCommands(commands, "commands");
+            validateMonitoringServices(monitoring, services);
             validateFrontendOnly(frontendOnly, mainClass, applicationName, namespace, apps, applicationConfig,
                                  projects, idp, fastCompiler, backendPaths, frontend, frontends, commands);
         }
@@ -377,7 +384,7 @@ record DevProjectConfig(
                                         applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                         backendPaths,
                                         frontend, frontends, services, lifecycle, commandDefaults, commands,
-                                        null, Map.of());
+                                        null, Map.of(), monitoring);
         }
     }
 
@@ -505,6 +512,12 @@ record DevProjectConfig(
         });
         if (!frontends.isEmpty() && !paths.containsKey("/")) {
             throw new IllegalArgumentException("frontends must contain exactly one frontend mounted at /");
+        }
+    }
+
+    private static void validateMonitoringServices(DevMonitoringConfig monitoring, Map<String, Service> services) {
+        if (monitoring != null && monitoring.enabled() && services != null && services.keySet().stream().anyMatch(id -> id.startsWith("monitoring-"))) {
+            throw new IllegalArgumentException("Service names starting with monitoring- are reserved for local monitoring");
         }
     }
 

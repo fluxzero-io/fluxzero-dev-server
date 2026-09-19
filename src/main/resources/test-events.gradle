@@ -1,0 +1,35 @@
+initscript { dependencies { classpath files(System.getenv('FLUXZERO_DEV_TEST_JAR')) } }
+import io.fluxzero.devserver.listener.TestEventClient
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+
+gradle.allprojects { project ->
+    project.tasks.withType(org.gradle.api.tasks.testing.Test).configureEach { task ->
+        task.testLogging.showStandardStreams = true
+        def client = null
+        def active = new ConcurrentHashMap<String, ConcurrentLinkedQueue<String>>()
+        def keyFor = { descriptor ->
+            def parts = []
+            for (def current = descriptor; current != null; current = current.parent) parts.add((current.className ?: '') + ':' + current.name)
+            parts.join('/')
+        }
+        task.doFirst {
+            client = new TestEventClient('gradle', task.path)
+            client.event('plan', '')
+        }
+        task.beforeTest { descriptor ->
+            def id = descriptor.className + '#' + descriptor.name
+            active.computeIfAbsent(keyFor(descriptor), {new ConcurrentLinkedQueue<String>()}).add(id)
+            client?.event('registered', id)
+            client?.event('started', id)
+        }
+        task.afterTest { descriptor, result ->
+            def id = active.get(keyFor(descriptor))?.poll() ?: (descriptor.className + '#' + descriptor.name)
+            client?.event(result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.SUCCESS ? 'passed' :
+                result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.SKIPPED ? 'skipped' : 'failed', id)
+        }
+        task.afterSuite { descriptor, result ->
+            if (descriptor.parent == null) {client?.event('end', ''); client?.close(); client = null}
+        }
+    }
+}

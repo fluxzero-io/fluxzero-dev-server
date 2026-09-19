@@ -34,12 +34,20 @@ final class TestPipeline implements AutoCloseable {
     private final Consumer<TestStatus> statusConsumer;
     private final Consumer<String> output;
     private final TestPlanner planner;
+    private final Runnable progressChanged;
+    private volatile TestTelemetry telemetry;
+    private final TestInventory inventory;
+    List<TestCatalog.Case> testCases(String project) {return inventory.cases(project);}
+    TestInventory.Snapshot inventory() {return inventory.snapshot();}
+    TestTelemetry.Progress liveProgress() {var current=telemetry;return current==null?null:current.progress();}
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Path> pendingChanges = new LinkedHashSet<>();
     private final Set<String> failingSelectors = new LinkedHashSet<>();
     private final Set<String> incompleteSelectors = new LinkedHashSet<>();
     private final AtomicBoolean running = new AtomicBoolean();
+    private boolean automaticPaused;
     private boolean initialRequested;
+    private boolean manualRequested;
     private boolean moduleFailurePending;
     private boolean moduleIncompletePending;
 
@@ -50,12 +58,19 @@ final class TestPipeline implements AutoCloseable {
 
     TestPipeline(DevServerConfig config, DevSessionStore sessionStore, MavenBuildCoordinator coordinator,
                  Consumer<TestStatus> statusConsumer, Consumer<String> output) {
+        this(config,sessionStore,coordinator,statusConsumer,output,()->{});
+    }
+
+    TestPipeline(DevServerConfig config, DevSessionStore sessionStore, MavenBuildCoordinator coordinator,
+                 Consumer<TestStatus> statusConsumer, Consumer<String> output, Runnable progressChanged) {
+        this.progressChanged=progressChanged;
         this.config = config;
         this.sessionStore = sessionStore;
         this.coordinator = coordinator;
         this.statusConsumer = statusConsumer;
         this.output = output;
         this.planner = new TestPlanner(config.projectDirectory());
+        this.inventory = new TestInventory(sessionStore.directory());
         restoreIncompleteRun();
     }
 
@@ -65,6 +80,7 @@ final class TestPipeline implements AutoCloseable {
         }
         synchronized (pendingChanges) {
             pendingChanges.addAll(changedFiles);
+            if (!automaticPaused) manualRequested = false; // A newer automatic run supersedes a queued manual run.
         }
         schedule();
     }
@@ -79,9 +95,24 @@ final class TestPipeline implements AutoCloseable {
         schedule();
     }
 
+    void requestFullRun() {
+        if (!config.testsEnabled()) return;
+        synchronized (pendingChanges) { manualRequested = true; }
+        schedule();
+    }
+
+    void setAutomaticPaused(boolean paused) {
+        synchronized (pendingChanges) { automaticPaused = paused; }
+        schedule();
+    }
+
     private void schedule() {
-        if (running.compareAndSet(false, true)) {
-            executor.submit(this::drain);
+        synchronized (pendingChanges) {
+            if ((!automaticPaused || manualRequested) && !executor.isShutdown()
+                    && (!pendingChanges.isEmpty() || initialRequested || manualRequested)
+                    && running.compareAndSet(false, true)) {
+                executor.submit(this::drain);
+            }
         }
     }
 
@@ -89,14 +120,17 @@ final class TestPipeline implements AutoCloseable {
         try {
             while (true) {
                 Set<Path> changes;
-                boolean initial;
+                boolean initial, manual;
                 synchronized (pendingChanges) {
+                    if (automaticPaused && !manualRequested) return;
                     changes = Set.copyOf(pendingChanges);
                     pendingChanges.clear();
                     initial = initialRequested;
                     initialRequested = false;
+                    manual = manualRequested;
+                    manualRequested = false;
                 }
-                if (changes.isEmpty() && !initial) {
+                if (changes.isEmpty() && !initial && !manual) {
                     return;
                 }
                 TestInputSnapshot inputs = TestInputSnapshot.capture(config.projectDirectory());
@@ -114,7 +148,7 @@ final class TestPipeline implements AutoCloseable {
                         changes = Set.copyOf(initialChanges);
                     }
                 }
-                TestPlanner.TestPlan plan = initial && previous.isEmpty()
+                TestPlanner.TestPlan plan = manual ? TestPlanner.TestPlan.module("manual test run") : initial && previous.isEmpty()
                         ? TestPlanner.TestPlan.module(
                                 "initial test baseline", "no previously tested project snapshot")
                         : moduleFailurePending
@@ -126,22 +160,20 @@ final class TestPipeline implements AutoCloseable {
                 if (!plan.shouldRun() && initial) {
                     output.accept("[test] skipped initial tests because test inputs are unchanged");
                 }
-                if (runPlan(plan, changes)) {
+                RunOutcome outcome = runPlan(plan, changes, manual);
+                if (outcome == RunOutcome.RETRY) {
                     synchronized (pendingChanges) {
                         pendingChanges.addAll(changes);
                         initialRequested |= initial;
+                        manualRequested |= manual;
                     }
-                } else {
+                } else if (outcome == RunOutcome.FINISHED) {
                     sessionStore.writeTestInputs(inputs);
                 }
             }
         } finally {
             running.set(false);
-            synchronized (pendingChanges) {
-                if ((!pendingChanges.isEmpty() || initialRequested) && running.compareAndSet(false, true)) {
-                    executor.submit(this::drain);
-                }
-            }
+            schedule();
         }
     }
 
@@ -164,14 +196,18 @@ final class TestPipeline implements AutoCloseable {
                 });
     }
 
-    private boolean runPlan(TestPlanner.TestPlan plan, Set<Path> changes) {
+    private enum RunOutcome { FINISHED, RETRY, SUPERSEDED }
+
+    private RunOutcome runPlan(TestPlanner.TestPlan plan, Set<Path> changes, boolean manual) {
         if (!plan.shouldRun()) {
-            return false;
+            return RunOutcome.FINISHED;
         }
         List<String> selectors = plan.stableSelectors();
         output.accept("[test] " + runningDescription(plan, selectors));
         plan.selectorReasons().forEach((selector, reason) ->
                 output.accept("[test] selected " + selector + " because " + reason));
+        inventory.reset(selectors);
+        telemetry=new TestTelemetry(progressChanged, inventory);
         TestStatus runningStatus = TestStatus.running(selectors, plan.reason(), plan.selectorReasons());
         statusConsumer.accept(runningStatus);
         sessionStore.writeTestStatus(runningStatus);
@@ -179,26 +215,32 @@ final class TestPipeline implements AutoCloseable {
         List<String> command = buildTool == BuildTool.MAVEN
                 ? mavenTestCommand(plan, selectors)
                 : gradleTestCommand(plan, selectors);
+        if (manual && buildTool == BuildTool.GRADLE) command.add("--rerun-tasks");
         try {
+            Map<String,String> environment=new java.util.HashMap<>(buildTool == BuildTool.MAVEN ? MavenCommand.environment() : GradleCommand.environment());
+            telemetry.configure(command,environment,buildTool,sessionStore.directory());
             long reportStartedAt = System.currentTimeMillis();
             long startedNanos = System.nanoTime();
             TestReports.clear(config.projectDirectory(), buildTool);
             MavenBuildCoordinator.TestRun testRun = coordinator.runTest(
                     command, config.projectDirectory(),
-                    buildTool == BuildTool.MAVEN ? MavenCommand.environment() : GradleCommand.environment(),
-                    line -> output.accept("[test] " + line));
+                    environment, line -> output.accept("[test] " + line));
+            telemetry.drain();
             if (testRun.cancelledByCompile()) {
-                TestStatus status = TestStatus.queued(selectors, plan.reason(), plan.selectorReasons(),
-                                                      "interrupted for app compile; test run will resume");
-                output.accept("[test] queued after interruption for app compile");
+                TestStatus status = (manual
+                        ? TestStatus.incomplete(selectors, plan.reason(), plan.selectorReasons(), -1,
+                                                "superseded by an app compile; changed-code tests take precedence", 0)
+                        : TestStatus.queued(selectors, plan.reason(), plan.selectorReasons(),
+                                            "interrupted for app compile; test run will resume"))
+                        .withCounts(telemetry.progress().counts());
+                output.accept(manual ? "[test] manual run superseded by app compile"
+                                     : "[test] queued after interruption for app compile");
                 statusConsumer.accept(status);
                 sessionStore.writeTestStatus(status);
-                return true;
+                return manual ? RunOutcome.SUPERSEDED : RunOutcome.RETRY;
             }
             ProcessUtils.ProcessResult result = testRun.result();
-            TestReports.Result reports = result.success()
-                    ? TestReports.Result.empty()
-                    : TestReports.read(config.projectDirectory(), buildTool, reportStartedAt);
+            TestReports.Result reports = TestReports.read(config.projectDirectory(), buildTool, reportStartedAt);
             if (result.success()) {
                 if (plan.runModule()) {
                     failingSelectors.clear();
@@ -233,27 +275,37 @@ final class TestPipeline implements AutoCloseable {
                                            reports.firstFailure(), durationMillis)
                     : TestStatus.incomplete(statusSelectors, plan.reason(), plan.selectorReasons(),
                                             result.exitCode(), result.tail(detailLines), durationMillis);
+            TestCounts eventCounts=telemetry.progress().counts();
+            TestCounts finalCounts=reports.counts();
+            if(finalCounts==null || eventCounts.total()>finalCounts.total())finalCounts=eventCounts;
+            status = status.withCounts(finalCounts);
             output.accept("[test] " + resultDescription(status, plan, selectors));
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
-            return false;
+            return RunOutcome.FINISHED;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             rememberIncomplete(plan, selectors);
             TestStatus status = TestStatus.incomplete(selectors, plan.reason(), plan.selectorReasons(),
-                                                      -1, "test run interrupted", 0);
+                                                      -1, "test run interrupted", 0).withCounts(telemetry.progress().counts());
             output.accept("[test] incomplete " + selectionLabel(plan, selectors) + ": test run interrupted");
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
-            return false;
+            return RunOutcome.FINISHED;
         } catch (Exception e) {
             rememberIncomplete(plan, selectors);
             TestStatus status = TestStatus.incomplete(selectors, plan.reason(), plan.selectorReasons(),
-                                                      -1, e.getMessage(), 0);
+                                                      -1, e.getMessage(), 0).withCounts(telemetry.progress().counts());
             output.accept("[test] incomplete " + selectionLabel(plan, selectors) + ": " + e.getMessage());
             statusConsumer.accept(status);
             sessionStore.writeTestStatus(status);
-            return false;
+            return RunOutcome.FINISHED;
+        } finally {
+            telemetry.close();
+            var progress = telemetry.progress();
+            inventory.finish(plan.runModule(), progress.available() && !progress.lost() && progress.streamsEnded() && progress.containerFailures() == 0,
+                    telemetry.observedTests());
+            progressChanged.run();
         }
     }
 

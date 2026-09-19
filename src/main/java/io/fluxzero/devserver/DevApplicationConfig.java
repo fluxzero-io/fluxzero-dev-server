@@ -23,7 +23,7 @@ import java.util.regex.Pattern;
  * Project-shared launch configuration for one Fluxzero application flavor.
  *
  * @param application     application selector, such as a module, simple main class, or fully qualified main class
- * @param applicationName optional Fluxzero runtime application name override
+ * @param applicationName optional Fluxzero Test Server application name override
  * @param namespace       optional Fluxzero namespace override for this application
  * @param env             non-secret environment values passed to the application
  * @param secrets         environment variable names mapped to 1Password {@code op://} references

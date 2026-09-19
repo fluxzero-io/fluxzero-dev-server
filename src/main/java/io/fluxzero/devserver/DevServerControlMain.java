@@ -67,7 +67,7 @@ public final class DevServerControlMain {
         System.out.println("Fluxzero dev is " + displayState(session.status()) + ".");
         System.out.println("PID: " + session.pid());
         publicUrl(session).ifPresent(url -> System.out.println("URL: " + url));
-        System.out.println("Runtime: " + session.runtime().state());
+        System.out.println("Test Server: " + session.runtime().state());
         if (!session.services().isEmpty()) {
             System.out.println("Services: " + session.services().entrySet().stream()
                     .map(entry -> entry.getKey() + "=" + entry.getValue().state())

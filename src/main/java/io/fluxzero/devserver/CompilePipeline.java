@@ -82,7 +82,7 @@ final class CompilePipeline {
             Thread.currentThread().interrupt();
             return new CompileResult(false, null, "compile interrupted");
         } catch (Exception e) {
-            return new CompileResult(false, null, e.getMessage());
+            return new CompileResult(false, null, BuildPublication.describe(e));
         }
     }
 
@@ -154,7 +154,7 @@ final class CompilePipeline {
                                      "javac-fast failed and Maven fallback failed"
                                      + System.lineSeparator() + fallback.detail());
         } catch (Exception e) {
-            return new CompileResult(false, null, e.getMessage());
+            return new CompileResult(false, null, BuildPublication.describe(e));
         } finally {
             deleteRecursively(staging);
         }
@@ -167,7 +167,7 @@ final class CompilePipeline {
             Thread.currentThread().interrupt();
             return new CompileResult(false, null, "compile interrupted");
         } catch (Exception e) {
-            return new CompileResult(false, null, e.getMessage());
+            return new CompileResult(false, null, BuildPublication.describe(e));
         }
     }
 
@@ -239,9 +239,7 @@ final class CompilePipeline {
             Thread.currentThread().interrupt();
             throw e;
         } catch (Exception e) {
-            String detail = e.getMessage();
-            return new CompileResult(false, null,
-                                     detail == null || detail.isBlank() ? e.getClass().getSimpleName() : detail);
+            return new CompileResult(false, null, BuildPublication.describe(e));
         }
     }
 
@@ -314,6 +312,8 @@ final class CompilePipeline {
 
     private record SourceOutput(Path sourceRoot, Path classesDirectory) {
     }
+
+    BuildSnapshot activeSnapshot() { return activeSnapshot; }
 
     void activate(BuildSnapshot snapshot) {
         activate(snapshot, Set.of(snapshot.buildNumber()));
@@ -402,11 +402,7 @@ final class CompilePipeline {
                                   CompileTiming timing, List<ApplicationBuild> applications) throws Exception {
         long buildNumber = buildSequence.incrementAndGet();
         Path target = buildsDirectory().resolve("build-" + buildNumber + "-" + java.util.UUID.randomUUID());
-        try {
-            Files.move(staging, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (java.nio.file.AtomicMoveNotSupportedException e) {
-            Files.move(staging, target);
-        }
+        BuildPublication.publish(staging, target);
         Path publishedPrimary = target.resolve(staging.relativize(primaryClassesDirectory));
         List<ApplicationBuild> publishedApplications = applications.stream().map(application ->
                 application.withLocations(application.classesDirectories().stream()

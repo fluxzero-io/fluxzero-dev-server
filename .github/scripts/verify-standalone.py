@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise the downloaded distribution without the producer's classpath or user state."""
 import json
+import hashlib
+import io
 from pathlib import Path
 import subprocess
 import sys
@@ -16,6 +18,14 @@ with zipfile.ZipFile(jar) as archive:
     assert "Main-Class: io.fluxzero.devserver.DevServerMain\r\n" in manifest
     assert f"Implementation-Version: {version}\r\n" in manifest
     assert "Fluxzero-SDK-Version: " in manifest
+    monitoring = json.loads(archive.read("dev-monitoring/manifest.json"))
+    bundle = archive.read("dev-monitoring/auditlog.zip")
+    assert hashlib.sha256(bundle).hexdigest() == monitoring["sha256"]
+    assert "auditlog.jar" in monitoring["files"] and "ui/index.html" in monitoring["files"]
+    with zipfile.ZipFile(io.BytesIO(bundle)) as auditlog:
+        for name, checksum in monitoring["files"].items():
+            assert hashlib.sha256(auditlog.read(name)).hexdigest() == checksum, name
+    print("Distribution includes a checksummed Auditlog backend and UI")
 assert subprocess.check_output(["java", "-jar", str(jar), "--version"], text=True, timeout=15).strip() == (
     f"Fluxzero Dev Server {version}"
 )

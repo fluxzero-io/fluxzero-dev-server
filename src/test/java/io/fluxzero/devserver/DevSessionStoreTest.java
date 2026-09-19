@@ -163,7 +163,7 @@ class DevSessionStoreTest {
                 456L));
 
         store.invalidateCommandStatus(stopped.sessionId(),
-                                      "runtime session stopped; command will run again in the next session");
+                                      "Test Server session stopped; command will run again in the next session");
 
         assertEquals("stopped", store.reconcileUnexpectedStop().orElseThrow().status());
         assertEquals("stale", store.readCommandStatus().orElseThrow().state());

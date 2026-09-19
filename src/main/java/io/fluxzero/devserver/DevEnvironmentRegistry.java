@@ -28,6 +28,7 @@ import java.time.Instant;
 import java.util.Comparator;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** Global, non-sensitive index of project-local development sessions. */
@@ -57,6 +58,16 @@ final class DevEnvironmentRegistry {
                 SCHEMA_VERSION, projectDirectory.toString(), session.sessionId(), session.pid(), session.startedAt(),
                 session.devServerVersion(), Instant.now().toEpochMilli());
         write(registrationFile(projectDirectory), registration);
+        remember(session);
+        // Import older, currently registered dev servers into persistent discovery once.
+        try (var registrations = Files.list(directory)) {
+            registrations.filter(p -> p.getFileName().toString().endsWith(".json"))
+                    .map(this::readRegistration).flatMap(Optional::stream).forEach(r -> {
+                        try { Path project = Path.of(r.projectDirectory());
+                              if (!Files.exists(historyFile(project))) new DevSessionStore(project).readSession().ifPresent(this::remember); }
+                        catch (RuntimeException ignored) { /* A missing legacy session must not block startup. */ }
+                    });
+        } catch (IOException e) { throw new IllegalStateException("Cannot discover existing dev environments", e); }
     }
 
     synchronized void unregister(DevSession session) {
@@ -83,6 +94,125 @@ final class DevEnvironmentRegistry {
             throw new IllegalStateException("Failed to list Fluxzero dev environments in " + directory, e);
         }
     }
+
+    /** Persist discovery separately so CLI unregister/cleanup keeps its existing behavior. */
+    private void remember(DevSession session) {
+        Path project = canonicalProject(Path.of(session.projectDirectory()));
+        write(historyFile(project), new KnownProject(SCHEMA_VERSION, project.toString(), session.gateway().url(), false));
+    }
+
+    private Path historyFile(Path project) {
+        return directory.resolve("history").resolve(hash(project.toString()) + ".json");
+    }
+
+    synchronized Optional<ConsoleEnvironment> findKnown(String id) {
+        return listKnown().stream().filter(e -> e.id().equals(id)).findFirst();
+    }
+
+    /** User labels live separately so older registrations cannot overwrite them on startup. */
+    synchronized ConsoleEnvironment rename(String id, String name) {
+        var project = findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+        if (name == null || name.length() > 100 || name.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Use a name of at most 100 characters without control characters.");
+        }
+        Path path = Path.of(project.projectDirectory());
+        String label = name.strip();
+        Path file = nameFile(path);
+        if (label.isEmpty() || label.equals(folderName(path))) delete(file);
+        else write(file, Map.of("name", label));
+        return findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+    }
+
+    private Path nameFile(Path project) {
+        return directory.resolve("names").resolve(hash(project.toString()) + ".json");
+    }
+
+    private String displayName(Path project) {
+        try {
+            var name = objectMapper.readTree(nameFile(project).toFile()).path("name");
+            if (name.isTextual() && !name.asText().isBlank() && name.asText().length() <= 100
+                    && name.asText().chars().noneMatch(Character::isISOControl)) return name.asText();
+        } catch (IOException | RuntimeException ignored) { /* Missing or damaged preferences use the folder name. */ }
+        return folderName(project);
+    }
+
+    private static String folderName(Path project) {
+        return project.getFileName() == null ? project.toString() : project.getFileName().toString();
+    }
+
+    /** A tombstone hides legacy registrations without touching CLI ownership or project files. */
+    synchronized void forget(String id) {
+        var project = findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+        if (!"stopped".equals(project.status())) throw new IllegalStateException("Stop the dev server before removing it from the overview.");
+        Path path = Path.of(project.projectDirectory());
+        write(historyFile(path), new KnownProject(SCHEMA_VERSION, path.toString(), null, true));
+    }
+
+    /** Read-only UI projection; does not reconcile, stop, or start another environment. */
+    synchronized List<ConsoleEnvironment> listKnown() {
+        var projects = new java.util.TreeMap<String, KnownProject>();
+        Path history = directory.resolve("history");
+        if (Files.isDirectory(history)) {
+            try (var files = Files.list(history)) {
+                files.filter(p -> p.getFileName().toString().endsWith(".json")).forEach(p -> {
+                    try {
+                        KnownProject known = objectMapper.readValue(p.toFile(), KnownProject.class);
+                        if (known.version() == SCHEMA_VERSION && Path.of(known.projectDirectory()).isAbsolute())
+                            projects.put(known.projectDirectory(), known);
+                    } catch (IOException | RuntimeException ignored) { /* Ignore incomplete history entries. */ }
+                });
+            } catch (IOException e) { throw new IllegalStateException("Cannot read known dev environments", e); }
+        }
+        if (Files.isDirectory(directory)) {
+            try (var files = Files.list(directory)) {
+                files.filter(p -> p.getFileName().toString().endsWith(".json"))
+                        .map(this::readRegistration).flatMap(Optional::stream)
+                        .forEach(r -> projects.putIfAbsent(r.projectDirectory(),
+                                                         new KnownProject(SCHEMA_VERSION, r.projectDirectory(), null, false)));
+            } catch (IOException e) { throw new IllegalStateException("Cannot read dev environments", e); }
+        }
+        return projects.values().stream().map(known -> {
+                    var environment = consoleEnvironment(known);
+                    // A racing restart or an older server version must always remain discoverable.
+                    return known.hidden() && !"running".equals(environment.status()) ? null : environment;
+                }).filter(java.util.Objects::nonNull)
+                .sorted(Comparator.comparing(ConsoleEnvironment::projectName, String.CASE_INSENSITIVE_ORDER)
+                                .thenComparing(ConsoleEnvironment::projectDirectory)).toList();
+    }
+
+    private ConsoleEnvironment consoleEnvironment(KnownProject known) {
+        Path project = Path.of(known.projectDirectory());
+        DevSession current;
+        try { current = new DevSessionStore(project).readSession().orElse(null); }
+        catch (RuntimeException ignored) { current = null; }
+        boolean running = current != null && !current.status().startsWith("stopped")
+                && ProcessUtils.isAlive(current.pid(), current.startedAt());
+        boolean responsive = running && Instant.now().toEpochMilli() - current.heartbeatAt() <= HEARTBEAT_TIMEOUT.toMillis();
+        boolean dashboardSupported = current != null && "1".equals(current.gateway().metadata().get(DevConsole.CAPABILITY));
+        String address = current != null && current.gateway().url() != null ? current.gateway().url() : known.url();
+        String consoleUrl = null;
+        Integer port = null;
+        try {
+            var uri = java.net.URI.create(address);
+            String host = uri.getHost();
+            // The local overview must never turn registry contents into external links.
+            if (java.util.Set.of("localhost", "127.0.0.1", "[::1]", "::1").contains(host)
+                    && "http".equals(uri.getScheme()) && uri.getRawUserInfo() == null && uri.getPort() > 0) {
+                port = uri.getPort();
+                if (responsive && dashboardSupported && "running".equals(current.gateway().state())) {
+                    consoleUrl = "http://" + host + ":" + port + DevConsole.ROOT;
+                }
+            }
+        } catch (RuntimeException ignored) { /* No usable public local URL. */ }
+        return new ConsoleEnvironment(hash(project.toString()), Files.isDirectory(project), displayName(project),
+                project.toString(), running ? "running" : "stopped", port, consoleUrl,
+                running && !responsive ? "Not responding" : running && !dashboardSupported
+                        ? "Dashboard unavailable. Restart with a dashboard-enabled dev server." : null);
+    }
+
+    record KnownProject(int version, String projectDirectory, String url, boolean hidden) { }
+    record ConsoleEnvironment(String id, boolean directoryExists, String projectName, String projectDirectory, String status, Integer port,
+                              String consoleUrl, String detail) { }
 
     private Environment resolve(Registration registration) {
         Path projectDirectory = Path.of(registration.projectDirectory());
@@ -120,11 +250,11 @@ final class DevEnvironmentRegistry {
         }
     }
 
-    private void write(Path target, Registration registration) {
+    private void write(Path target, Object registration) {
         Path temporary = null;
         try {
-            Files.createDirectories(directory);
-            temporary = Files.createTempFile(directory, target.getFileName().toString(), ".tmp");
+            Files.createDirectories(target.getParent());
+            temporary = Files.createTempFile(target.getParent(), target.getFileName().toString(), ".tmp");
             objectMapper.writeValue(temporary.toFile(), registration);
             AtomicFileUtils.replace(temporary, target);
             temporary = null;

@@ -2,6 +2,13 @@ name: Verify
 
 on:
   workflow_call:
+    secrets:
+      AUDITLOG_APP_CLIENT_ID:
+        description: Organization-owned Auditlog build app client ID
+        required: true
+      AUDITLOG_APP_PRIVATE_KEY:
+        description: Auditlog build app private key
+        required: true
 
 env:
   BUILD_ENVIRONMENT: github
@@ -25,6 +32,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUDITLOG_APP_PRIVATE_KEY }}
       - name: Install Java
         uses: actions/setup-java@v6
         with:
@@ -33,12 +44,24 @@ jobs:
           cache: maven
       - name: Build and test
         run: ${{ matrix.maven }} -B clean install
+      - name: Test Devboard frontend
+        run: npm test --prefix frontend
+      - name: Preserve failed test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-reports-${{ matrix.name }}
+          path: target/surefire-reports/
 
   application-e2e:
     name: Application E2E
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUDITLOG_APP_PRIVATE_KEY }}
       - name: Install Java
         uses: actions/setup-java@v6
         with:
@@ -55,6 +78,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUDITLOG_APP_PRIVATE_KEY }}
       - name: Install Java
         uses: actions/setup-java@v6
         with:
@@ -75,6 +102,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - uses: ./.github/actions/monitoring-source
+        with:
+          client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
+          private-key: ${{ secrets.AUDITLOG_APP_PRIVATE_KEY }}
       - uses: actions/setup-java@v6
         with:
           distribution: temurin

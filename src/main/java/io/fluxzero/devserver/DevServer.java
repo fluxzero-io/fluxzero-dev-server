@@ -66,8 +66,9 @@ public class DevServer implements AutoCloseable {
     private volatile DevSessionStore.DevSessionLock sessionLock;
     private volatile ScheduledFuture<?> heartbeatTask;
     private volatile DevServerLifetime lifetime;
-    private volatile VersionAlignedDevRuntime devRuntime;
+    private volatile VersionAlignedTestServer testServer;
     private volatile DevGateway devGateway;
+    private volatile DevMonitoring monitoring;
     private volatile int effectiveGatewayPort;
     private volatile ManagedIdpService idpService;
     private final Map<String, DevServiceProcess> serviceProcesses = new ConcurrentHashMap<>();
@@ -203,6 +204,11 @@ public class DevServer implements AutoCloseable {
         }
         record("[project] " + detail);
         recordBootstrapDetails();
+        Thread maintenance = maintenanceThread;
+        if (maintenance != null) {
+            maintenance.interrupt();
+            try { maintenance.join(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
         terminalProgress.stop();
     }
 
@@ -279,6 +285,7 @@ public class DevServer implements AutoCloseable {
         } else {
             skipBackend();
         }
+        startMonitoring();
         startFrontend();
         startGateway();
         launchFrontend();
@@ -289,6 +296,22 @@ public class DevServer implements AutoCloseable {
                     session.sessionId());
             updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
             initializeProjects();
+        }
+    }
+
+    private void startMonitoring() {
+        if (config.backendEnabled()) {
+            DevMonitoringConfig monitoringConfig = DevMonitoringDefaults.resolve(
+                    DevProjectConfig.load(config.projectDirectory()).select(config.profile()).config());
+            if (monitoringConfig != null) {
+                monitoring = new DevMonitoring(monitoringConfig, config.projectDirectory(), session.sessionId(),
+                                               this::updateServiceStatus, this::print);
+                List<String> sources = config.projects().stream().flatMap(p -> java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(p.namespace() == null ? "public" : p.namespace()),
+                        p.applicationConfig().values().stream().map(DevApplicationConfig::namespace).filter(java.util.Objects::nonNull)))
+                        .distinct().toList();
+                monitoring.start(runtimeBaseUrl, proxyUrl, sources.isEmpty() ? List.of("public") : sources, session.runtime().pid());
+            }
         }
     }
 
@@ -327,6 +350,8 @@ public class DevServer implements AutoCloseable {
             projectCompileStatuses.put(project.id(), DevSession.ServiceStatus.stopped("compile"));
             projectReloadStatuses.put(project.id(), DevSession.ServiceStatus.stopped("reload"));
             projectTestStatuses.put(project.id(), TestStatus.idle());
+            projectStore.readTestStatus().filter(value -> value.counts() != null)
+                    .ifPresent(value -> lastTestResults.put(project.id(), value));
         }
     }
 
@@ -447,17 +472,17 @@ public class DevServer implements AutoCloseable {
                    + selection.version() + ". Set " + FluxzeroSdkVersionDetector.VERSION_OVERRIDE_ENV
                    + " for a custom build model.");
         }
-        terminalProgress.updateTask("runtime", "Runtime", "resolving Fluxzero SDK " + selection.version());
+        terminalProgress.updateTask("runtime", "Test Server", "resolving Fluxzero SDK " + selection.version());
         try {
-            int requestedProxyPort = config.frontends().isEmpty() ? effectiveGatewayPort : 0;
-            devRuntime = VersionAlignedDevRuntime.start(
+            int requestedProxyPort = 0;
+            testServer = VersionAlignedTestServer.start(
                     config, session.sessionId(), selection, requestedProxyPort,
                     this::applicationRegistered, this::printRuntimeOutput, this::runtimeFailedUnexpectedly);
-            VersionAlignedDevRuntime.Ready ready = devRuntime.awaitReady(config.startupTimeout());
-            runtimeBaseUrl = "ws://localhost:" + ready.runtimePort();
+            VersionAlignedTestServer.Ready ready = testServer.awaitReady(config.startupTimeout());
+            runtimeBaseUrl = "ws://localhost:" + ready.testServerPort();
             proxyUrl = "http://localhost:" + ready.proxyPort();
 
-            Map<String, String> metadata = new LinkedHashMap<>(devRuntime.metadata());
+            Map<String, String> metadata = new LinkedHashMap<>(testServer.metadata());
             String detection;
             String compatibility;
             if (!selection.fallbackProjects().isEmpty()) {
@@ -476,15 +501,15 @@ public class DevServer implements AutoCloseable {
                 metadata.put("project." + project + ".sdkVersionSource",
                              selection.fallbackProjects().contains(project) ? "fallback" : detection);
             });
-            String detail = "Fluxzero SDK " + ready.version() + " runtime";
+            String detail = "Fluxzero SDK " + ready.version() + " Test Server";
             updateRuntimeStatus(DevSession.ServiceStatus.running(
-                    "runtime", runtimeBaseUrl, ready.runtimePort(), devRuntime.pid(), detail)
+                    "runtime", runtimeBaseUrl, ready.testServerPort(), testServer.pid(), detail)
                                         .withMetadata(metadata));
             updateProxyStatus(DevSession.ServiceStatus.running(
-                    "proxy", proxyUrl, ready.proxyPort(), devRuntime.pid(), detail)
+                    "proxy", proxyUrl, ready.proxyPort(), testServer.pid(), detail)
                                       .withMetadata(metadata));
-            record("Runtime SDK: " + ready.version() + " (artifacts "
-                   + (devRuntime.cached() ? "cached" : "resolved") + ")");
+            record("Test Server SDK: " + ready.version() + " (artifacts "
+                   + (testServer.cached() ? "cached" : "resolved") + ")");
         } catch (RuntimeException e) {
             updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", oneLine(e.getMessage())));
             updateProxyStatus(DevSession.ServiceStatus.failed("proxy", oneLine(e.getMessage())));
@@ -514,7 +539,7 @@ public class DevServer implements AutoCloseable {
             return;
         }
         try {
-            idpService = ManagedIdpService.start(config, runtimeBaseUrl, publicFluxzeroUrl, this::print);
+            idpService = ManagedIdpService.start(config, runtimeBaseUrl, publicFluxzeroUrl, publicUrl, this::print);
             updateIdpStatus(DevSession.ServiceStatus.running("idp", idpService.issuer(), null, null,
                                                              "managed local IDP"));
         } catch (RuntimeException e) {
@@ -558,22 +583,437 @@ public class DevServer implements AutoCloseable {
         }
     }
 
-    private void startGateway() {
-        if (config.frontends().isEmpty() || frontendProcesses.isEmpty()) {
-            publicUrl = proxyUrl;
-            publicFluxzeroUrl = proxyUrl;
-            updateGatewayStatus(DevSession.ServiceStatus.stopped("gateway")
-                                        .withState("skipped", "no frontend configured"));
-            return;
+    static final String STOP_REQUESTED = "dev server stopped from dashboard";
+    static final String RESTART_REQUESTED = "dev server restart requested";
+    private boolean restartSupported;
+    private java.util.function.BiFunction<String, Integer, DevServerConfig> profileResolver;
+    private volatile String requestedProfile;
+    DevServer withRestartSupport(java.util.function.BiFunction<String, Integer, DevServerConfig> resolver) {
+        restartSupported = true;
+        profileResolver = resolver;
+        return this;
+    }
+    String restartProfile() { return requestedProfile == null ? config.profile() : requestedProfile; }
+
+    private Map<String, Object> consoleProfiles() {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("active", config.profile());
+        result.put("switchSupported", profileResolver != null);
+        try {
+            result.put("available", List.copyOf(DevProjectConfig.load(config.projectDirectory()).profiles().keySet()));
+        } catch (RuntimeException e) {
+            result.put("available", List.of());
+            result.put("error", "Unable to read profiles. Check .fluxzero/dev.yaml.");
         }
+        return result;
+    }
+    private final java.util.concurrent.locks.ReentrantLock applicationLifecycleLock = new java.util.concurrent.locks.ReentrantLock();
+    private final Map<String, AppInstance> lastStartedApps = new ConcurrentHashMap<>();
+    private final Map<String, Integer> componentProcessTotals = new ConcurrentHashMap<>();
+    private final ProcessMemory processMemory = new ProcessMemory();
+    private final JvmHeapMemory heapMemory = new JvmHeapMemory();
+    private final AtomicBoolean maintenanceBusy = new AtomicBoolean();
+    private volatile String maintenanceError = "";
+    private volatile Thread maintenanceThread;
+    private volatile boolean automaticTestsPaused;
+    private final Object shutdownLock = new Object();
+    private volatile Map<String, Object> stoppedWorkspaceStatus;
+    private java.util.concurrent.ScheduledExecutorService dashboardHeartbeat;
+    private volatile String buildPauseState = "running";
+    private volatile java.util.concurrent.CountDownLatch buildResume;
+    private final TestOutput testOutput = new TestOutput();
+    private final Map<String, TestStatus> lastTestResults = new ConcurrentHashMap<>();
+    private volatile DevCommandStatus dashboardCommands;
+
+    private Map<String, Object> consoleStatus() {
+        var stopped = stoppedWorkspaceStatus;
+        if (stopped != null) {
+            var result = new LinkedHashMap<>(stopped);
+            result.put("workspaceIssue", "");
+            result.put("progress", new ProjectProgress(config.projectDirectory()).view());
+            result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
+                    "stopSupported", restartSupported, "workspaceStopped", "idle".equals(stopped.get("state"))));
+            return result;
+        }
+        List<Map<String, Object>> components = new java.util.ArrayList<>();
+        if (config.backendEnabled()) components.add(component("testserver", "Fluxzero Test Server", session.runtime(), false));
+        components.add(component("devserver", "Fluxzero Dev Server",
+                new DevSession.ServiceStatus("devserver", session.status(), publicUrl, session.gateway().port(), session.pid(), null), false));
+        if (monitoring != null) {
+            components.add(component("auditlog", "Fluxzero Devboard", session.services().get("monitoring-auditlog"), false));
+            components.add(component("storage", "Devboard Store", session.services().get("monitoring-storage"), false));
+        }
+        lastStartedApps.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
+            AppInstance app = entry.getValue();
+            components.add(component("app-" + entry.getKey(), app.applicationName(),
+                    new DevSession.ServiceStatus(app.applicationName(), app.alive() ? "running" : "stopped", null, null, app.pid(), null), true));
+        });
+        if (lastStartedApps.isEmpty() && config.backendEnabled()) components.add(component("app", config.projectDirectory().getFileName().toString(), session.app(), true));
+        frontendStatuses.forEach((id, service) -> {
+            if (config.frontends().stream().anyMatch(f -> f.id().equals(id) && f.config().mode() == FrontendConfig.Mode.COMMAND)) components.add(component("frontend-" + id, "Frontend (" + id + ")", service, true));
+        });
+        serviceStatuses.forEach((id, service) -> { if (!id.startsWith("monitoring-")) components.add(component("service-" + id, id, service, false)); });
+        Set<Long> pids = components.stream().map(c -> (Long) c.get("pid")).filter(java.util.Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+        Map<Long, Long> memory = processMemory.sample(pids, Set.of(session.pid()));
+        components.forEach(c -> c.put("memoryBytes", c.get("pid") == null ? null : memory.get(c.get("pid"))));
+        components.forEach(c -> {
+            int live = processMemory.processCount((Long) c.get("pid"));
+            String id = (String) c.get("id");
+            if (live > 0) componentProcessTotals.put(id, live);
+            int total = componentProcessTotals.getOrDefault(id, 1);
+            c.put("runningProcesses", live); c.put("totalProcesses", total);
+        });
+        Map<Long, JvmHeapMemory.Usage> heaps = heapMemory.sample(pids, Set.of(session.pid()));
+        components.forEach(c -> {
+            JvmHeapMemory.Usage usage = c.get("pid") == null ? null : heaps.get(c.get("pid"));
+            if ("storage".equals(c.get("id")) && monitoring != null) usage = monitoring.memoryUsage();
+            c.put("memoryUsedBytes", usage == null ? null : usage.used());
+            c.put("memoryMaxBytes", usage == null ? null : usage.max());
+        });
+        Map<String, TestStatus> displayedTests = new LinkedHashMap<>(lastTestResults);
+        boolean testsIncomplete = projectTestStatuses.values().stream()
+                .anyMatch(t -> Set.of("queued", "incomplete").contains(t.state()))
+                || displayedTests.values().stream().anyMatch(t -> "incomplete".equals(t.state()));
+        boolean testsRunning = projectTestStatuses.values().stream().anyMatch(t -> "running".equals(t.state()));
+        int expectedTotal = 0;
+        boolean expectedKnown = true;
+        boolean liveEvents = false;
+        Map<String, TestTelemetry.Progress> liveProgress = new LinkedHashMap<>();
+        for (Map.Entry<String, TestStatus> entry : projectTestStatuses.entrySet()) {
+            if (!"running".equals(entry.getValue().state())) continue;
+            ProjectRuntime project = projects.get(entry.getKey());
+            var progress=project==null?null:project.testPipeline.liveProgress();
+            boolean available=progress!=null && progress.available() && !progress.lost();
+            liveEvents |= available;
+            if(available)liveProgress.put(entry.getKey(),progress);
+            TestCounts counts = available ? progress.counts() : project == null ? null : TestReports.read(project.config.projectDirectory(),
+                    BuildTool.detect(project.config.projectDirectory()), entry.getValue().updatedAt()).counts();
+            displayedTests.put(entry.getKey(), entry.getValue().withCounts(counts == null ? new TestCounts(0, 0, 0) : counts));
+        }
+        int passed = 0, failed = 0, skipped = 0;
+        for (Map.Entry<String, TestStatus> entry : displayedTests.entrySet()) {
+            TestCounts counts = entry.getValue().counts();
+            passed += counts.passed(); failed += counts.failed(); skipped += counts.skipped();
+            TestStatus previous = lastTestResults.get(entry.getKey());
+            boolean active="running".equals(entry.getValue().state());
+            var progress=liveProgress.get(entry.getKey());
+            if (active && progress==null && previous == null) expectedKnown = false;
+            expectedTotal += active && progress!=null ? Math.max(counts.total(),progress.discovered()) : active && previous != null
+                    ? Math.max(counts.total(), previous.counts().total()) : counts.total();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("project", config.projectDirectory().getFileName().toString());
+        result.put("versions", DashboardWorkspace.versions(session));
+        result.put("workspaceIssue", DashboardWorkspace.issue(session));
+        result.put("startedAt", session.startedAt());
+        result.put("startup", DashboardWorkspace.startup(dashboardCommands, session.sessionId()));
+        result.put("projectDirectory", config.projectDirectory().toString()); result.put("state", session.status());
+        result.put("runtime", session.runtime().state()); result.put("applications", session.app().state());
+        result.put("tests", session.tests().state()); result.put("frontend", session.frontend().state());
+        result.put("monitoring", monitoring == null ? Map.of("enabled", false) : monitoring.status());
+        result.put("components", components);
+        result.put("profiles", consoleProfiles());
+        result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", testServer != null && testServer.resetSupported(),
+                "restartSupported", restartSupported, "stopSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
+        Map<String, Object> testResults = new LinkedHashMap<>();
+        testResults.put("state", testsRunning ? "running" : testsIncomplete
+                ? "incomplete" : failed > 0 ? "failed" : "passed");
+        testResults.put("available", testsRunning || !displayedTests.isEmpty());
+        testResults.put("passed", passed); testResults.put("failed", failed); testResults.put("skipped", skipped);
+        testResults.put("total", passed + failed + skipped); testResults.put("running", testsRunning);
+        testResults.put("expectedTotal", testsRunning ? (expectedKnown ? expectedTotal : 0) : passed + failed + skipped);
+        List<TestInventory.Snapshot> inventories = projects.values().stream()
+                .filter(p -> p.config.testsEnabled()).map(p -> p.testPipeline.inventory()).toList();
+        boolean inventoryKnown = !inventories.isEmpty() && inventories.stream().allMatch(TestInventory.Snapshot::known);
+        testResults.put("totalKnown", inventoryKnown);
+        if (inventoryKnown) {
+            testResults.put("total", inventories.stream().mapToInt(TestInventory.Snapshot::total).sum());
+            testResults.put("passed", inventories.stream().mapToInt(i -> i.counts().passed()).sum());
+            testResults.put("failed", inventories.stream().mapToInt(i -> i.counts().failed()).sum());
+            testResults.put("skipped", inventories.stream().mapToInt(i -> i.counts().skipped()).sum());
+            testResults.put("available", true);
+        }
+        testResults.put("live",liveEvents);
+        testResults.put("paused", automaticTestsPaused);
+        testResults.put("runnable", projects.values().stream().anyMatch(p -> p.config.testsEnabled()));
+        testResults.put("incomplete", testsIncomplete);
+        testResults.put("label", testsRunning
+                ? liveEvents ? "Running" : "Running · waiting for test reports"
+                : "Latest reported run per module");
+        result.put("testResults", testResults);
+        result.put("progress", new ProjectProgress(config.projectDirectory()).view());
+        result.put("testOutput",testOutput.snapshot());
+        result.put("testRuns",projects.entrySet().stream().filter(e->e.getValue().testPipeline.liveProgress()!=null)
+                .map(e->Map.of("module",e.getKey(),"state",projectTestStatuses.getOrDefault(e.getKey(),TestStatus.idle()).state(),
+                        "progress",e.getValue().testPipeline.liveProgress())).toList());
+        return result;
+    }
+
+    private Map<String, Object> component(String id, String name, DevSession.ServiceStatus service, boolean application) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", id); result.put("name", name); result.put("application", application);
+        result.put("state", service == null ? "stopped" : service.state());
+        result.put("version", switch (id) {
+            case "devserver" -> session.devServerVersion();
+            case "testserver" -> session.runtime().metadata().get("runtimeSdkVersion");
+            default -> service == null ? null : service.metadata().get("version");
+        });
+        result.put("pid", service == null ? null : service.pid());
+        Integer port = service == null ? null : service.port();
+        String url = service == null ? null : service.url();
+        if (url != null && port == null) {
+            int parsedPort = java.net.URI.create(url).getPort();
+            if (parsedPort > 0) port = parsedPort;
+        }
+        if (application || "auditlog".equals(id) || "devserver".equals(id)) {
+            port = session.gateway().port();
+            url = publicUrl == null ? null : publicUrl.replaceAll("/+$", "")
+                    + (application ? "/" : "/_fluxzero/dev/#" + ("auditlog".equals(id) ? "monitoring/messages" : "projects"));
+        } else if ("storage".equals(id) && url != null) {
+            url = url.replaceAll("/+$", "") + "/select/vmui/";
+        } else {
+            url = null;
+        }
+        result.put("restartSupported", application && id.startsWith("app-") && restartProject(id) != null);
+        result.put("port", port);
+        result.put("url", service != null && "running".equals(service.state()) ? url : null);
+        return result;
+    }
+
+    private synchronized Runnable requestMaintenance(String action) {
+        return requestMaintenance(action, true);
+    }
+
+    private synchronized Runnable requestMaintenance(String action, boolean resetMonitoring) {
+        if (Set.of("stop-workspace", "stop-devserver", "start-workspace").contains(action)) {
+            if (!restartSupported) throw new IllegalStateException("Workspace controls require the standalone dev server.");
+            if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
+            if ("start-workspace".equals(action)) {
+                if (stoppedWorkspaceStatus == null) throw new IllegalStateException("The workspace is not stopped.");
+                try { profileResolver.apply(config.profile(), session.gateway().port()); }
+                catch (RuntimeException e) { throw new IllegalStateException("Unable to start the workspace. Check .fluxzero/dev.yaml."); }
+            } else if ("stop-workspace".equals(action) && closed.get()) {
+                throw new IllegalStateException("The workspace is already stopped.");
+            }
+            maintenanceBusy.set(true);
+            maintenanceError = "";
+            return () -> maintenanceThread = Thread.ofVirtual().name("dev-workspace-control").start(() -> {
+                if ("stop-workspace".equals(action)) {
+                    try { stopWorkspace(); }
+                    finally { maintenanceBusy.set(false); if (devGateway != null) devGateway.refreshConsole(); }
+                } else {
+                    shutdownRequested.complete("start-workspace".equals(action) ? RESTART_REQUESTED : STOP_REQUESTED);
+                }
+            });
+        }
+        if (closed.get()) throw new IllegalStateException("The dev server is unavailable.");
+        if ("resume-builds".equals(action)) {
+            var resume = buildResume;
+            if (resume == null) throw new IllegalStateException("Builds are not paused");
+            return resume::countDown;
+        }
+        if ("pause-tests".equals(action) || "resume-tests".equals(action)) {
+            return () -> {
+                automaticTestsPaused = "pause-tests".equals(action);
+                projects.values().forEach(p -> p.testPipeline.setAutomaticPaused(automaticTestsPaused));
+                if (devGateway != null) devGateway.refreshConsole();
+            };
+        }
+        if ("clear-test-output".equals(action)) return () -> {testOutput.clear(); if(devGateway!=null)devGateway.refreshConsole();};
+        if ("run-tests".equals(action)) {
+            if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
+            var targets = projects.values().stream().filter(p -> p.config.testsEnabled()).toList();
+            if (targets.isEmpty()) throw new IllegalStateException("No projects have tests enabled.");
+            return () -> targets.forEach(p -> p.testPipeline.requestFullRun());
+        }
+        if (action.startsWith("switch-profile:")) {
+            if (profileResolver == null) throw new IllegalStateException("Profile switching requires the standalone dev server.");
+            String profile = action.substring("switch-profile:".length());
+            if (profile.isBlank()) throw new IllegalStateException("Select a development profile.");
+            if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
+            try {
+                // Resolve before stopping anything; never expose resolved environment values through the console.
+                profileResolver.apply(profile, session.gateway().port());
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Unable to load the selected profile. Check .fluxzero/dev.yaml.");
+            }
+            if (profile.equals(config.profile())) return () -> {};
+            Runnable restart = requestMaintenance("restart-devserver", false);
+            requestedProfile = profile;
+            return restart;
+        }
+        if ("restart-devserver".equals(action) && !restartSupported)
+            throw new IllegalStateException("Restart is only available in the standalone dev server.");
+        if ("clear-monitoring-storage".equals(action) && (monitoring == null || !"victorialogs".equals(monitoring.storage())))
+            throw new IllegalStateException("This environment does not use VictoriaLogs.");
+        if (Set.of("truncate-testserver-data", "truncate-data").contains(action) && (testServer == null || !testServer.resetSupported()))
+            throw new IllegalStateException("The selected Fluxzero SDK does not support truncating Testserver data.");
+        if ("restart-application".equals(action) && projects.values().stream().noneMatch(p -> p.compilePipeline.activeSnapshot() != null)
+            && frontendProcesses.values().stream().noneMatch(FrontendProcess::managed)) throw new IllegalStateException("No application build is available yet.");
+        if (action.startsWith("restart-app:") && restartProject(action.substring("restart-app:".length())) == null)
+            throw new IllegalStateException("No active build is available for this application.");
+        if (!maintenanceBusy.compareAndSet(false, true)) throw new IllegalStateException("Maintenance is already running.");
+        maintenanceError = "";
+        if ("pause-builds".equals(action)) {
+            buildResume = new java.util.concurrent.CountDownLatch(1);
+            buildPauseState = "pausing";
+        }
+        return () -> maintenanceThread = Thread.ofVirtual().name("dev-console-maintenance").start(() -> {
+            try {
+                if (!applicationLifecycleLock.tryLock(30, TimeUnit.SECONDS))
+                    throw new IllegalStateException("Timed out waiting for application lifecycle work");
+                try {
+                    if (closed.get()) return;
+                    switch (action) {
+                        case "pause-builds" -> pauseBuildsForVerification();
+                        case "restart-devserver" -> {
+                            if (resetMonitoring) clearMonitoringForRestart();
+                            requestShutdown(RESTART_REQUESTED);
+                        }
+                        case "restart-application" -> restartCustomerApplications();
+                        case "truncate-data" -> truncateEnvironment();
+                        case "truncate-testserver-data" -> testServer.truncateData(Duration.ofSeconds(30));
+                        case "clear-monitoring-storage" -> {
+                            monitoring.close();
+                            try { MonitoringStorage.clear(config.projectDirectory()); }
+                            finally { if (!closed.get()) startMonitoring(); }
+                        }
+                        default -> {
+                            if (!action.startsWith("restart-app:")) throw new IllegalStateException("Unknown maintenance action.");
+                            String componentId = action.substring("restart-app:".length());
+                            ProjectRuntime project = restartProject(componentId);
+                            if (project == null) throw new IllegalStateException("No active build is available for this application.");
+                            if (startCandidateAppsLocked(project, project.compilePipeline.activeSnapshot(), componentId.substring(4)) == null)
+                                throw new IllegalStateException("Application restart failed: " + componentId);
+                        }
+                    }
+                } finally { applicationLifecycleLock.unlock(); }
+            } catch (Exception e) {
+                maintenanceError = oneLine(e.getMessage());
+                record("[maintenance] " + maintenanceError);
+            } finally {
+                // Shutdown is bounded; a slow maintenance operation may finish after close() has returned.
+                if (closed.get()) { closeQuietly(monitoring); closeQuietly(commandPipeline); closeQuietly(testServer); }
+                if ("pause-builds".equals(action)) {
+                    buildResume = null;
+                    buildPauseState = "running";
+                }
+                maintenanceBusy.set(false);
+            }
+        });
+    }
+
+    private void pauseBuildsForVerification() throws Exception {
+        var coordinators = projects.values().stream().sorted(java.util.Comparator.comparing(p -> p.id))
+                .map(p -> p.buildCoordinator).toList();
+        withBuildLocks(coordinators, 0, System.nanoTime() + TimeUnit.SECONDS.toNanos(30), () -> {
+            var frontends = frontendProcesses.values().stream().filter(FrontendProcess::managed).toList();
+            try {
+                if (buildResume.getCount() == 0) return null;
+                for (FrontendProcess frontend : frontends) frontend.suspendForBuild();
+                buildPauseState = "paused";
+                record("[maintenance] builds paused; managed frontends stopped; application and Test Server retained");
+                while (!closed.get() && !buildResume.await(1, TimeUnit.SECONDS)) activity();
+            } finally {
+                buildPauseState = "resuming";
+                Exception failure = null;
+                if (!closed.get()) for (FrontendProcess frontend : frontends) {
+                    try { frontend.resumeAfterBuild(); }
+                    catch (Exception e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
+                }
+                if (failure != null) throw failure;
+            }
+            return null;
+        });
+    }
+
+    private static <T> T withBuildLocks(List<MavenBuildCoordinator> coordinators, int index, long deadline,
+                                       MavenBuildCoordinator.InterruptibleSupplier<T> action) throws Exception {
+        if (index == coordinators.size()) return action.get();
+        return coordinators.get(index).withMaintenanceLock(Duration.ofNanos(Math.max(0, deadline - System.nanoTime())),
+                () -> withBuildLocks(coordinators, index + 1, deadline, action));
+    }
+
+    private void clearMonitoringForRestart() throws Exception {
+        // Stop every writer before deleting storage, while this workspace still owns its session lock.
+        // Profile switches and ordinary stop/start deliberately bypass this reset.
+        if (monitoring != null) monitoring.close();
+        try {
+            MonitoringStorage.clear(config.projectDirectory());
+        } catch (Exception failure) {
+            try { if (monitoring != null && !closed.get()) startMonitoring(); }
+            catch (Exception recoveryFailure) { failure.addSuppressed(recoveryFailure); }
+            throw failure;
+        }
+    }
+
+    private void truncateEnvironment() throws Exception {
+        if (commandPipeline != null) {
+            commandPipeline.close();
+            commandPipeline.awaitStopped(Duration.ofSeconds(5));
+        }
+        // Reconnect consumers with empty caches after resetting their data.
+        currentApps.values().forEach(app -> app.stop(config.gracefulShutdownTimeout()));
+        currentApps.clear();
+        Exception failure = null;
+        try {
+            if (monitoring != null) monitoring.close();
+            testServer.truncateData(Duration.ofSeconds(30));
+            sessionStore.invalidateCommandStatus(session.sessionId(), "data truncated; initial commands will run again");
+            MonitoringStorage.clear(config.projectDirectory());
+        } catch (Exception e) { failure = e; }
+        if (!closed.get()) {
+            try { startMonitoring(); }
+            catch (Exception e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
+            try {
+                commandPipeline = new DevCommandPipeline(config, sessionStore, runtimeBaseUrl, this::updateCommandStatus,
+                                                          this::print, session.sessionId());
+                restartCustomerApplications();
+                commandPipeline.requestRun();
+            } catch (Exception e) { if (failure == null) failure = e; else failure.addSuppressed(e); }
+        }
+        if (failure != null) throw failure;
+    }
+
+    private ProjectRuntime restartProject(String componentId) {
+        if (!componentId.startsWith("app-")) return null;
+        String launchId = componentId.substring(4);
+        return projects.values().stream().filter(p -> {
+            BuildSnapshot snapshot = p.compilePipeline.activeSnapshot();
+            return snapshot != null && describedApplications(p, snapshot).stream().anyMatch(a -> a.launchId().equals(launchId));
+        }).findFirst().orElse(null);
+    }
+
+    private void restartCustomerApplications() throws Exception {
+        for (ProjectRuntime project : projects.values()) {
+            BuildSnapshot snapshot = project.compilePipeline.activeSnapshot();
+            if (snapshot != null && (startCandidateApps(project, snapshot) == null || !project.failures.isEmpty()))
+                throw new IllegalStateException("Application restart failed: " + project.id);
+        }
+        // Frontend processes own their existing port reservations and restart on request.
+        for (FrontendProcess frontend : frontendProcesses.values()) frontend.requestRestart();
+    }
+
+    private void startGateway() {
         List<DevGateway.FrontendRoute> routes = config.frontends().stream().map(routed -> {
             FrontendProcess process = frontendProcesses.get(routed.id());
             return new DevGateway.FrontendRoute(
                     routed.id(), routed.path(), process.internalUrl(), process::ready);
         }).toList();
+        if (routes.isEmpty()) {
+            routes = List.of(new DevGateway.FrontendRoute("application", "/", proxyUrl, () -> !currentApps.isEmpty()));
+        }
+        DevConsole console = new DevConsole(this::consoleStatus,
+                monitoring == null ? null : monitoring.assets()).withDeferredMaintenance(this::requestMaintenance)
+                .withStartupJson((sessionId, id, hash) -> {
+                    var pipeline = commandPipeline;
+                    return pipeline == null ? null : pipeline.commandJson(sessionId, id, hash);
+                })
+                .withTestCases(() -> projects.values().stream().filter(p -> p.config.testsEnabled())
+                        .flatMap(p -> p.testPipeline.testCases(p.id).stream()).toList());
         devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
                                       config.frontend().backendPaths(), effectiveGatewayPort, this::activity,
-                                      config.backendEnabled());
+                                      config.backendEnabled(), console);
         publicUrl = devGateway.url();
         publicFluxzeroUrl = devGateway.backendUrl();
         String detail = config.backendEnabled()
@@ -581,7 +1021,7 @@ public class DevServer implements AutoCloseable {
                   + " and pass-through paths " + config.frontend().backendPaths()
                 : "public dev URL; all application traffic routed to the frontend";
         updateGatewayStatus(DevSession.ServiceStatus.running(
-                "gateway", publicUrl, devGateway.port(), null, detail));
+                "gateway", publicUrl, devGateway.port(), null, detail).withMetadata(Map.of(DevConsole.CAPABILITY, "1")));
     }
 
     private void cleanupPreviousSessionIfStale() {
@@ -699,27 +1139,50 @@ public class DevServer implements AutoCloseable {
     }
 
     private ReloadTiming startCandidateApps(ProjectRuntime project, BuildSnapshot snapshot) {
+        applicationLifecycleLock.lock();
+        try {
+            if (closed.get()) return null;
+            return startCandidateAppsLocked(project, snapshot);
+        } finally { applicationLifecycleLock.unlock(); }
+    }
+
+    private List<ApplicationBuild> describedApplications(ProjectRuntime project, BuildSnapshot snapshot) {
         List<ApplicationBuild> discovered = snapshot.applications().isEmpty()
                 ? List.of(new ApplicationBuild(project.config.applicationName(), ".", project.config.mainClass(),
                                                List.of(snapshot.classesDirectory()), snapshot.runtimeClasspath()))
                 : snapshot.applications();
-        List<ApplicationBuild> applications = projects.size() == 1 ? discovered
+        return projects.size() == 1 ? discovered
                 : discovered.stream().map(application -> application.scopedTo(project.id)).toList();
+    }
+
+    private ReloadTiming startCandidateAppsLocked(ProjectRuntime project, BuildSnapshot snapshot) {
+        return startCandidateAppsLocked(project, snapshot, null);
+    }
+
+    private ReloadTiming startCandidateAppsLocked(ProjectRuntime project, BuildSnapshot snapshot, String selectedApp) {
+        List<ApplicationBuild> applications = describedApplications(project, snapshot);
         Map<String, AppInstance> candidates = new LinkedHashMap<>();
         Map<String, PendingReadiness> readiness = new LinkedHashMap<>();
         Map<String, String> failures = new LinkedHashMap<>();
+        if (selectedApp != null) {
+            failures.putAll(project.failures);
+            failures.remove(selectedApp);
+        }
         try {
             long reloadStarted = System.nanoTime();
             updateReloadStatus(project.id, DevSession.ServiceStatus.running(
                     "reload", null, null, null,
                     "starting build " + snapshot.buildNumber() + " for " + applications.size() + " app(s)"));
+            String restartSuffix = snapshot == project.compilePipeline.activeSnapshot()
+                    ? "-restart-" + java.util.UUID.randomUUID() : "";
             for (ApplicationBuild application : applications) {
+                if (selectedApp != null && !selectedApp.equals(application.launchId())) continue;
                 PendingReadiness pending = new PendingReadiness(
-                        project.appProcessRunner.clientId(snapshot, application), new CompletableFuture<>());
+                        project.appProcessRunner.clientId(snapshot, application) + restartSuffix, new CompletableFuture<>());
                 readiness.put(application.launchId(), pending);
                 appReadiness.put(pending.clientId(), pending);
                 try {
-                    AppInstance candidate = project.appProcessRunner.start(snapshot, application);
+                    AppInstance candidate = project.appProcessRunner.start(snapshot, application, pending.clientId());
                     candidates.put(application.launchId(), candidate);
                     candidate.onExit().thenRun(() -> appExited(candidate));
                 } catch (Exception e) {
@@ -759,6 +1222,7 @@ public class DevServer implements AutoCloseable {
             long switchStarted = System.nanoTime();
             for (AppInstance candidate : candidates.values()) {
                 AppInstance previous = currentApps.put(candidate.launchId(), candidate);
+                lastStartedApps.put(candidate.launchId(), candidate);
                 if (previous != null) {
                     previous.stop(project.config.gracefulShutdownTimeout());
                     devLogStore.resolveInstance(previous.applicationName(), previous.clientId(),
@@ -776,6 +1240,7 @@ public class DevServer implements AutoCloseable {
                                                 "application removed from reactor");
                 }
             }
+            lastStartedApps.keySet().removeIf(id -> id.startsWith(project.launchPrefix()) && !describedApplications.contains(id));
             project.compilePipeline.activate(snapshot, currentApps.values().stream()
                     .filter(app -> app.launchId().startsWith(project.launchPrefix()))
                     .map(AppInstance::buildNumber).collect(java.util.stream.Collectors.toSet()));
@@ -814,7 +1279,11 @@ public class DevServer implements AutoCloseable {
                                             "candidate app instance stopped");
             }
             project.compilePipeline.discard(snapshot);
-            project.failures = Map.of(project.id, oneLine(e.getMessage()));
+            if (selectedApp == null) project.failures = Map.of(project.id, oneLine(e.getMessage()));
+            else {
+                failures.put(selectedApp, oneLine(e.getMessage()));
+                project.failures = Map.copyOf(failures);
+            }
             project.appState = project.hasApps() ? "running" : "failed";
             updateReloadStatus(project.id, DevSession.ServiceStatus.failed("reload", e.getMessage()));
             updateApplicationsStatus(project.id, e.getMessage());
@@ -1006,6 +1475,7 @@ public class DevServer implements AutoCloseable {
     private void updateTestStatus(String projectId, TestStatus status) {
         activity();
         projectTestStatuses.put(projectId, status);
+        if (status.counts() != null) lastTestResults.put(projectId, status);
         String aggregateState = projectTestStatuses.values().stream().anyMatch(value -> "failed".equals(value.state()))
                 ? "failed"
                 : projectTestStatuses.values().stream().anyMatch(value -> "incomplete".equals(value.state()))
@@ -1026,6 +1496,7 @@ public class DevServer implements AutoCloseable {
         updateSession(current -> current.withTests(new DevSession.ServiceStatus(
                 "tests", aggregateState, null, null, null, aggregateDetail)
                                                             .withMetadata(metadata)));
+        if (devGateway != null) devGateway.refreshConsole();
         devLogStore.observeStatus("test", "test", projectId, null, status.state(),
                                   status.detail() == null ? status.reason() : status.detail());
         if (!browserReadyAnnounced.get()) {
@@ -1110,6 +1581,7 @@ public class DevServer implements AutoCloseable {
     }
 
     private void updateCommandStatus(DevCommandStatus status) {
+        dashboardCommands = status;
         updateSession(current -> current.withCommands(new DevSession.ServiceStatus(
                 "commands", status.state(), null, null, null, status.summary())));
         devLogStore.observeStatus("commands", "seed", config.applicationName(), null, status.state(),
@@ -1286,6 +1758,8 @@ public class DevServer implements AutoCloseable {
                 ordered.put(id, status);
             }
         });
+        serviceStatuses.entrySet().stream().filter(e -> e.getKey().startsWith("monitoring-"))
+                .sorted(Map.Entry.comparingByKey()).forEach(e -> ordered.put(e.getKey(), e.getValue()));
         updateSession(current -> current.withServices(ordered));
     }
 
@@ -1336,7 +1810,7 @@ public class DevServer implements AutoCloseable {
     private void recordEnvironmentDetails() {
         record("Fluxzero dev environment infrastructure started");
         if (config.backendEnabled()) {
-            record("Runtime: " + runtimeBaseUrl);
+            record("Test Server: " + runtimeBaseUrl);
             record("Proxy:   " + proxyUrl + (devGateway == null ? "" : " (internal)"));
         } else {
             record("Backend: skipped (frontend-only profile)");
@@ -1378,7 +1852,7 @@ public class DevServer implements AutoCloseable {
             announceStartupFailure("Service " + failure.getKey(), failure.getValue().detail());
             return;
         }
-        if (current.services().size() != config.services().size()
+        if (current.services().size() != config.services().size() + (monitoring == null ? 0 : monitoring.serviceCount())
             || current.services().values().stream().anyMatch(status -> !"running".equals(status.state()))) {
             return;
         }
@@ -1417,6 +1891,7 @@ public class DevServer implements AutoCloseable {
         record(ready);
         record(target);
         terminalProgress.printReady(ready, target);
+        terminalProgress.println("  Dev console   " + publicUrl + DevConsole.ROOT);
     }
 
     private void announceStartupFailure(String source, String detail) {
@@ -1491,6 +1966,8 @@ public class DevServer implements AutoCloseable {
     }
 
     private void printAppOutput(String applicationName, String instanceId, String stream, String line) {
+        DevMonitoring currentMonitoring = monitoring;
+        if (currentMonitoring != null) currentMonitoring.applicationLog(applicationName, instanceId, stream, line);
         if (closed.get()) {
             return;
         }
@@ -1529,16 +2006,72 @@ public class DevServer implements AutoCloseable {
     }
 
     private void runtimeFailedUnexpectedly(String detail) {
-        String summary = "Fluxzero runtime stopped unexpectedly: " + oneLine(detail);
+        String summary = "Fluxzero Test Server stopped unexpectedly: " + oneLine(detail);
         updateRuntimeStatus(DevSession.ServiceStatus.failed("runtime", summary));
         updateProxyStatus(DevSession.ServiceStatus.failed("proxy", summary));
         requestShutdown(summary);
     }
 
+    private void stopWorkspace() {
+        synchronized (shutdownLock) {
+            if (closed.get()) return;
+            Map<String, Object> snapshot = new LinkedHashMap<>(consoleStatus());
+            DevSession.ServiceStatus gateway = session.gateway();
+            snapshot.put("state", "stopping");
+            snapshot.put("components", List.of());
+            stoppedWorkspaceStatus = Map.copyOf(snapshot);
+            updateSession(current -> current.withStatus("stopping"));
+            closeResources(true);
+            synchronized (this) {
+                session = session.withStoppedServices("Workspace stopped; dashboard remains available")
+                        .withStatus("idle").withGateway(gateway).withHeartbeat();
+                sessionStore.writeSession(session);
+            }
+            snapshot.put("state", "idle");
+            for (String key : List.of("runtime", "applications", "frontend", "tests")) snapshot.put(key, "stopped");
+            snapshot.put("components", List.of());
+            snapshot.put("monitoring", Map.of("enabled", false));
+            var profiles = consoleProfiles();
+            profiles.put("switchSupported", false);
+            snapshot.put("profiles", profiles);
+            snapshot.remove("testResults");
+            stoppedWorkspaceStatus = Map.copyOf(snapshot);
+            dashboardHeartbeat = Executors.newSingleThreadScheduledExecutor(
+                    Thread.ofPlatform().daemon().name("dev-dashboard-heartbeat").factory());
+            dashboardHeartbeat.scheduleAtFixedRate(() -> {
+                synchronized (DevServer.this) {
+                    if (dashboardHeartbeat == null) return;
+                    try {
+                        session = session.withHeartbeat();
+                        sessionStore.writeSession(session);
+                    } catch (RuntimeException e) { log.warn("Failed to write dashboard heartbeat", e); }
+                }
+            }, 2, 2, TimeUnit.SECONDS);
+        }
+    }
+
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
+        synchronized (shutdownLock) {
+            closeResources(false);
+            synchronized (this) {
+                if (dashboardHeartbeat != null) {
+                    dashboardHeartbeat.shutdownNow();
+                    dashboardHeartbeat = null;
+                    stopSession(shutdownDetail.get());
+                }
+            }
+            closeQuietly(devGateway);
+            closeQuietly(sessionLock);
+        }
+    }
+
+    private void closeResources(boolean keepDashboard) {
+        if (!closed.compareAndSet(false, true)) return;
+        Thread maintenance = maintenanceThread;
+        if (maintenance != null && maintenance != Thread.currentThread() && maintenance.isAlive()) {
+            maintenance.interrupt();
+            try { maintenance.join(5000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
         }
         terminalProgress.stop();
         if (heartbeatTask != null) {
@@ -1546,15 +2079,16 @@ public class DevServer implements AutoCloseable {
         }
         closeQuietly(greenfieldWatcher);
         sessionStore.invalidateCommandStatus(
-                session.sessionId(), "runtime session stopped; command will run again in the next session");
-        stopSession(shutdownDetail.get());
+                session.sessionId(), "Test Server session stopped; command will run again in the next session");
+        if (!keepDashboard) stopSession(shutdownDetail.get());
         closeQuietly(lifetime);
         projects.values().forEach(DevServer::closeQuietly);
         closeQuietly(frontendUpdates);
+        closeQuietly(heapMemory);
         scheduler.shutdownNow();
         closeQuietly(commandPipeline);
         // Stop accepting browser traffic before shutting down the processes and embedded services behind it.
-        closeQuietly(devGateway);
+        if (!keepDashboard) closeQuietly(devGateway);
         closeQuietly(mcpServer);
         frontendProcesses.values().forEach(DevServer::closeQuietly);
         frontendProcesses.clear();
@@ -1566,9 +2100,10 @@ public class DevServer implements AutoCloseable {
         currentApps.clear();
         serviceProcesses.values().forEach(DevServer::closeQuietly);
         serviceProcesses.clear();
+        closeQuietly(monitoring);
         closeQuietly(idpService);
-        closeQuietly(devRuntime);
-        closeQuietly(sessionLock);
+        closeQuietly(testServer);
+        if (!keepDashboard) closeQuietly(sessionLock);
         closeQuietly(embeddedLogCapture);
         closeQuietly(devLogStore);
         closeQuietly(terminalProgress);
@@ -1723,10 +2258,12 @@ public class DevServer implements AutoCloseable {
             this.appProcessRunner = new AppProcessRunner(
                     config, runtimeBaseUrl, publicFluxzeroUrl, proxyUrl, session.sessionId(),
                     DevServer.this::printAppOutput, new OnePasswordEnvironment(config.projectDirectory()),
-                    placeholderResolver);
+                    placeholderResolver, publicUrl);
             this.testPipeline = new TestPipeline(
                     config, projectStore, buildCoordinator, status -> updateTestStatus(id, status),
-                    message -> printProjectOutput(id, message));
+                    message -> {testOutput.add(id,message);printProjectOutput(id,message);if(devGateway!=null)devGateway.refreshConsole();},
+                    ()->{if(devGateway!=null)devGateway.refreshConsole();});
+            this.testPipeline.setAutomaticPaused(automaticTestsPaused);
         }
 
         private String launchPrefix() {

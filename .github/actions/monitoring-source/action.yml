@@ -1,0 +1,43 @@
+name: Prepare pinned Auditlog source
+description: Fetch build-time input without persisting repository credentials
+inputs:
+  client-id:
+    description: Client ID of the organization-owned Auditlog build app
+    required: true
+  private-key:
+    description: Private key of the Auditlog build app
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Read source pin
+      id: source
+      shell: bash
+      env:
+        APP_CLIENT_ID: ${{ inputs.client-id }}
+        APP_PRIVATE_KEY: ${{ inputs.private-key }}
+      run: |
+        if [ -z "$APP_CLIENT_ID" ] || [ -z "$APP_PRIVATE_KEY" ]; then
+          echo "::error::Set AUDITLOG_APP_CLIENT_ID and AUDITLOG_APP_PRIVATE_KEY for the organization-owned app with read-only contents access to fluxzero-io/fluxzero-auditlog to build the bundled monitoring distribution."
+          exit 1
+        fi
+        python -c 'import json, os; pin=json.load(open("monitoring/auditlog-source.json")); print("commit=" + pin["commit"])' >> "$GITHUB_OUTPUT"
+    - name: Create short-lived source token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ inputs.client-id }}
+        private-key: ${{ inputs.private-key }}
+        owner: fluxzero-io
+        repositories: fluxzero-auditlog
+        permission-contents: read
+    - uses: actions/checkout@v7
+      with:
+        repository: fluxzero-io/fluxzero-auditlog
+        ref: ${{ steps.source.outputs.commit }}
+        token: ${{ steps.app-token.outputs.token }}
+        path: .private/auditlog-source
+        persist-credentials: false
+    - name: Select local build input
+      shell: bash
+      run: echo "AUDITLOG_SOURCE_CHECKOUT=$GITHUB_WORKSPACE/.private/auditlog-source" >> "$GITHUB_ENV"

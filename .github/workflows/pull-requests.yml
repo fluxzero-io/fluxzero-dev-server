@@ -9,3 +9,4 @@ jobs:
     name: Verify pull request
     if: github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/verify.yml
+    secrets: inherit

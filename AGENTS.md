@@ -4,10 +4,10 @@ Instructions for coding agents working in this repository.
 
 ## Project Shape
 
-This repository contains the standalone Fluxzero dev server, built with Maven and Java 21. It is a local
+This repository contains the standalone Fluxzero dev server, built and run with Maven and Java 25. It is a local
 development product rather than an application dependency.
 
-- `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero test runtime and proxy,
+- `src/main/java/io/fluxzero/devserver`: orchestration for the version-aligned Fluxzero Test Server and proxy,
   application and frontend child processes, rolling reloads, background tests, startup commands, diagnostics,
   terminal attachment, and MCP access.
 - `src/main/resources`: logging and runtime resources included in the standalone distribution.
@@ -27,7 +27,9 @@ integration boundary.
 ## Build And Test
 
 - Use the Maven wrapper: `./mvnw` on Unix and `mvnw.cmd` on Windows.
-- The project compiles with `maven.compiler.release=21`.
+- Use JDK 25 for builds, tests, and the running dev server. Java 21 compatibility is not required.
+- The project currently compiles its own sources with `maven.compiler.release=21`; this bytecode target does not
+  imply Java 21 runtime support for the standalone distribution and its dependencies.
 - Full verification is `./mvnw -B clean install`.
 - Run focused tests with `./mvnw -B -Dtest=ClassName test`.
 - Run whole-application development workflow tests with `./mvnw -B verify -Pdev-server-e2e`.
@@ -43,6 +45,12 @@ Keep the default test suite deterministic and reasonably fast. Expensive framewo
 belong behind the existing opt-in profiles unless their cost can be reduced enough for every build.
 
 ## Architecture And Compatibility
+
+- The dev server and its dashboard target only the locally managed public SDK Test Server and Proxy.
+  The private production runtime is neither a supported target nor a local development dependency.
+  Do not add production-runtime implementations, artifacts, connections, or fallback paths here.
+  Use Test Server terminology for this service; historical `runtime` fields in session/MCP protocols
+  and version/cache settings refer exclusively to that Test Server and remain compatibility boundaries.
 
 - Treat `.fluxzero/dev.yaml`, `.fluxzero/dev/session.json`, diagnostics files, the MCP surface, environment
   variables, and launcher exit codes as compatibility boundaries. Version schemas before making incompatible
@@ -80,6 +88,32 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
   process state.
 - Do not commit `target/`, generated local state under `.fluxzero/dev`, resolved secrets, or fixture dependency
   directories such as `node_modules/`.
+
+## Dashboard UI
+
+- Call the project selector Project and the resource-management page Workspace. Keep App preview, Workspace
+  and Progress as direct navigation links, followed by Tests and Startup; Monitoring is the collapsible group for technical detail.
+  Tests and Startup show a quiet green count of successful results, replaced by only the red failure count
+  when failures exist. Hide these counters when disconnected, stopped or without results.
+  Progress is persistent functional history in `.fluxzero/progress.yaml`, not live health or an engineering
+  task list. Show its completion percentage in navigation with the completed/total count on hover; keep it
+  available while the workspace is stopped. Only Planned, In progress and Done are supported.
+- Keep Monitoring expanded by default and persist the user's last choice in browser storage. Persist desktop
+  navigation width and collapsed state; mobile uses a temporary drawer without changing the desktop preference.
+  Keep a visible hamburger when hidden, a pin/hide toggle, and an accessible draggable resize edge.
+- Use shared quiet action styles: a very light blue surface, visible hover/pressed states, and content-sized
+  controls. Split buttons round only their outside corners and reserve space for the dropdown arrow even
+  with the longest label. Keep workspace/test actions in a row on desktop and stacked on narrow screens.
+
+- In every modal footer, place Cancel at the far left and the primary confirmation action at the far right.
+  Use the shared `.dialog-actions` layout and put `.dialog-cancel` first in DOM order, so keyboard order follows
+  the visible order. Keep any additional actions to the right, before the primary action.
+- Preserve this separation on mobile, with compact controls and enough space between title, body and footer.
+  Informational dialogs without footer actions may retain a close icon in the header.
+- Graph modals close when clicking or tapping the backdrop; clicks inside the modal (including its padding)
+  must not dismiss it. A drag that starts inside the modal must not become a backdrop dismissal.
+- Confirmation modals stay open when clicking outside. Both graph and confirmation modals close with Escape
+  and restore focus to their trigger. Dismissing a modal must never confirm its action.
 
 ## Commit Messages
 

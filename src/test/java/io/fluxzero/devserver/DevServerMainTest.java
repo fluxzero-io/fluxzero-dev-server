@@ -56,7 +56,7 @@ class DevServerMainTest {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         Path outputFile = projectDirectory.resolve("dev-server.out");
         Process process = new ProcessBuilder(
-                java.toString(), runtimeCacheArgument(),
+                java.toString(), runtimeCacheArgument(), monitoringDefaultsArgument(),
                 "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + projectDirectory.resolve("registry"),
                 "-cp", testClassPath(),
@@ -85,6 +85,226 @@ class DevServerMainTest {
             if (process.isAlive()) {
                 process.destroyForcibly();
             }
+        }
+    }
+
+    @Test
+    void stopsWorkspaceAndStartsAgainThroughItsRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            long runtimePid = before.path("runtime").path("pid").asLong();
+            Path history = seedMonitoringHistory(projectDirectory);
+            assertEquals(409, dashboardAction(http, base, "start-workspace"));
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            var stopped = awaitDashboardState(http, base, "idle");
+            assertTrue(stopped.path("maintenance").path("workspaceStopped").asBoolean());
+            assertFalse(stopped.path("maintenance").path("busy").asBoolean());
+            assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
+            assertTrue(process.isAlive(), "dashboard controller should remain alive");
+            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT)).build(),
+                                       java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals("idle", mapper.readTree(sessionFile(projectDirectory).toFile()).path("status").asText());
+            assertEquals(409, dashboardAction(http, base, "stop-workspace"));
+            assertEquals(409, dashboardAction(http, base, "restart-application"));
+            assertEquals(202, dashboardAction(http, base, "start-workspace"));
+            awaitDashboardState(http, base, "running");
+            var after = mapper.readTree(sessionFile(projectDirectory).toFile());
+            assertFalse(before.path("sessionId").equals(after.path("sessionId")));
+            assertEquals(base, after.path("gateway").path("url").asText());
+            assertEquals(process.pid(), after.path("pid").asLong());
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            awaitDashboardState(http, base, "idle");
+            try (var bootstrap = new DevServerBootstrap()) {
+                assertEquals(0, bootstrap.run(projectDirectory, List.of(), true, true));
+            }
+            awaitDashboardState(http, base, "running");
+            var resumed = mapper.readTree(sessionFile(projectDirectory).toFile());
+            assertEquals(process.pid(), resumed.path("pid").asLong());
+            assertEquals("saved monitoring history", Files.readString(history), "Stop/Start must preserve history");
+            assertEquals(202, dashboardAction(http, base, "stop-devserver"));
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS));
+            assertFalse(ProcessHandle.of(resumed.path("runtime").path("pid").asLong()).map(ProcessHandle::isAlive).orElse(false));
+        } finally {
+            if (process.isAlive()) { runControl(projectDirectory, "stop"); if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process); }
+        }
+    }
+
+    @Test
+    void cliStopClosesTheRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            String base = new ObjectMapper().readTree(sessionFile(projectDirectory).toFile()).path("gateway").path("url").asText();
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            awaitDashboardState(http, base, "idle");
+            assertEquals(0, runControl(projectDirectory, "stop").exitCode());
+            assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+        } finally { if (process.isAlive()) ProcessUtils.forceStopTree(process); }
+    }
+
+    private static int dashboardAction(java.net.http.HttpClient http, String base, String action) throws Exception {
+        return http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+                .header("Origin", base).header("X-Fluxzero-Console", "1")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode();
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode awaitDashboardState(java.net.http.HttpClient http, String base, String state) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (System.nanoTime() < deadline) {
+            try {
+                var response = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json"))
+                        .timeout(Duration.ofSeconds(2)).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                var status = new ObjectMapper().readTree(response.body());
+                if (state.equals(status.path("state").asText()) && !status.path("maintenance").path("busy").asBoolean()) return status;
+            } catch (IOException ignored) { }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Dashboard did not reach " + state);
+    }
+
+    @Test
+    void restartsManagedEnvironmentOnTheSamePublicPortAndClearsMonitoringHistory(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            long runtimePid = before.path("runtime").path("pid").asLong();
+            Path history = seedMonitoringHistory(projectDirectory);
+            var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/restart-devserver"))
+                    .header("Origin", base).header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+            com.fasterxml.jackson.databind.JsonNode after = before;
+            while (System.nanoTime() < deadline) {
+                try { after = mapper.readTree(sessionFile(projectDirectory).toFile()); }
+                catch (IOException ignored) { }
+                if (!before.path("sessionId").equals(after.path("sessionId")) && "running".equals(after.path("status").asText())) break;
+                Thread.sleep(25);
+            }
+            assertFalse(before.path("sessionId").equals(after.path("sessionId")), "new session expected");
+            assertEquals("running", after.path("status").asText());
+            assertEquals(base, after.path("gateway").path("url").asText());
+            assertEquals(process.pid(), after.path("pid").asLong());
+            assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
+            assertTrue(after.path("runtime").path("pid").asLong() != runtimePid);
+            assertFalse(Files.exists(history), "Restart All must delete persisted VictoriaLogs history");
+            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json")).build(),
+                                        java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+        } finally {
+            runControl(projectDirectory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void failedMonitoringResetKeepsEnvironmentRunningAndReportsFailure(@TempDir Path projectDirectory) throws Exception {
+        Files.createDirectories(projectDirectory.resolve(".fluxzero"));
+        Files.writeString(projectDirectory.resolve(DevProjectConfig.FILE), "version: 1\nmonitoring: {enabled: false}\n");
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            Path external = Files.createDirectory(projectDirectory.resolve("external-history"));
+            Path history = Files.writeString(external.resolve("records"), "keep");
+            Path monitoringDirectory = Files.createDirectories(projectDirectory.resolve(".fluxzero/dev/monitoring"));
+            Files.createSymbolicLink(monitoringDirectory.resolve("victorialogs"), external);
+            assertEquals(202, dashboardAction(http, base, "restart-devserver"));
+            long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+            String error = "";
+            while (System.nanoTime() < deadline) {
+                var status = awaitDashboardState(http, base, "running");
+                error = status.path("maintenance").path("error").asText();
+                if (!error.isBlank()) break;
+                Thread.sleep(25);
+            }
+            assertTrue(error.contains("Refusing to clear linked monitoring storage"), error);
+            assertEquals("keep", Files.readString(history));
+            assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(projectDirectory).toFile()).path("sessionId"));
+            assertTrue(ProcessHandle.of(before.path("runtime").path("pid").asLong()).map(ProcessHandle::isAlive).orElse(false));
+        } finally {
+            runControl(projectDirectory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    @Test
+    void switchesProfilesThroughTheLocalConsoleAndRetainsSelectionOnRestart(@TempDir Path directory) throws Exception {
+        Files.createDirectories(directory.resolve(".fluxzero"));
+        Files.writeString(directory.resolve(DevProjectConfig.FILE), """
+                version: 1
+                defaultProfile: local
+                profiles:
+                  local:
+                    environment: local
+                    monitoring: {enabled: false}
+                  alternate:
+                    environment: local
+                    monitoring: {enabled: false}
+                """);
+        Process process = startServer(directory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(directory)));
+            var before = mapper.readTree(sessionFile(directory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            var statusUrl = java.net.URI.create(base + DevConsole.ROOT + "status.json");
+            var status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+                                                   java.net.http.HttpResponse.BodyHandlers.ofString()).body());
+            assertEquals("local", status.path("profiles").path("active").asText());
+            assertEquals(2, status.path("profiles").path("available").size());
+            assertTrue(status.path("profiles").path("switchSupported").asBoolean());
+            var switchUrl = java.net.URI.create(base + DevConsole.ROOT + "actions/switch-profile");
+            for (String body : List.of("{}", "{", "{\"profile\":null}")) {
+                var request = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+                        .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
+                assertEquals(400, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            }
+            var foreign = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", "https://example.com")
+                    .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
+            assertEquals(403, http.send(foreign, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            var unknown = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+                    .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"missing\"}")).build();
+            assertEquals(409, http.send(unknown, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(directory).toFile()).path("sessionId"));
+            Path history = seedMonitoringHistory(directory);
+            for (String action : List.of("switch-profile", "restart-devserver")) {
+                long previousRuntime = before.path("runtime").path("pid").asLong();
+                var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+                        .header("Origin", base).header("X-Fluxzero-Console", "1")
+                        .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
+                assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+                long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+                var after = before;
+                while (System.nanoTime() < deadline) {
+                    try { after = mapper.readTree(sessionFile(directory).toFile()); } catch (IOException ignored) { }
+                    if (!before.path("sessionId").equals(after.path("sessionId")) && "running".equals(after.path("status").asText())) break;
+                    Thread.sleep(25);
+                }
+                assertFalse(before.path("sessionId").equals(after.path("sessionId")));
+                assertEquals("running", after.path("status").asText());
+                assertEquals("switch-profile".equals(action), Files.exists(history),
+                             "Only Restart All should clear monitoring history");
+                assertEquals(base, after.path("gateway").path("url").asText());
+                assertEquals(process.pid(), after.path("pid").asLong());
+                assertFalse(ProcessHandle.of(previousRuntime).map(ProcessHandle::isAlive).orElse(false));
+                status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+                                                  java.net.http.HttpResponse.BodyHandlers.ofString()).body());
+                assertEquals("alternate", status.path("profiles").path("active").asText());
+                before = after;
+            }
+            assertTrue(Files.readString(directory.resolve(DevProjectConfig.FILE)).contains("defaultProfile: local"));
+        } finally {
+            runControl(directory, "stop");
+            if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process);
         }
     }
 
@@ -176,8 +396,8 @@ class DevServerMainTest {
 
             ProcessResult list = runControl(orders, registryDirectory, "list");
             assertEquals(0, list.exitCode(), list.output());
-            assertTrue(list.output().contains(orders.toString()), list.output());
-            assertTrue(list.output().contains(reporting.toString()), list.output());
+            assertTrue(list.output().contains(orders.getFileName().toString()), list.output());
+            assertTrue(list.output().contains(reporting.getFileName().toString()), list.output());
             assertTrue(list.output().contains("2 active, 0 stale."), list.output());
 
             ProcessResult json = runControl(orders, registryDirectory, "list", "--json");
@@ -185,6 +405,11 @@ class DevServerMainTest {
             var jsonOutput = new ObjectMapper().readTree(json.output());
             assertEquals(2, jsonOutput.path("active").asInt());
             assertEquals(2, jsonOutput.path("environments").size());
+            var listedPaths = new java.util.HashSet<String>();
+            for (var environment : jsonOutput.path("environments")) {
+                listedPaths.add(Path.of(environment.path("projectDirectory").asText()).toRealPath().toString());
+            }
+            assertEquals(java.util.Set.of(orders.toRealPath().toString(), reporting.toRealPath().toString()), listedPaths);
             assertFalse(json.output().contains("token"), json.output());
 
             ProcessResult stop = runControl(orders, registryDirectory, "stop");
@@ -197,8 +422,8 @@ class DevServerMainTest {
             assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");
             ProcessResult stale = runControl(reporting, registryDirectory, "list");
             assertEquals(0, stale.exitCode(), stale.output());
-            assertFalse(stale.output().contains(orders.toString()), stale.output());
-            assertTrue(stale.output().contains(reporting.toString()), stale.output());
+            assertFalse(stale.output().contains(orders.getFileName().toString()), stale.output());
+            assertTrue(stale.output().contains(reporting.getFileName().toString()), stale.output());
             assertTrue(stale.output().contains("0 active, 1 stale."), stale.output());
         } finally {
             if (ordersProcess.isAlive()) {
@@ -207,6 +432,8 @@ class DevServerMainTest {
             if (reportingProcess.isAlive()) {
                 reportingProcess.destroyForcibly();
             }
+            assertTrue(ordersProcess.waitFor(5, TimeUnit.SECONDS), "orders dev server did not terminate");
+            assertTrue(reportingProcess.waitFor(5, TimeUnit.SECONDS), "reporting dev server did not terminate");
         }
     }
 
@@ -246,13 +473,13 @@ class DevServerMainTest {
     private static Process startServer(Path projectDirectory, Path registryDirectory) throws IOException {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         return new ProcessBuilder(
-                java.toString(), runtimeCacheArgument(),
+                java.toString(), runtimeCacheArgument(), monitoringDefaultsArgument(),
                 "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
                 "-cp", testClassPath(), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
                 "--idp", "external")
-                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+                .redirectErrorStream(true).redirectOutput(projectDirectory.resolve("dev-server.out").toFile()).start();
     }
 
     private static void assertStopOrder(String output) {
@@ -289,12 +516,22 @@ class DevServerMainTest {
         return new ProcessBuilder(command);
     }
 
+    private static Path seedMonitoringHistory(Path project) throws IOException {
+        Path directory = Files.createDirectories(project.resolve(".fluxzero/dev/monitoring/victorialogs"));
+        return Files.writeString(directory.resolve("test-history-marker"), "saved monitoring history");
+    }
+
     private static Path sessionFile(Path projectDirectory) {
         return projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve(DevSessionStore.SESSION_FILE);
     }
 
     private static String testClassPath() {
         return System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+    }
+
+    private static String monitoringDefaultsArgument() {
+        return "-D" + DevMonitoringDefaults.FILE_PROPERTY + "="
+               + Path.of("src/test/resources/monitoring-disabled.yaml").toAbsolutePath();
     }
 
     private static String runtimeCacheArgument() {
@@ -304,7 +541,7 @@ class DevServerMainTest {
 
     private static boolean awaitRunningSession(Path sessionFile) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             try {
                 if (Files.isRegularFile(sessionFile)
@@ -316,6 +553,8 @@ class DevServerMainTest {
             }
             Thread.sleep(50);
         }
+        Path output = sessionFile.getParent().getParent().getParent().resolve("dev-server.out");
+        if (Files.isRegularFile(output)) System.err.println(Files.readString(output));
         return false;
     }
 

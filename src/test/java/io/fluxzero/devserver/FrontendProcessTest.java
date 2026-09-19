@@ -193,6 +193,21 @@ class FrontendProcessTest {
     }
 
     @Test
+    void restartsOnRequestWithoutChangingTheFrontendPort(@TempDir Path projectDirectory) throws Exception {
+        String command = fixtureCommand("{frontendPort}", projectDirectory.resolve("requests.log"));
+        try (FrontendProcess frontend = FrontendProcess.start(
+                config(projectDirectory, command, Duration.ofMillis(250)), ignored -> {}, ignored -> {})) {
+            assertTrue(await(frontend::ready));
+            var before = frontend.status();
+            frontend.requestRestart();
+            assertTrue(await(frontend::ready));
+            assertEquals(before.port(), frontend.status().port());
+            assertFalse(before.pid().equals(frontend.status().pid()));
+            assertFalse(ProcessUtils.isAlive(before.pid()));
+        }
+    }
+
+    @Test
     void substitutesDynamicPortAndExposesOnlyRelativeBackendPath(@TempDir Path projectDirectory) throws Exception {
         String java = Path.of(System.getProperty("java.home"), "bin", "java").toString();
         String command = quote(java) + " -cp " + quote(System.getProperty("java.class.path")) + " "

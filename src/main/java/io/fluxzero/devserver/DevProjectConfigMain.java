@@ -42,7 +42,19 @@ public final class DevProjectConfigMain {
             # port: 4200 # public URL for the complete dev environment; dynamic when omitted
             # idp: managed # managed or external
             # fastCompiler: false
-            # frontendOnly: false # true skips the local runtime, proxy, IDP, applications, compilation and tests
+            # frontendOnly: false # true skips the local Test Server, proxy, IDP, applications, compilation and tests
+
+            # Auditlog is bundled and enabled by default for local backend environments.
+            # Set monitoring: {enabled: false} to disable it in this project/profile.
+            # Optional machine defaults: ~/.fluxzero/dev/monitoring.yaml (see docs/local-monitoring.md).
+            # monitoring:
+            #   storage: victorialogs # native instance per dev server; alternatively testserver
+            #   retention: P1D # testserver defaults to PT15M; VictoriaLogs requires at least P1D
+            #   maxDiskBytes: 1073741824 # VictoriaLogs retention threshold, not a hard quota
+            #   maxRecords: 5000 # testserver only
+            #   maxBytes: 8388608 # testserver serialized bytes, not heap
+            #   javaExecutable: /path/to/java25/bin/java # defaults to supervisor Java
+            #   victoriaLogsBinary: /path/to/victoria-logs-prod # optional offline binary override
 
             # Additional public gateway paths routed unchanged to Fluxzero. /api is always included.
             # backendPaths:

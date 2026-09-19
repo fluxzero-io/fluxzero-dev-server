@@ -1,0 +1,70 @@
+<div class="dashboard-shell" [class.preview-expanded]="previewExpanded()" [class.navigation-collapsed]="sidebarCollapsed()" [class.sidebar-resizing]="resizingSidebar()" [class.drawer-open]="menuOpen()" [style.--sidebar-width]="sidebarWidth() + 'px'">
+  @if(menuOpen()) {<button class="nav-backdrop" (click)="closeNavigation()" aria-label="Close navigation" tabindex="-1"></button>}
+  <aside id="devboard-navigation" class="dashboard-sidebar" [class.open]="menuOpen()" [attr.inert]="navigationHidden() ? '' : null" aria-label="Primary navigation" [attr.role]="menuOpen() ? 'dialog' : null" [attr.aria-modal]="menuOpen() ? 'true' : null">
+    <div class="dashboard-brand">
+      <a class="brand-home" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Devboard home"><img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt=""></a>
+      <span class="brand-title">Fluxzero<span>Devboard</span></span>
+      <button class="icon-button sidebar-toggle" type="button" (click)="togglePinnedNavigation()" [attr.aria-label]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'" [title]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'"><i class="bi" [class.bi-x-lg]="mobileNavigation()" [class.bi-layout-sidebar-inset]="!mobileNavigation() && !sidebarCollapsed()" [class.bi-layout-sidebar-inset-reverse]="!mobileNavigation() && sidebarCollapsed()" aria-hidden="true"></i></button>
+    </div>
+    <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
+    <dev-profile-selector [status]="status()" [connected]="connected()"/>
+    <nav aria-label="Devboard navigation">
+      <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
+      <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Workspace</span>@if(connected() && status()?.workspaceIssue) {<span class="nav-issue-badge" role="img" aria-label="Workspace needs attention" [title]="status()?.workspaceIssue">!</span>}</a>
+      <a class="dashboard-nav-link" href="#progress" (click)="link($event, 'progress')" [class.active]="route() === 'progress'" [attr.aria-current]="route() === 'progress' ? 'page' : null"><i class="bi bi-list-check"></i><span>Progress</span>@if(progressBadge(); as badge) {<span class="nav-result-badge" [class.in-progress]="badge.done < badge.total" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.percent}}%</span>}</a>
+      <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
+      <a class="dashboard-nav-link" href="#startup" (click)="link($event, 'startup')" [class.active]="route() === 'startup'" [attr.aria-current]="route() === 'startup' ? 'page' : null"><i class="bi bi-database-check"></i><span>Startup</span>@if(startupBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
+      <div class="dashboard-nav-section">
+        <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleMonitoring()" [title]="monitoringExpanded() ? 'Collapse Monitoring' : 'Expand Monitoring'" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
+        <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
+          @for(view of views; track view.key) {<a class="dashboard-nav-link" [href]="'#monitoring/' + view.key" (click)="link($event, 'monitoring/' + view.key)" [class.active]="isMonitoring() && activeView() === view.key" [attr.aria-current]="isMonitoring() && activeView() === view.key ? 'page' : null"><i [class]="'bi bi-' + view.icon"></i><span>{{view.label}}</span></a>}
+        </div>
+      </div>
+    </nav>
+    <div class="sidebar-footer"><span class="connection" role="status" [class.connected]="connected()"><i class="bi" [class.bi-plug-fill]="connected()" [class.bi-plug]="!connected()" aria-hidden="true"></i>{{connected() ? 'Connected' : 'Disconnected'}}</span><dev-theme-menu [theme]="themePreference()"/></div>
+  </aside>
+  @if(!sidebarCollapsed() && !mobileNavigation()) {<button class="sidebar-resizer" type="button" role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="520" [attr.aria-valuenow]="sidebarWidth()" title="Drag to resize; drag left to hide navigation" (pointerdown)="startSidebarResize($event)" (keydown)="resizeNavigationWithKeyboard($event)"></button>}
+  <main [attr.inert]="menuOpen() ? '' : null">
+    @if(sidebarCollapsed() || mobileNavigation()) {<div class="navigation-bar"><button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button></div>}
+
+    @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
+    @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}
+    @if(route() === 'tests') {<dev-tests [status]="status()"/>}
+    @if(route() === 'progress') {<dev-progress [progress]="status()?.progress"/>}
+    @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
+    @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
+    <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">
+      <header class="application-heading" aria-label="Preview navigation">
+        <div class="application-tools">
+          <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="preview.go(1)" [disabled]="!preview.canForward()" aria-label="Forward in preview" title="Forward"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+        </div>
+        <div class="preview-address">
+          <span class="preview-location" [title]="preview.url() || applicationUrl() || ''">{{previewAddress()}}</span>
+          @if(applicationUrl()) {<button class="icon-button preview-copy" (click)="copyPreviewUrl()" [attr.aria-label]="previewCopied() ? 'URL copied' : 'Copy URL'" [title]="previewCopied() ? 'Copied' : 'Copy URL'"><i class="bi" [class.bi-copy]="!previewCopied()" [class.bi-check2]="previewCopied()" aria-hidden="true"></i></button>}
+          <span class="preview-copy-status" role="status">{{previewCopyError() || (previewCopied() ? 'URL copied' : '')}}</span>
+        </div>
+        <div class="application-tools preview-display-tools">
+          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-arrows-angle-contract]="previewExpanded()" aria-hidden="true"></i></button>
+        @if(applicationUrl(); as url) {
+          <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
+        }
+        </div>
+      </header>
+      @if(applicationSource(); as source) {
+        <iframe #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
+      } @else {
+        <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
+      }
+    </section>
+    <section class="monitoring-page" [hidden]="!isMonitoring()" aria-labelledby="monitoring-title">
+      <header class="monitoring-heading">
+        <h1 id="monitoring-title">{{viewLabel()}}</h1>
+        <p>{{currentName()}}</p>
+      </header>
+      @if(!status()?.monitoring?.enabled) {<div class="monitoring-empty"><h2>Monitoring is not configured</h2><p>Configure monitoring in this environment to explore its messages, logs and traces.</p></div>}
+      @if(frameSource) {<iframe #frame name="dev-monitoring" [title]="viewLabel()" [src]="frameSource" (load)="frameLoaded()"></iframe>}
+    </section>
+  </main>
+</div>

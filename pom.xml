@@ -50,6 +50,8 @@
         <mcp.version>2.0.1</mcp.version>
         <maven.resolver.version>2.0.22</maven.resolver.version>
         <skipPublishing>false</skipPublishing>
+        <skipFrontend>false</skipFrontend>
+        <auditlog.source>git@github.com:fluxzero-io/fluxzero-auditlog.git</auditlog.source>
     </properties>
 
     <repositories>
@@ -196,6 +198,11 @@
         </dependency>
 
         <dependency>
+            <groupId>org.junit.platform</groupId>
+            <artifactId>junit-platform-launcher</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>
@@ -204,6 +211,16 @@
 
     <build>
         <resources>
+            <resource>
+                <directory>${project.build.directory}/generated-resources/dev-monitoring</directory>
+                <targetPath>dev-monitoring</targetPath>
+                <filtering>false</filtering>
+            </resource>
+            <resource>
+                <directory>frontend/dist/browser</directory>
+                <targetPath>dev-console</targetPath>
+                <filtering>false</filtering>
+            </resource>
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>false</filtering>
@@ -214,6 +231,47 @@
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>2.0.2</version>
+                <configuration>
+                    <workingDirectory>frontend</workingDirectory>
+                    <installDirectory>${project.build.directory}/frontend-tools</installDirectory>
+                    <skip>${skipFrontend}</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install-console-node</id><phase>generate-resources</phase>
+                        <goals><goal>install-node-and-npm</goal></goals>
+                        <configuration><skip>false</skip><nodeVersion>v24.18.0</nodeVersion></configuration>
+                    </execution>
+                    <execution>
+                        <id>install-console-dependencies</id><phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>ci --no-audit --no-fund</arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>build-console</id><phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration><arguments>run build</arguments></configuration>
+                    </execution>
+                    <execution>
+                        <id>package-monitoring</id><phase>generate-resources</phase>
+                        <goals><goal>npm</goal></goals>
+                        <configuration>
+                            <skip>false</skip>
+                            <arguments>run package:monitoring</arguments>
+                            <environmentVariables>
+                                <AUDITLOG_SOURCE>${auditlog.source}</AUDITLOG_SOURCE>
+                                <AUDITLOG_OUTPUT>${project.build.directory}/generated-resources/dev-monitoring</AUDITLOG_OUTPUT>
+                                <AUDITLOG_TOOLS>${project.build.directory}/frontend-tools</AUDITLOG_TOOLS>
+                                <JAVA_HOME>${java.home}</JAVA_HOME>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-deploy-plugin</artifactId>
@@ -246,7 +304,7 @@
                                     <version>[3.9.0,)</version>
                                 </requireMavenVersion>
                                 <requireJavaVersion>
-                                    <version>[21,)</version>
+                                    <version>[25,)</version>
                                 </requireJavaVersion>
                             </rules>
                         </configuration>
@@ -257,6 +315,20 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.15.0</version>
+                <executions>
+                    <execution>
+                        <id>default-compile</id>
+                        <configuration><excludes><exclude>**/listener/**</exclude></excludes></configuration>
+                    </execution>
+                    <execution>
+                        <id>compile-test-listener</id><phase>compile</phase><goals><goal>compile</goal></goals>
+                        <configuration>
+                            <release>8</release><proc>none</proc>
+                            <includes><include>**/listener/*.java</include></includes>
+                            <useIncrementalCompilation>false</useIncrementalCompilation>
+                        </configuration>
+                    </execution>
+                </executions>
                 <configuration>
                     <annotationProcessorPaths>
                         <path>
@@ -278,6 +350,8 @@
                 <version>3.5.6</version>
                 <configuration>
                     <systemPropertyVariables>
+                        <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                        <fluxzero.dev.monitoringDefaults>${project.basedir}/src/test/resources/monitoring-disabled.yaml</fluxzero.dev.monitoringDefaults>
                         <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                         <fluxzero.maven.enabled>true</fluxzero.maven.enabled>
                         <logback.statusListenerClass>ch.qos.logback.core.status.NopStatusListener</logback.statusListenerClass>
@@ -373,6 +447,8 @@
                                 <include>**/*E2EIT.java</include>
                             </includes>
                             <systemPropertyVariables>
+                                <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                                <fluxzero.dev.monitoringDefaults>${project.basedir}/src/test/resources/monitoring-disabled.yaml</fluxzero.dev.monitoringDefaults>
                                 <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                                 <fluxzero.devserver.e2e>true</fluxzero.devserver.e2e>
                                 <fluxzero.project.version>${fluxzero.version}</fluxzero.project.version>
@@ -412,6 +488,8 @@
                                 <include>**/FrontendFrameworkE2EIT.java</include>
                             </includes>
                             <systemPropertyVariables>
+                                <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
+                                <fluxzero.dev.monitoringDefaults>${project.basedir}/src/test/resources/monitoring-disabled.yaml</fluxzero.dev.monitoringDefaults>
                                 <fluxzero.dev.runtime.cache>${project.build.directory}/dev-runtime-test-cache</fluxzero.dev.runtime.cache>
                                 <fluxzero.devserver.frontend.e2e>true</fluxzero.devserver.frontend.e2e>
                                 <logback.statusListenerClass>ch.qos.logback.core.status.NopStatusListener</logback.statusListenerClass>

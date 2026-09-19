@@ -130,11 +130,11 @@ final class DevSessionStore {
             || ProcessUtils.isAlive(session.pid(), session.startedAt())) {
             return current;
         }
-        String detail = "dev server process stopped unexpectedly; in-memory runtime data was lost";
+        String detail = "dev server process stopped unexpectedly; in-memory Test Server data was lost";
         DevSession reconciled = session.withStoppedServices(detail).withStatus("stopped-unexpectedly");
         writeSession(reconciled);
         invalidateCommandStatus(session.sessionId(),
-                                "runtime session ended unexpectedly; command will run again in the next session");
+                                "Test Server session ended unexpectedly; command will run again in the next session");
         return Optional.of(reconciled);
     }
 

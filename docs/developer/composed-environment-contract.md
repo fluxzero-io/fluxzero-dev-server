@@ -1,7 +1,7 @@
 # Composed Development Environments
 
 This contract covers development setups that consist of more than one build project or frontend while sharing one
-Fluxzero runtime, proxy, IDP, public gateway, MCP server, diagnostics store, and lifecycle.
+Fluxzero Test Server, proxy, IDP, public gateway, MCP server, diagnostics store, and lifecycle.
 
 ## Configuration Shape
 
@@ -120,7 +120,7 @@ Existing top-level configuration and existing profile bodies remain valid:
 
 The Dashboard and Auditlog reference is complete when one `fz dev --profile dashboard` invocation:
 
-1. starts VictoriaLogs on a dynamic host port, then Dashboard Rebound and Auditlog against one embedded test runtime;
+1. starts VictoriaLogs on a dynamic host port, then Dashboard Rebound and Auditlog against one local Test Server;
 2. serves Dashboard at `/` and Auditlog at `/marketplace/logs/1` through one public port;
 3. routes Dashboard and Auditlog browser traffic through one Fluxzero proxy, including WebSockets;
 4. recompiles and rolls only the project whose backend changed;

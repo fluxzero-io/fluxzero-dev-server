@@ -21,7 +21,17 @@ import java.util.List;
 import java.util.Map;
 
 record TestStatus(String state, List<String> selectors, String reason, Map<String, String> selectionReasons,
-                  int exitCode, String detail, String failureSummary, long durationMillis, long updatedAt) {
+                  int exitCode, String detail, String failureSummary, long durationMillis, long updatedAt, TestCounts counts) {
+    TestStatus(String state, List<String> selectors, String reason, Map<String, String> selectionReasons,
+               int exitCode, String detail, String failureSummary, long durationMillis, long updatedAt) {
+        this(state, selectors, reason, selectionReasons, exitCode, detail, failureSummary, durationMillis, updatedAt, null);
+    }
+
+    TestStatus withCounts(TestCounts counts) {
+        return new TestStatus(state, selectors, reason, selectionReasons, exitCode, detail, failureSummary,
+                              durationMillis, updatedAt, counts);
+    }
+
     TestStatus {
         selectors = List.copyOf(selectors);
         selectionReasons = selectionReasons == null ? Map.of()

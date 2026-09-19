@@ -35,6 +35,9 @@ public final class FixtureAppMain {
         System.out.println("task=" + System.getenv("FLUXZERO_TASK_ID"));
         System.out.println("legacy.task=" + System.getenv("FLUX_TASK_ID"));
         System.out.println("auth.issuer=" + System.getProperty("fluxzero.auth.oidc.issuer"));
+        System.out.println("auth.application=" + System.getProperty("fluxzero.auth.external-base-url"));
+        System.out.println("auth.callback=" + System.getProperty("fluxzero.auth.oidc.redirect-uri"));
+        System.out.println("auth.audience=" + System.getProperty("fluxzero.auth.oidc.resource-audience"));
         System.out.println("auth.method=" + System.getProperty("fluxzero.auth.oidc.token-endpoint-auth-method"));
         System.out.println("feature.mode=" + System.getenv("FEATURE_MODE"));
         System.out.println("service.url=" + System.getenv("SERVICE_URL"));

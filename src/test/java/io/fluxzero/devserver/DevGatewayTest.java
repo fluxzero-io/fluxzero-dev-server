@@ -47,6 +47,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,6 +55,157 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DevGatewayTest {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2)).build();
+
+    @Test
+    void servesConsoleBeforeAppsAreReadyAndIsolatesMonitoringApi() throws Exception {
+        java.nio.file.Path assets = java.nio.file.Files.createTempDirectory("auditlog-ui-test");
+        java.nio.file.Files.writeString(assets.resolve("index.html"), "<html><head><base href=\"/\"></head>Auditlog</html>");
+        var registry = new DevEnvironmentRegistry(assets.resolve("registry"));
+        var project = assets.resolve("example");
+        var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running")
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:4200", 4200, null, "public")
+                        .withMetadata(java.util.Map.of(DevConsole.CAPABILITY, "1")));
+        new DevSessionStore(project).writeSession(session);
+        registry.register(session);
+        var console = new DevConsole(() -> java.util.Map.of("project", "example", "monitoring", java.util.Map.of("enabled", true)), assets, registry);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                     "application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> { }, true, console)) {
+            var root = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.ROOT)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, root.statusCode());
+            assertTrue(root.body().contains("<dev-root>"));
+            var known = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.ROOT + "environments.json")).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, known.statusCode());
+            assertTrue(known.body().contains("http://localhost:4200/_fluxzero/dev/"));
+            assertFalse(known.body().contains("mcp"));
+            var script = java.util.regex.Pattern.compile("src=\"(main-[^\"]+\\.js)\"").matcher(root.body());
+            assertTrue(script.find(), "Angular entrypoint must be packaged in the standalone console");
+            var bundle = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.ROOT + script.group(1))).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, bundle.statusCode());
+            assertTrue(bundle.headers().firstValue("Content-Type").orElseThrow().startsWith("text/javascript"));
+            var ui = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.MONITORING + "messages")).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, ui.statusCode());
+            assertTrue(ui.body().contains("apiBase:'" + DevConsole.API));
+            var api = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.API + "/logs/search"))
+                    .header(DevNamespaceHeader.NAME, "application-namespace").build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, api.statusCode());
+            assertEquals(DevConsole.NAMESPACE, api.headers().firstValue("X-Received-Namespace").orElseThrow());
+            assertTrue(api.body().contains("/logs/search"));
+            CompletableFuture<String> echoed = new CompletableFuture<>();
+            WebSocket socket = HTTP_CLIENT.newWebSocketBuilder()
+                    .header(DevNamespaceHeader.NAME, "application-namespace")
+                    .buildAsync(URI.create(gateway.url().replace("http://", "ws://") + DevConsole.API + "/socket"),
+                            new TextListener(echoed)).get(5, TimeUnit.SECONDS);
+            socket.sendText("monitoring-ping", true).get(5, TimeUnit.SECONDS);
+            assertEquals("backend:/socket:monitoring-ping", echoed.get(5, TimeUnit.SECONDS));
+            assertEquals(DevConsole.NAMESPACE, backend.lastWebsocketNamespace());
+            socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
+            var missing = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.MONITORING + "missing.js")).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, missing.statusCode());
+        }
+    }
+
+    @Test
+    void projectActionsRequireSameOriginAndOnlyAffectKnownStoppedProjects(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var project = directory.resolve("project with spaces");
+        var session = DevSession.empty(DevServerConfig.defaults(project)).withStatus("running");
+        var store = new DevSessionStore(project);
+        store.writeSession(session);
+        registry.register(session);
+        var opened = new AtomicReference<java.nio.file.Path>();
+        var console = new DevConsole(java.util.Map::of, null, registry, opened::set);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String base = gateway.url();
+            String projectUrl = base + DevConsole.ROOT + "projects/" + registry.listKnown().getFirst().id();
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(projectUrl + "/open-folder")).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(projectUrl + "/open-folder", null, true).statusCode());
+            assertEquals(403, projectPost(projectUrl + "/open-folder", "https://example.com", true).statusCode());
+            assertEquals(403, projectPost(projectUrl + "/open-folder", base, false).statusCode());
+            assertEquals(null, opened.get());
+            assertEquals(404, projectPost(base + DevConsole.ROOT + "projects/" + "0".repeat(64) + "/open-folder", base, true).statusCode());
+            assertEquals(204, projectPost(projectUrl + "/open-folder", base, true).statusCode());
+            assertEquals(project.toRealPath(), opened.get());
+            assertEquals(409, projectPost(projectUrl + "/forget", base, true).statusCode());
+            store.writeSession(session.withStatus("stopped"));
+            assertEquals(204, projectPost(projectUrl + "/forget", base, true).statusCode());
+            assertTrue(registry.listKnown().isEmpty());
+            assertTrue(java.nio.file.Files.isDirectory(project));
+            assertEquals("stopped", store.readSession().orElseThrow().status());
+        }
+    }
+
+    @Test
+    void renamesKnownProjectsThroughProtectedBoundedJsonEndpoint(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var project = directory.resolve("orders");
+        registry.register(DevSession.empty(DevServerConfig.defaults(project)).withStatus("stopped"));
+        var known = registry.listKnown().getFirst();
+        var console = new DevConsole(java.util.Map::of, null, registry);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "projects/" + known.id() + "/rename";
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(url, "https://example.com", true).statusCode());
+            assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+            assertEquals(400, projectPost(url, gateway.url(), true).statusCode());
+            for (String invalid : List.of("{", "{}", "{\"name\":123}", "{\"name\":\"" + "x".repeat(101) + "\"}")) {
+                assertEquals(400, renamePost(url, gateway.url(), invalid).statusCode());
+            }
+            assertEquals(413, renamePost(url, gateway.url(), " ".repeat(4097)).statusCode());
+            var response = renamePost(url, gateway.url(), "{\"name\":\"Orders preview\"}");
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("Orders preview"));
+            assertEquals("Orders preview", registry.findKnown(known.id()).orElseThrow().projectName());
+            assertEquals(200, renamePost(url, gateway.url(), "{\"name\":\"\"}").statusCode());
+            assertEquals("orders", registry.findKnown(known.id()).orElseThrow().projectName());
+            assertEquals(403, projectPost(url.replace("/rename", "/start"), "https://example.com", true).statusCode());
+            assertEquals(404, projectPost(url.replace("/rename", "/start"), gateway.url(), true).statusCode(), "Cannot start a missing folder");
+        }
+    }
+
+    private static HttpResponse<String> renamePost(String url, String origin, String body) throws Exception {
+        return HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).header("Origin", origin)
+                .header("X-Fluxzero-Console", "1").header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+    }
+
+    @Test
+    void maintenanceRequiresSameOriginPostAndReturnsConflictForBusyAction() throws Exception {
+        var called = new AtomicReference<String>();
+        var console = new DevConsole(java.util.Map::of, null).withMaintenance(action -> {
+            if (called.get() != null) throw new IllegalStateException("Maintenance is already running.");
+            called.set(action);
+        });
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String base = gateway.url(), url = base + DevConsole.ROOT + "actions/truncate-testserver-data";
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(url, null, true).statusCode());
+            assertEquals(403, projectPost(url, "https://example.com", true).statusCode());
+            assertEquals(403, projectPost(url, base, false).statusCode());
+            assertEquals(null, called.get());
+            assertEquals(404, projectPost(base + DevConsole.ROOT + "actions/unknown", base, true).statusCode());
+            assertEquals(202, projectPost(url, base, true).statusCode());
+            assertEquals("truncate-testserver-data", called.get());
+            assertEquals(409, projectPost(url, base, true).statusCode());
+            for (String action : List.of("pause-tests", "resume-tests")) {
+                called.set(null);
+                String testAction = base + DevConsole.ROOT + "actions/" + action;
+                assertEquals(403, projectPost(testAction, "https://example.com", true).statusCode());
+                assertEquals(202, projectPost(testAction, base, true).statusCode());
+                assertEquals(action, called.get());
+            }
+        }
+    }
+
+    private static HttpResponse<String> projectPost(String url, String origin, boolean consoleHeader) throws Exception {
+        var request = HttpRequest.newBuilder(URI.create(url)).POST(HttpRequest.BodyPublishers.noBody());
+        if (origin != null) request.header("Origin", origin);
+        if (consoleHeader) request.header("X-Fluxzero-Console", "1");
+        return HTTP_CLIENT.send(request.build(), HttpResponse.BodyHandlers.ofString());
+    }
 
     @Test
     void failsWhenExplicitPublicPortIsOccupied() throws Exception {

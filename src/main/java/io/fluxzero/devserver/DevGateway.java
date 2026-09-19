@@ -65,11 +65,13 @@ public final class DevGateway implements AutoCloseable {
     private final Server server;
     private final int port;
     private final boolean backendEnabled;
+    private final DevConsole console;
 
-    private DevGateway(Server server, int port, boolean backendEnabled) {
+    private DevGateway(Server server, int port, boolean backendEnabled, DevConsole console) {
         this.server = server;
         this.port = port;
         this.backendEnabled = backendEnabled;
+        this.console = console;
     }
 
     static void requireAvailablePort(int port) {
@@ -142,6 +144,12 @@ public final class DevGateway implements AutoCloseable {
     static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
                             BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity,
                             boolean backendEnabled) {
+        return start(fluxzeroProxyUrl, frontends, backendReady, backendPaths, port, activity, backendEnabled, null);
+    }
+
+    static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
+                            BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity,
+                            boolean backendEnabled, DevConsole console) {
         if (backendEnabled) {
             Objects.requireNonNull(fluxzeroProxyUrl, "fluxzeroProxyUrl must not be null");
         }
@@ -173,14 +181,17 @@ public final class DevGateway implements AutoCloseable {
             server.addConnector(connector);
 
             ProxyHandler.Reverse reverseProxy = new ProxyHandler.Reverse(
-                    request -> target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths,
-                                      configuredBackendEnabled)) {
+                    request -> console != null && console.isApi(request)
+                            ? HttpURI.build(fluxzeroTarget + request.getHttpURI().getPath().substring(DevConsole.API.length())
+                                            + (request.getHttpURI().getQuery() == null ? "" : "?" + request.getHttpURI().getQuery()))
+                            : target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths,
+                                     configuredBackendEnabled)) {
                 @Override
                 protected org.eclipse.jetty.client.Request newProxyToServerRequest(Request request, HttpURI uri) {
                     org.eclipse.jetty.client.Request proxyRequest = super.newProxyToServerRequest(request, uri);
                     if (backendRequest(request, configuredBackendPaths, configuredBackendEnabled)) {
-                        String namespace = DevNamespaceHeader.routingValue(
-                                request.getHeaders().get(DevNamespaceHeader.NAME));
+                        String namespace = console != null && console.isApi(request) ? DevConsole.NAMESPACE
+                                : DevNamespaceHeader.routingValue(request.getHeaders().get(DevNamespaceHeader.NAME));
                         if (namespace != null) {
                             proxyRequest.headers(headers -> headers.put(DevNamespaceHeader.NAME, namespace));
                         }
@@ -205,6 +216,7 @@ public final class DevGateway implements AutoCloseable {
                 @Override
                 public boolean handle(Request request, Response response, Callback callback) throws Exception {
                     activity.run();
+                    if (console != null && console.handle(request, response, callback)) return true;
                     Route route = route(request, configuredBackendPaths, configuredBackendEnabled);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);
@@ -240,12 +252,20 @@ public final class DevGateway implements AutoCloseable {
                 container.setMaxFrameSize(0);
                 container.addMapping("/*", (request, response, callback) -> {
                     activity.run();
+                    if (console != null && request.getHttpURI().getDecodedPath().startsWith(DevConsole.ROOT)
+                            && !console.isApi(request)) {
+                        if (!DevConsole.UPDATES.equals(request.getHttpURI().getDecodedPath()) || !DevConsole.localConsoleOrigin(request)) {
+                            response.setStatus(403); callback.succeeded(); return null;
+                        }
+                        return console.updates.connection();
+                    }
+                    boolean monitoring = console != null && console.isApi(request);
                     Route route = route(request, configuredBackendPaths, configuredBackendEnabled);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);
                         return null;
                     }
-                    boolean backend = route != Route.FRONTEND;
+                    boolean backend = monitoring || route != Route.FRONTEND;
                     FrontendRoute frontend = backend ? null : frontendRoute(request, configuredFrontends);
                     if (!backend && !frontend.ready().getAsBoolean()) {
                         unavailable(response, callback, FRONTEND_UNAVAILABLE);
@@ -255,12 +275,15 @@ public final class DevGateway implements AutoCloseable {
                     if (!protocols.isEmpty()) {
                         response.setAcceptedSubProtocol(protocols.getFirst());
                     }
-                    URI target = target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths,
+                    URI target = monitoring ? URI.create(fluxzeroTarget
+                            + request.getHttpURI().getPath().substring(DevConsole.API.length())
+                            + (request.getHttpURI().getQuery() == null ? "" : "?" + request.getHttpURI().getQuery()))
+                            : target(request, fluxzeroTarget, configuredFrontends, configuredBackendPaths,
                                         configuredBackendEnabled).toURI();
                     String upstreamOrigin = backend
                             ? request.getHeaders().get(HttpHeader.ORIGIN)
                             : origin(frontend.target());
-                    String namespace = backend ? DevNamespaceHeader.routingValue(
+                    String namespace = monitoring ? DevConsole.NAMESPACE : backend ? DevNamespaceHeader.routingValue(
                             request.getHeaders().get(DevNamespaceHeader.NAME)) : null;
                     return new GatewayWebSocketBridge(target, protocols,
                                                       request.getHeaders().get(HttpHeader.COOKIE),
@@ -272,8 +295,10 @@ public final class DevGateway implements AutoCloseable {
             context.setHandler(websocketHandler);
             server.setHandler(context);
             server.start();
-            return new DevGateway(server, connector.getLocalPort(), backendEnabled);
+            if (console != null) console.start();
+            return new DevGateway(server, connector.getLocalPort(), backendEnabled, console);
         } catch (Exception e) {
+            if (console != null) console.close();
             if (port != 0 && causedByBindFailure(e)) {
                 throw DevServerStartupException.portInUse(port, e);
             }
@@ -303,8 +328,11 @@ public final class DevGateway implements AutoCloseable {
         return backendEnabled ? url() + BACKEND_PREFIX : null;
     }
 
+    void refreshConsole() { if (console != null) console.updates.refreshSoon(); }
+
     @Override
     public void close() {
+        if (console != null) console.close();
         try {
             server.stop();
         } catch (Exception e) {

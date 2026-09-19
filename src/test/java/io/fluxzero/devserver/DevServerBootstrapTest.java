@@ -53,6 +53,8 @@ class DevServerBootstrapTest {
             }
             assertEquals(session.sessionId(), new DevSessionStore(root).readSession().orElseThrow().sessionId());
             assertTrue(ProcessUtils.isAlive(session.pid(), session.startedAt()));
+            var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+            assertEquals(root.toRealPath().toString(), registry.listKnown().getFirst().projectDirectory(), "Detached child must inherit the isolated registry");
         } finally { first.destroyForcibly(); second.destroyForcibly(); stop(root); }
     }
 
@@ -124,7 +126,11 @@ class DevServerBootstrapTest {
     private Process process(Path root, boolean background) throws Exception {
         var args = new java.util.ArrayList<>(List.of("--project-dir", root.toString(), "--bootstrap-agent-ready"));
         if (background) args.add("--bootstrap-background");
-        return new ProcessBuilder(DevServerBootstrap.javaCommand(DevServerBootstrapMain.class.getName(), args))
+        var command = new java.util.ArrayList<>(DevServerBootstrap.javaCommand(DevServerBootstrapMain.class.getName(), args));
+        command.add(command.indexOf("-cp"), "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + directory.resolve("registry"));
+        command.add(command.indexOf("-cp"), "-D" + DevMonitoringDefaults.FILE_PROPERTY + "="
+                + Path.of("src/test/resources/monitoring-disabled.yaml").toAbsolutePath());
+        return new ProcessBuilder(command)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.appendTo(directory.resolve("bootstrap-test.log").toFile())).start();
     }

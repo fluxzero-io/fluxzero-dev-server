@@ -37,7 +37,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /** Agent-owned MCP server: local documentation and an optional connection to the project environment. */
 public final class DevMcpStdioMain {
     static final String INSTRUCTIONS = "Use docs_start, then search/read relevant articles; preserve namespace/version. "
-            + "Call get_status for project readiness. If dev-server-not-running, call start_dev "
+            + "Use select_project to inspect/change the app directory. Call get_status for readiness; call start_dev "
             + "when development is needed; poll get_status while starting. Docs work without it. "
             + "After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Apply problemChanges by id; "
             + "get_active_problems on activeProblemCount mismatch or sessionChanged.";
@@ -73,28 +73,32 @@ public final class DevMcpStdioMain {
 
     static final class StdioBridge implements AutoCloseable {
         private final McpSyncServer localServer;
-        private final DevMcpProjectClient project;
-        private final AgentDocsService docs;
+        private final DevMcpWorkspace workspace;
         private final CountDownLatch disconnected;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         static StdioBridge start(Path directory, InputStream input, OutputStream output) {
             Path root = directory.toAbsolutePath().normalize();
-            return start(root, input, output, new AgentDocsService(
-                    () -> DevServerConfig.fromArgs(new String[]{"--project-dir", root.toString()}),
-                    AgentDocsStore.forProject(root)));
+            Path selected = DevMcpWorkspace.initialDirectory(root);
+            return start(root, selected, input, output, DevMcpWorkspace.docs(selected));
         }
 
         static StdioBridge start(Path directory, InputStream input, OutputStream output, AgentDocsService docs) {
+            return start(directory, directory, input, output, docs);
+        }
+
+        private static StdioBridge start(Path directory, Path selected, InputStream input, OutputStream output, AgentDocsService docs) {
             if (!Files.isDirectory(directory)) {
                 docs.close();
                 throw new IllegalArgumentException("MCP project directory must exist: " + directory);
             }
             CountDownLatch disconnected = new CountDownLatch(1);
             ObjectMapper mapper = new ObjectMapper();
-            var project = new DevMcpProjectClient(directory, mapper);
+            var workspace = new DevMcpWorkspace(directory, selected, docs, mapper);
             try {
-                var tools = new ArrayList<>(DevMcpTools.tools(project::call));
+                var tools = new ArrayList<>(DevMcpTools.tools(request -> workspace.current().project().call(request)));
+                tools.addAll(MonitoringTools.tools(request -> workspace.current().project().call(request)));
+                tools.addAll(ProgressTools.tools(() -> workspace.current().directory(), mapper));
                 tools.add(new McpServerFeatures.SyncToolSpecification(
                         McpSchema.Tool.builder("start_dev", Map.of("type", "object", "properties", Map.of(),
                                 "additionalProperties", false))
@@ -103,19 +107,38 @@ public final class DevMcpStdioMain {
                                         + "May launch background processes, builds and configured startup commands.")
                                 .annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(false)
                                         .destructiveHint(false).idempotentHint(true).openWorldHint(true).build()).build(),
-                        (exchange, request) -> project.start(request)));
+                        (exchange, request) -> workspace.current().project().start(request)));
+                tools.add(DevMcpTools.tool("select_project",
+                        "Inspect or select the directory used by documentation and dev tools. Omit projectDirectory to list candidates. "
+                                + "Does not start or stop any environment.",
+                        Map.of("projectDirectory", Map.of("type", "string", "description",
+                                "Existing directory inside the workspace; relative paths such as app are accepted.")),
+                        workspace::select, mapper, false));
                 for (var specification : AgentDocsTools.tools(docs, mapper)) {
-                    if (specification.tool().name().equals("docs_start")) {
-                        tools.add(DevMcpTools.tool("docs_start", specification.tool().description(),
-                                AgentDocsTools.properties(), arguments -> {
+                    String name = specification.tool().name();
+                    tools.add(new McpServerFeatures.SyncToolSpecification(specification.tool(), (exchange, request) -> {
+                        try {
+                            var context = workspace.current();
+                            Map<String, Object> arguments = request.arguments() == null ? Map.of() : request.arguments();
+                            Object response = switch (name) {
+                                case "docs_start" -> {
                                     @SuppressWarnings("unchecked")
-                                    var response = new LinkedHashMap<>((Map<String, Object>) docs.start(arguments));
-                                    response.put("development", project.availability());
-                                    return response;
-                                }, mapper, true));
-                    } else {
-                        tools.add(specification);
-                    }
+                                    var start = new LinkedHashMap<>((Map<String, Object>) context.docs().start(arguments));
+                                    start.put("development", context.project().availability());
+                                    yield start;
+                                }
+                                case "docs_search" -> context.docs().search(arguments, false);
+                                case "docs_lookup_symbol" -> context.docs().search(arguments, true);
+                                case "docs_read" -> context.docs().read(arguments, false);
+                                case "docs_links" -> context.docs().read(arguments, true);
+                                default -> throw new IllegalArgumentException("Unknown documentation tool: " + name);
+                            };
+                            return DevMcpTools.result(response, mapper);
+                        } catch (RuntimeException e) {
+                            return McpSchema.CallToolResult.builder().isError(true).addTextContent(
+                                    e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()).build();
+                        }
+                    }));
                 }
                 InputStream observed = new FilterInputStream(input) {
                     @Override
@@ -136,23 +159,20 @@ public final class DevMcpStdioMain {
                         .capabilities(McpSchema.ServerCapabilities.builder().tools(false).resources(true, false).build())
                         .tools(tools)
                         .resources(new McpServerFeatures.SyncResourceSpecification(DevMcpTools.diagnosticsResource(),
-                                (exchange, request) -> project.read(request)))
+                                (exchange, request) -> workspace.current().project().read(request)))
                         .build();
-                project.onResourceChange(uri -> server.getAsyncServer().notifyResourcesUpdated(
+                workspace.onResourceChange(uri -> server.getAsyncServer().notifyResourcesUpdated(
                         new McpSchema.ResourcesUpdatedNotification(uri)).onErrorComplete().subscribe());
-                return new StdioBridge(server, project, docs, disconnected);
+                return new StdioBridge(server, workspace, disconnected);
             } catch (RuntimeException e) {
-                docs.close();
-                project.close();
+                workspace.close();
                 throw e;
             }
         }
 
-        private StdioBridge(McpSyncServer localServer, DevMcpProjectClient project, AgentDocsService docs,
-                            CountDownLatch disconnected) {
+        private StdioBridge(McpSyncServer localServer, DevMcpWorkspace workspace, CountDownLatch disconnected) {
             this.localServer = localServer;
-            this.project = project;
-            this.docs = docs;
+            this.workspace = workspace;
             this.disconnected = disconnected;
         }
 
@@ -160,8 +180,7 @@ public final class DevMcpStdioMain {
         public void close() {
             if (!closed.compareAndSet(false, true)) return;
             disconnected.countDown();
-            docs.close();
-            project.close();
+            workspace.close();
             try { localServer.getAsyncServer().closeGracefully().block(Duration.ofSeconds(3)); }
             catch (RuntimeException ignored) { /* Peer may already have closed stdin. */ }
         }

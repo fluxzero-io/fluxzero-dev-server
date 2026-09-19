@@ -30,6 +30,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TestReportsTest {
 
     @Test
+    void seesCompletedSuitesWhileOtherReportsAreStillBeingWritten(@TempDir Path project) throws Exception {
+        Path reports = Files.createDirectories(project.resolve("target/surefire-reports"));
+        long start = System.currentTimeMillis();
+        Files.writeString(reports.resolve("TEST-first.xml"), "<testsuite><testcase name='a'/></testsuite>");
+        Files.writeString(reports.resolve("TEST-second.xml"), "<testsuite><testcase");
+        assertEquals(new TestCounts(1, 0, 0), TestReports.read(project, BuildTool.MAVEN, start).counts());
+        Files.writeString(reports.resolve("TEST-second.xml"), "<testsuite><testcase name='b'><failure/></testcase><testcase name='c'/></testsuite>");
+        assertEquals(new TestCounts(2, 1, 0), TestReports.read(project, BuildTool.MAVEN, start).counts());
+    }
+
+    @Test
     void readsAndClearsMavenFailuresAcrossReactorModules(@TempDir Path projectDirectory) throws Exception {
         Files.writeString(projectDirectory.resolve("pom.xml"), """
                 <project>
@@ -85,6 +96,24 @@ class TestReportsTest {
 
         TestReports.clear(projectDirectory, BuildTool.GRADLE);
         assertFalse(Files.exists(report));
+    }
+
+    @Test
+    void countsInvocationsFailuresErrorsAndSkippedWithoutCountingStaleReports(@TempDir Path project) throws Exception {
+        Path reports = Files.createDirectories(project.resolve("target/surefire-reports"));
+        Path stale = reports.resolve("TEST-stale.xml");
+        writeFailure(stale);
+        Files.setLastModifiedTime(stale, java.nio.file.attribute.FileTime.fromMillis(1000));
+        Files.writeString(reports.resolve("TEST-current.xml"), """
+                <testsuite><testcase name="first"/><testcase name="first[2]"/>
+                <testcase name="bad"><failure/></testcase><testcase name="error"><error/></testcase>
+                <testcase name="skip"><skipped/></testcase></testsuite>
+                """);
+        var counts = TestReports.read(project, BuildTool.MAVEN, System.currentTimeMillis()).counts();
+        assertEquals(new TestCounts(2, 2, 1), counts);
+        assertEquals(5, counts.total());
+        TestReports.clear(project, BuildTool.MAVEN);
+        assertEquals(null, TestReports.read(project, BuildTool.MAVEN, 0).counts());
     }
 
     private static void writeFailure(Path report) throws Exception {

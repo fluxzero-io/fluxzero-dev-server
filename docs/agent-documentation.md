@@ -5,6 +5,25 @@ not an active dev server or build project. It starts no HTTP listener, source wa
 not depend on the dashboard. Project tools optionally connect to the loopback, bearer-protected `/mcp` endpoint.
 That HTTP endpoint does not expose `docs_*`. CLI launch metadata may still live under `.fluxzero/dev/launcher`.
 
+## Selecting the application directory
+
+The stdio connection uses one directory for documentation, status, diagnostics resources and `start_dev`.
+At connection startup, an existing Maven/Gradle build or `.fluxzero/dev.yaml` at the workspace root takes
+precedence. Otherwise, exactly one immediate child declaring a Fluxzero SDK or containing `.fluxzero/dev.yaml`
+is selected automatically. Generated directories, hidden directories and symlink children are not candidates.
+The discovery does not run a build, start an environment or recursively search the workspace.
+
+Call `select_project` without arguments to inspect the selected directory and immediate candidates. Call
+`select_project({"projectDirectory":"app"})` to explicitly select a directory inside this connection's workspace.
+Absolute paths inside the workspace are also accepted. When several child apps exist, no child is chosen
+implicitly: inspect the candidates and select one before starting development. For a deeper layout, select the
+nested directory explicitly. Reconnect with `fz mcp --project-dir <directory>` to use another workspace.
+
+Selection changes this connection's subsequent requests only; it neither starts nor stops any environment.
+Already running requests retain their original project context. Responses/cursors from a previous project must
+not be treated as results for the newly selected project. A selection change notifies diagnostics subscribers.
+Selecting a nonexistent directory or a path outside the workspace fails without changing the current selection.
+
 ## Selecting documentation
 
 All five tools accept these optional selectors:

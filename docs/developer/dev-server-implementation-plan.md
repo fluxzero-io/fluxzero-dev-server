@@ -64,7 +64,7 @@ DoD status:
 - App start standaard met `ENVIRONMENT=local`, zodat `application-local.properties` wordt geladen;
   `--environment` kan dit per dev environment overschrijven.
 - App start de echte app main, bijvoorbeeld `com.example.app.App`, niet een `TestApp` die runtime/proxy zelf bootstrapt.
-- App readiness betekent: Fluxzero app is connected/registered bij de test runtime.
+- App readiness betekent: Fluxzero app is connected/registered bij de Test Server.
 - Startup failure laat runtime/proxy doorlopen en toont foutstatus.
 - Stop is graceful met harde timeout.
 - Whole-app fixture tests bewijzen readiness, startup failure en graceful rolling replacement met een echte Fluxzero app main.
@@ -527,7 +527,7 @@ DoD status:
 Backlog:
 
 - [x] Slice 19.1: tracked `applicationConfig` model met alias -> applicatieselector en backwards-compatible directe selectie.
-- [x] Slice 19.2: scheid launch/configuratie-id van Fluxzero runtime application name en lifecycle-mapkey.
+- [x] Slice 19.2: scheid launch/configuratie-id van Fluxzero Test Server application name en lifecycle-mapkey.
 - [x] Slice 19.3: per-configuratie `env`, validatie en child-processinjectie.
 - [x] Slice 19.4: per-configuratie `secrets` via reference-only env-file en `op run` child wrapper.
 - [x] Slice 19.5: redacted logging/sessionmetadata, reference-filecleanup en compacte 1Password-startupfouten.

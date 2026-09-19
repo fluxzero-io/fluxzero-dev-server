@@ -80,6 +80,8 @@ final class DevCommandPipeline implements AutoCloseable {
     private final GatewayClient commandGateway;
     private final RequestHandler requestHandler;
     private final ApplicationTypeRegistry typeRegistry = new ApplicationTypeRegistry();
+    private volatile List<CommandFile> dashboardCommands = List.of();
+    private volatile boolean closed;
     private volatile Set<Path> referencedFiles = Set.of();
     private volatile List<PathMatcher> referencedGlobs = List.of();
 
@@ -108,6 +110,7 @@ final class DevCommandPipeline implements AutoCloseable {
     }
 
     void requestRun() {
+        if (executor.isShutdown()) return;
         rerunRequested.set(true);
         if (running.compareAndSet(false, true)) {
             executor.submit(this::runLoop);
@@ -120,12 +123,12 @@ final class DevCommandPipeline implements AutoCloseable {
 
     private void runLoop() {
         try {
-            while (rerunRequested.getAndSet(false)) {
+            while (!executor.isShutdown() && rerunRequested.getAndSet(false)) {
                 runOnce();
             }
         } finally {
             running.set(false);
-            if (rerunRequested.get() && running.compareAndSet(false, true)) {
+            if (!executor.isShutdown() && rerunRequested.get() && running.compareAndSet(false, true)) {
                 executor.submit(this::runLoop);
             }
         }
@@ -134,6 +137,7 @@ final class DevCommandPipeline implements AutoCloseable {
     private void runOnce() {
         try {
             List<CommandFile> commands = discover();
+            dashboardCommands = commands;
             if (commands.isEmpty()) {
                 update(DevCommandStatus.empty(sessionId));
                 return;
@@ -571,6 +575,20 @@ final class DevCommandPipeline implements AutoCloseable {
         return new CommandFile(identity, hash, type, message);
     }
 
+    JsonNode commandJson(String requestedSession, String id, String hash) throws IOException {
+        if (closed || !sessionId.equals(requestedSession)) return null;
+        for (CommandFile command : dashboardCommands) {
+            if (command.path().equals(id) && command.hash().equals(hash)) {
+                var result = objectMapper.createObjectNode();
+                result.put("type", command.type());
+                result.put("revision", command.message().getData().getRevision());
+                result.set("payload", objectMapper.readTree(command.message().getData().getValue()));
+                return result;
+            }
+        }
+        return null;
+    }
+
     private Map<String, DevCommandStatus.Entry> previousEntries() {
         Optional<DevCommandStatus> status = sessionStore.readCommandStatus();
         Map<String, DevCommandStatus.Entry> result = new LinkedHashMap<>();
@@ -643,6 +661,8 @@ final class DevCommandPipeline implements AutoCloseable {
 
     @Override
     public void close() {
+        closed = true;
+        dashboardCommands = List.of();
         executor.shutdownNow();
         requestHandler.close();
         commandGateway.close();
@@ -652,6 +672,11 @@ final class DevCommandPipeline implements AutoCloseable {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+    }
+
+    void awaitStopped(Duration timeout) throws InterruptedException {
+        if (!executor.awaitTermination(timeout.toMillis(), TimeUnit.MILLISECONDS))
+            throw new IllegalStateException("Initial commands did not stop; data was not truncated.");
     }
 
     private record CommandFile(String path, String hash, String type, SerializedMessage message) {

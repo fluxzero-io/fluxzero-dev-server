@@ -54,9 +54,14 @@ final class ManagedIdpService implements AutoCloseable {
 
     static ManagedIdpService start(DevServerConfig config, String runtimeBaseUrl, String proxyUrl,
                                    Consumer<String> output) {
+        return start(config, runtimeBaseUrl, proxyUrl, proxyUrl, output);
+    }
+
+    static ManagedIdpService start(DevServerConfig config, String runtimeBaseUrl, String issuerUrl,
+                                   String applicationUrl, Consumer<String> output) {
         acquireSlot();
         boolean releaseSlot = true;
-        PropertySnapshot snapshot = PropertySnapshot.capture(devProperties(proxyUrl));
+        PropertySnapshot snapshot = PropertySnapshot.capture(devProperties(issuerUrl, applicationUrl));
         try {
             snapshot.apply();
             FluxzeroIdpStub.reset();
@@ -95,13 +100,13 @@ final class ManagedIdpService implements AutoCloseable {
         }
     }
 
-    static Map<String, String> devProperties(String proxyUrl) {
+    static Map<String, String> devProperties(String issuerUrl, String applicationUrl) {
         Map<String, String> properties = new LinkedHashMap<>();
-        properties.put("fluxzero.auth.external-base-url", proxyUrl);
-        properties.put("fluxzero.auth.oidc.issuer", proxyUrl);
+        properties.put("fluxzero.auth.external-base-url", applicationUrl);
+        properties.put("fluxzero.auth.oidc.issuer", issuerUrl);
         properties.put("fluxzero.auth.oidc.client-id", CLIENT_ID);
-        properties.put("fluxzero.auth.oidc.redirect-uri", proxyUrl + "/app/callback");
-        properties.put("fluxzero.auth.oidc.resource-audience", proxyUrl + "/api");
+        properties.put("fluxzero.auth.oidc.redirect-uri", applicationUrl + "/app/callback");
+        properties.put("fluxzero.auth.oidc.resource-audience", applicationUrl + "/api");
         properties.put("fluxzero.auth.oidc.scope", SCOPE);
         properties.put("fluxzero.auth.oidc.login-state-secret", LOGIN_STATE_SECRET);
         properties.put("fluxzero.auth.oidc.token-endpoint-auth-method", "none");

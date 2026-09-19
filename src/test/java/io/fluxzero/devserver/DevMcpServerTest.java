@@ -75,7 +75,16 @@ class DevMcpServerTest {
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
                 assertEquals(Set.of("get_status", "get_active_problems", "get_logs", "get_test_status",
-                                    "wait_for_change"), tools);
+                                    "wait_for_change", "get_progress", "upsert_progress_milestone", "upsert_progress_feature",
+                                    "search_audit_trail", "search_application_logs", "get_message", "get_trace", "list_issues",
+                                    "get_issue", "resolve_issue", "reopen_issue", "mute_issue", "unmute_issue", "get_insights", "get_resource_metrics", "list_document_collections", "search_documents"), tools);
+
+                var progress = client.callTool(McpSchema.CallToolRequest.builder("get_progress").arguments(Map.of()).build());
+                assertFalse(Boolean.TRUE.equals(progress.isError()));
+                var milestone = client.callTool(McpSchema.CallToolRequest.builder("upsert_progress_milestone")
+                        .arguments(Map.of("revision", "missing", "id", "orders", "title", "Customers can place orders")).build());
+                assertFalse(Boolean.TRUE.equals(milestone.isError()));
+                assertEquals("Customers can place orders", new ProjectProgress(projectDirectory).read().data().milestones().getFirst().title());
 
                 McpSchema.CallToolResult status = client.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
@@ -185,6 +194,8 @@ class DevMcpServerTest {
             store.observeStatus("probe", "infrastructure", "probe", null, "running", "recovered");
 
             assertFalse(transportEvents.isEmpty(), "the abandoned server-side transport should remain observable");
+            assertTrue(transportEvents.stream().filter(event -> event.message().contains("Client disconnected"))
+                    .allMatch(event -> event.level() == DevLogEvent.Level.INFO), transportEvents.toString());
             assertEquals(0, store.diagnostics().activeCount(),
                          "a disconnected client session must not become an environment problem");
 
@@ -195,7 +206,7 @@ class DevMcpServerTest {
                                 .arguments(Map.of("sessionId", session.sessionId(),
                                                   "afterSequence", disconnectCursor,
                                                   "sources", List.of("mcp"),
-                                                  "minimumLevel", "ERROR"))
+                                                  "minimumLevel", "INFO"))
                                 .build());
                 assertFalse(Boolean.TRUE.equals(logs.isError()));
                 assertTrue(String.valueOf(logs.structuredContent()).contains("Client disconnected"),
@@ -259,7 +270,7 @@ class DevMcpServerTest {
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
                 assertEquals("development", client.getServerInfo().version());
                 assertEquals(DevMcpStdioMain.INSTRUCTIONS, client.getServerInstructions());
-                assertEquals(11, client.listTools().tools().size());
+                assertEquals(29, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());
                 McpSchema.CallToolResult result = client.callTool(

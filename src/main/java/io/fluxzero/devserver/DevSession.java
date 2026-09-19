@@ -24,6 +24,7 @@ import java.util.UUID;
 
 /**
  * Machine-readable session snapshot written under {@code .fluxzero/dev/session.json}.
+ * The historical {@code runtime} field always describes the locally managed Test Server.
  */
 public record DevSession(
         String sessionId,

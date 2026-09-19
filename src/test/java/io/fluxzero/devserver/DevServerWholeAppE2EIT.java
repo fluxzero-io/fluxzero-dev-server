@@ -773,7 +773,8 @@ class DevServerWholeAppE2EIT {
                     .build());
             assertEquals(401, anonymous.statusCode(), anonymous.body());
 
-            String accessToken = accessToken(proxyUrl, "rene@example.com");
+            String accessToken = accessToken(session.gateway().url() + DevGateway.BACKEND_PREFIX,
+                                             session.gateway().url(), "rene@example.com");
             HttpResponse<String> authenticated = await("authenticated app endpoint", () -> {
                 HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/secure/me"))
                         .header("Authorization", "Bearer " + accessToken)
@@ -1002,10 +1003,10 @@ class DevServerWholeAppE2EIT {
         return false;
     }
 
-    private static String accessToken(String proxyUrl, String username) throws Exception {
+    private static String accessToken(String proxyUrl, String applicationUrl, String username) throws Exception {
         String verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
         String state = "e2e-state-" + UUID.randomUUID();
-        String redirectUri = proxyUrl + "/app/callback";
+        String redirectUri = applicationUrl + "/app/callback";
         HttpResponse<String> authorize = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/auth?"
                 + form(Map.of(
                         "response_type", "code",

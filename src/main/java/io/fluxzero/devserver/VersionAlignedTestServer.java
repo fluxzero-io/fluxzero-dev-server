@@ -31,19 +31,43 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
-final class VersionAlignedDevRuntime implements AutoCloseable {
+final class VersionAlignedTestServer implements AutoCloseable {
     private static final Duration CONTROLLED_STOP_TIMEOUT = Duration.ofMillis(250);
 
     private final String version;
-    private final DevRuntimeArtifactResolver.ResolvedRuntime artifacts;
+    private final TestServerArtifactResolver.ResolvedTestServer artifacts;
     private final Consumer<String> registrationConsumer;
     private final Consumer<ProcessUtils.ProcessOutput> outputConsumer;
     private final Consumer<String> failureConsumer;
     private final CompletableFuture<Ready> ready = new CompletableFuture<>();
     private final AtomicBoolean closed = new AtomicBoolean();
     private volatile Process process;
+    private volatile boolean resetSupported;
+    private final java.util.concurrent.ConcurrentHashMap<String, CompletableFuture<Void>> resets = new java.util.concurrent.ConcurrentHashMap<>();
 
-    static VersionAlignedDevRuntime start(
+    boolean resetSupported() { return resetSupported; }
+
+    void truncateData(Duration timeout) {
+        if (!resetSupported || closed.get()) throw new IllegalStateException("Testserver reset is unavailable.");
+        String id = java.util.UUID.randomUUID().toString();
+        CompletableFuture<Void> completed = new CompletableFuture<>();
+        resets.put(id, completed);
+        try {
+            writeControl("truncate-data " + id);
+            completed.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new IllegalStateException("Testserver reset did not complete: " + oneLine(e.getMessage()), e);
+        } finally { resets.remove(id); }
+    }
+
+    private synchronized void writeControl(String command) throws IOException {
+        if (process == null || !process.isAlive()) throw new IOException("Testserver is stopped.");
+        BufferedWriter writer = process.outputWriter(StandardCharsets.UTF_8);
+        writer.write(command); writer.newLine(); writer.flush();
+    }
+
+    static VersionAlignedTestServer start(
             DevServerConfig config,
             String sessionId,
             FluxzeroSdkVersionDetector.Selection selection,
@@ -52,17 +76,17 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
             Consumer<ProcessUtils.ProcessOutput> outputConsumer,
             Consumer<String> failureConsumer
     ) {
-        DevRuntimeArtifactResolver.ResolvedRuntime artifacts = new DevRuntimeArtifactResolver().resolve(
+        TestServerArtifactResolver.ResolvedTestServer artifacts = new TestServerArtifactResolver().resolve(
                 selection.version());
-        VersionAlignedDevRuntime runtime = new VersionAlignedDevRuntime(
+        VersionAlignedTestServer runtime = new VersionAlignedTestServer(
                 selection.version(), artifacts, registrationConsumer, outputConsumer, failureConsumer);
         runtime.startProcess(config, sessionId, proxyPort);
         return runtime;
     }
 
-    VersionAlignedDevRuntime(
+    VersionAlignedTestServer(
             String version,
-            DevRuntimeArtifactResolver.ResolvedRuntime artifacts,
+            TestServerArtifactResolver.ResolvedTestServer artifacts,
             Consumer<String> registrationConsumer,
             Consumer<ProcessUtils.ProcessOutput> outputConsumer,
             Consumer<String> failureConsumer
@@ -81,7 +105,7 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
             close();
             Throwable failure = e.getCause() == null ? e : e.getCause();
             throw new DevServerStartupException(
-                    "Fluxzero runtime " + version + " did not become ready: " + oneLine(failure.getMessage()), failure);
+                    "Fluxzero Test Server " + version + " did not become ready: " + oneLine(failure.getMessage()), failure);
         }
     }
 
@@ -109,16 +133,17 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) {
             return;
         }
+        resets.values().forEach(future -> future.completeExceptionally(new IllegalStateException("Testserver stopped")));
         Process current = process;
         process = null;
         if (current == null || !current.isAlive()) {
             return;
         }
         try {
-            BufferedWriter writer = current.outputWriter(StandardCharsets.UTF_8);
-            writer.write("stop");
-            writer.newLine();
-            writer.flush();
+            synchronized (this) {
+                BufferedWriter writer = current.outputWriter(StandardCharsets.UTF_8);
+                writer.write("stop"); writer.newLine(); writer.flush();
+            }
             if (!current.waitFor(CONTROLLED_STOP_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)) {
                 ProcessUtils.forceStopTree(current);
             }
@@ -133,12 +158,13 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
     private void startProcess(DevServerConfig config, String sessionId, int proxyPort) {
         List<String> command = new ArrayList<>();
         command.add(javaExecutable());
+        command.add(JvmHeapMemory.LOCAL_JMX_OPTION);
         command.add("--enable-native-access=ALL-UNNAMED");
         command.add("-Dfluxzero.dev.session=" + sessionId);
         command.add("-Dfluxzero.dev.project=" + config.projectDirectory());
         command.add("-cp");
         command.add(bootstrapClasspath());
-        command.add(DevRuntimeProcessMain.class.getName());
+        command.add(TestServerProcessMain.class.getName());
         command.add("--classpath-file");
         command.add(artifacts.classpathFile().toString());
         command.add("--parent-pid");
@@ -158,21 +184,21 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
             Process started = process;
             started.onExit().thenAccept(ignored -> {
                 if (!closed.get()) {
-                    String detail = "runtime process exited with code " + started.exitValue();
+                    String detail = "Test Server process exited with code " + started.exitValue();
                     if (!ready.completeExceptionally(new IllegalStateException(detail))) {
                         failureConsumer.accept(detail);
                     }
                 }
             });
         } catch (IOException e) {
-            throw new DevServerStartupException("Could not start Fluxzero runtime " + version + ": " + e.getMessage(), e);
+            throw new DevServerStartupException("Could not start Fluxzero Test Server " + version + ": " + e.getMessage(), e);
         }
     }
 
     private void processOutput(ProcessUtils.ProcessOutput output) {
         String line = output.line();
-        if ("stdout".equals(output.stream()) && line.startsWith(DevRuntimeProcessMain.CONTROL_PREFIX)) {
-            consumeControl(line.substring(DevRuntimeProcessMain.CONTROL_PREFIX.length()));
+        if ("stdout".equals(output.stream()) && line.startsWith(TestServerProcessMain.CONTROL_PREFIX)) {
+            consumeControl(line.substring(TestServerProcessMain.CONTROL_PREFIX.length()));
             return;
         }
         outputConsumer.accept(output);
@@ -182,24 +208,32 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
         String[] fields = control.split("\\t", -1);
         try {
             switch (fields[0]) {
+                case "CAPABILITY" -> resetSupported = "truncate-data".equals(TestServerProcessMain.decode(fields[1]));
+                case "RESET", "RESET_ERROR" -> {
+                    CompletableFuture<Void> reset = resets.get(TestServerProcessMain.decode(fields[1]));
+                    if (reset != null) {
+                        if ("RESET".equals(fields[0])) reset.complete(null);
+                        else reset.completeExceptionally(new IllegalStateException(TestServerProcessMain.decode(fields[2])));
+                    }
+                }
                 case "READY" -> ready.complete(new Ready(
-                        Integer.parseInt(DevRuntimeProcessMain.decode(fields[1])),
-                        Integer.parseInt(DevRuntimeProcessMain.decode(fields[2])),
-                        DevRuntimeProcessMain.decode(fields[3])));
-                case "CONNECT" -> registrationConsumer.accept(DevRuntimeProcessMain.decode(fields[1]));
+                        Integer.parseInt(TestServerProcessMain.decode(fields[1])),
+                        Integer.parseInt(TestServerProcessMain.decode(fields[2])),
+                        TestServerProcessMain.decode(fields[3])));
+                case "CONNECT" -> registrationConsumer.accept(TestServerProcessMain.decode(fields[1]));
                 case "WARNING" -> outputConsumer.accept(new ProcessUtils.ProcessOutput(
-                        "stderr", DevRuntimeProcessMain.decode(fields[1])));
+                        "stderr", TestServerProcessMain.decode(fields[1])));
                 case "ERROR" -> {
-                    String detail = DevRuntimeProcessMain.decode(fields[1]);
+                    String detail = TestServerProcessMain.decode(fields[1]);
                     if (!ready.completeExceptionally(new IllegalStateException(detail))) {
                         failureConsumer.accept(detail);
                     }
                 }
                 default -> outputConsumer.accept(new ProcessUtils.ProcessOutput(
-                        "stderr", "Unknown runtime control event " + fields[0]));
+                        "stderr", "Unknown Test Server control event " + fields[0]));
             }
         } catch (RuntimeException e) {
-            String detail = "Invalid runtime control event " + fields[0];
+            String detail = "Invalid Test Server control event " + fields[0];
             if (!ready.completeExceptionally(new IllegalStateException(detail, e))) {
                 failureConsumer.accept(detail);
             }
@@ -208,10 +242,10 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
 
     private static String bootstrapClasspath() {
         try {
-            return Path.of(DevRuntimeProcessMain.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+            return Path.of(TestServerProcessMain.class.getProtectionDomain().getCodeSource().getLocation().toURI())
                     .toString();
         } catch (URISyntaxException e) {
-            throw new IllegalStateException("Could not locate Dev Server runtime bootstrap", e);
+            throw new IllegalStateException("Could not locate Dev Server Test Server bootstrap", e);
         }
     }
 
@@ -225,6 +259,6 @@ final class VersionAlignedDevRuntime implements AutoCloseable {
                 : value.replace('\r', ' ').replace('\n', ' ').strip();
     }
 
-    record Ready(int runtimePort, int proxyPort, String version) {
+    record Ready(int testServerPort, int proxyPort, String version) {
     }
 }
