@@ -75,7 +75,14 @@ class DevMcpServerTest {
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
                 assertEquals(Set.of("get_status", "get_active_problems", "get_logs", "get_test_status",
-                                    "wait_for_change"), tools);
+                                    "wait_for_change", "get_progress", "upsert_progress_milestone", "upsert_progress_feature"), tools);
+
+                var progress = client.callTool(McpSchema.CallToolRequest.builder("get_progress").arguments(Map.of()).build());
+                assertFalse(Boolean.TRUE.equals(progress.isError()));
+                var milestone = client.callTool(McpSchema.CallToolRequest.builder("upsert_progress_milestone")
+                        .arguments(Map.of("revision", "missing", "id", "orders", "title", "Customers can place orders")).build());
+                assertFalse(Boolean.TRUE.equals(milestone.isError()));
+                assertEquals("Customers can place orders", new ProjectProgress(projectDirectory).read().data().milestones().getFirst().title());
 
                 McpSchema.CallToolResult status = client.callTool(
                         McpSchema.CallToolRequest.builder("get_status").arguments(Map.of()).build());
@@ -261,7 +268,7 @@ class DevMcpServerTest {
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
                 assertEquals("development", client.getServerInfo().version());
                 assertEquals(DevMcpStdioMain.INSTRUCTIONS, client.getServerInstructions());
-                assertEquals(12, client.listTools().tools().size());
+                assertEquals(15, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());
                 McpSchema.CallToolResult result = client.callTool(

@@ -630,6 +630,7 @@ public class DevServer implements AutoCloseable {
         if (stopped != null) {
             var result = new LinkedHashMap<>(stopped);
             result.put("workspaceIssue", "");
+            result.put("progress", new ProjectProgress(config.projectDirectory()).view());
             result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
                     "stopSupported", restartSupported, "workspaceStopped", "idle".equals(stopped.get("state"))));
             return result;
@@ -740,6 +741,7 @@ public class DevServer implements AutoCloseable {
                 ? liveEvents ? "Running" : "Running · waiting for test reports"
                 : "Latest reported run per module");
         result.put("testResults", testResults);
+        result.put("progress", new ProjectProgress(config.projectDirectory()).view());
         result.put("testOutput",testOutput.snapshot());
         result.put("testRuns",projects.entrySet().stream().filter(e->e.getValue().testPipeline.liveProgress()!=null)
                 .map(e->Map.of("module",e.getKey(),"state",projectTestStatuses.getOrDefault(e.getKey(),TestStatus.idle()).state(),

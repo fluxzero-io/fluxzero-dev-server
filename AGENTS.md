@@ -92,9 +92,12 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
 ## Dashboard UI
 
 - Call the project selector Project and the resource-management page Workspace. Keep App preview, Workspace
-  and Tests as direct navigation links, followed by Startup; Monitoring is the collapsible group for technical detail.
+  and Progress as direct navigation links, followed by Tests and Startup; Monitoring is the collapsible group for technical detail.
   Tests and Startup show a quiet green count of successful results, replaced by only the red failure count
   when failures exist. Hide these counters when disconnected, stopped or without results.
+  Progress is persistent functional history in `.fluxzero/progress.yaml`, not live health or an engineering
+  task list. Show its completion percentage in navigation with the completed/total count on hover; keep it
+  available while the workspace is stopped. Only Planned, In progress and Done are supported.
 - Use shared quiet action styles: a very light blue surface, visible hover/pressed states, and content-sized
   controls. Split buttons round only their outside corners and reserve space for the dropdown arrow even
   with the longest label. Keep workspace/test actions in a row on desktop and stacked on narrow screens.

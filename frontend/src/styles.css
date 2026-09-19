@@ -320,3 +320,5 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 
 .resource-version {display:inline-block;max-width:calc(100% - 6px);margin-left:6px;color:var(--dashboard-muted);font-size:11px;line-height:1.3;}
 .workspace-heading .project-path {display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;}
+
+.dashboard-nav-link .nav-result-badge.in-progress {background:var(--dashboard-active-soft);color:var(--dashboard-active);}

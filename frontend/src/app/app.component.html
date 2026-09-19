@@ -11,6 +11,7 @@
     <nav aria-label="Devboard navigation">
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Workspace</span>@if(connected() && status()?.workspaceIssue) {<span class="nav-issue-badge" role="img" aria-label="Workspace needs attention" [title]="status()?.workspaceIssue">!</span>}</a>
+      <a class="dashboard-nav-link" href="#progress" (click)="link($event, 'progress')" [class.active]="route() === 'progress'" [attr.aria-current]="route() === 'progress' ? 'page' : null"><i class="bi bi-list-check"></i><span>Progress</span>@if(progressBadge(); as badge) {<span class="nav-result-badge" [class.in-progress]="badge.done < badge.total" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.percent}}%</span>}</a>
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
       <a class="dashboard-nav-link" href="#startup" (click)="link($event, 'startup')" [class.active]="route() === 'startup'" [attr.aria-current]="route() === 'startup' ? 'page' : null"><i class="bi bi-database-check"></i><span>Startup</span>@if(startupBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
       <div class="dashboard-nav-section">
@@ -27,6 +28,7 @@
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
     @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}
     @if(route() === 'tests') {<dev-tests [status]="status()"/>}
+    @if(route() === 'progress') {<dev-progress [progress]="status()?.progress"/>}
     @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">

@@ -10,7 +10,15 @@ export interface Environment {
   detail?: string;
 }
 export interface TestOutputLine {sequence:number; module:string; text:string;}
+export type ProgressState = 'planned' | 'in_progress' | 'done';
+export interface ProgressFeature {
+  id:string; title:string; kind:'feature'|'bug'; status:ProgressState; description:string; acceptance:string[];
+  createdAt:string; updatedAt:string; history:{at:string; status:ProgressState; verification:string}[];
+}
+export interface ProgressMilestone {id:string; title:string; description:string; features:ProgressFeature[];}
+export interface ProjectProgress {revision:string|null; data:{version:number; milestones:ProgressMilestone[]}|null; error:string|null;}
 export interface Status {
+  progress?:ProjectProgress;
   versions?: {devServer?: string; fluxzero?: string};
   workspaceIssue?: string;
   startedAt?: number;

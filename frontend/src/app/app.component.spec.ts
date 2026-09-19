@@ -181,9 +181,20 @@ describe('Dev console navigation', () => {
     fixture.nativeElement.querySelector('.brand-home').click(); fixture.detectChanges();
     expect(location.hash).toBe('#application');
   });
+  it('shows completion percentage in Progress navigation and keeps history when the workspace is stopped', () => {
+    const state=fixture.componentInstance.status()!;
+    const feature={id:'f',title:'Customers can book',kind:'feature' as const,status:'done' as const,description:'',acceptance:[],createdAt:'2026-09-19T12:00:00Z',updatedAt:'2026-09-19T12:00:00Z',history:[]};
+    fixture.componentInstance.status.set({...state,maintenance:{...state.maintenance!,workspaceStopped:true},progress:{revision:'r',error:null,data:{version:1,milestones:[{id:'m',title:'Booking',description:'',features:[feature]}]}}});
+    fixture.componentInstance.navigate('progress');fixture.detectChanges();
+    const badge=fixture.nativeElement.querySelector('a[href="#progress"] .nav-result-badge');
+    expect(badge.textContent).toBe('100%');expect(badge.title).toContain('1 of 1 completed');
+    expect(badge.classList.contains('in-progress')).toBeFalse();
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Progress');
+    expect(fixture.nativeElement.querySelector('.milestone-title').textContent).toBe('Booking');
+  });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Tests', 'Startup']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Progress', 'Tests', 'Startup']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');

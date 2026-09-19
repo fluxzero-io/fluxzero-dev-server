@@ -1,3 +1,4 @@
+import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
 import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
@@ -14,7 +15,7 @@ import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -65,6 +66,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
   readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
   readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
+  readonly progressBadge = computed(() => progressCount(this.status()?.progress));
   readonly testBadge = computed(() => {
     if (!this.badgesAvailable()) return null;
     const results=this.status()?.testResults;
@@ -127,7 +129,7 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!path) return;
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
-    } else if (!['projects', 'environment', 'application', 'tests', 'startup'].includes(route)) return;
+    } else if (!['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
@@ -212,7 +214,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (route === 'monitoring') route = 'monitoring/messages';
     if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup'].includes(route)) route = 'projects';
+    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
     this.route.set(route);
     if (route === 'application') this.applicationOpened.set(true);
     if (this.isMonitoring()) {
