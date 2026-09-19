@@ -91,7 +91,7 @@ public final class DevServerMain {
         try {
             server.start();
             server.shutdownRequested().thenAccept(reason -> {
-                if (DevServer.RESTART_REQUESTED.equals(reason)) shutdown.countDown();
+                if (DevServer.RESTART_REQUESTED.equals(reason) || DevServer.STOP_REQUESTED.equals(reason)) shutdown.countDown();
                 else System.exit(0);
             });
             try {
@@ -107,7 +107,8 @@ public final class DevServerMain {
             return null;
         }
         shutdown.await();
-        if (!DevServer.RESTART_REQUESTED.equals(server.shutdownRequested().getNow(null))) return null;
+        String reason = server.shutdownRequested().getNow(null);
+        if (!DevServer.RESTART_REQUESTED.equals(reason) && !DevServer.STOP_REQUESTED.equals(reason)) return null;
         Integer port = server.session().gateway().port();
         try {
             if (registered.compareAndSet(true, false)) registry.unregister(server.session());
@@ -115,7 +116,7 @@ public final class DevServerMain {
             server.close();
             removeShutdownHook(shutdownHook);
         }
-        return new Restart(port, server.restartProfile());
+        return DevServer.RESTART_REQUESTED.equals(reason) ? new Restart(port, server.restartProfile()) : null;
     }
 
     private static void removeShutdownHook(Thread shutdownHook) {

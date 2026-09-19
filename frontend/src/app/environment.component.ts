@@ -2,6 +2,7 @@ import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorR
 import {NgTemplateOutlet} from '@angular/common';
 import {ProjectPathComponent} from './project-path.component';
 import {Status} from './models';
+import {WorkspaceStopComponent} from './workspace-stop.component';
 import {WorkspaceRestartComponent} from './workspace-restart.component';
 import {ResourceDetailComponent} from './resource-detail.component';
 import {ResourceGraphComponent} from './resource-graph.component';
@@ -10,7 +11,7 @@ import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
     <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
     <div class="project-title-row">
@@ -21,7 +22,8 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
-        <dev-workspace-restart [busy]="busy()" [action]="maintenanceAction()" [appsSupported]="!!state.maintenance?.applicationRestartSupported" [environmentSupported]="!!state.maintenance?.restartSupported" (restart)="requestMaintenance($event)"/>
+        @if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-workspace-restart [busy]="busy()" [action]="maintenanceAction()" [appsSupported]="!!state.maintenance?.applicationRestartSupported" [environmentSupported]="!!state.maintenance?.restartSupported" (restart)="requestMaintenance($event)"/>}
+        @if(state.maintenance?.stopSupported && !fullyStopped()) {<dev-workspace-stop [working]="!!maintenanceAction()?.startsWith('stop-') || maintenanceAction() === 'start-workspace'" [busy]="busy()" [stopped]="!!state.maintenance?.workspaceStopped" (actionRequested)="requestMaintenance($event)"/>}
       </div>
     </div></div>
     <ng-template #componentCard let-component>
@@ -60,13 +62,16 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </ng-template>
     <dialog #confirmation class="maintenance-confirm" aria-labelledby="maintenance-title" aria-describedby="maintenance-description" (cancel)="cancelConfirmation()">
     @if(confirmAction(); as action) {
-      <h2 id="maintenance-title">Restart environment?</h2>
-      <p id="maintenance-description">This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Monitoring history stored on disk is retained; resource graphs start fresh.</p>
+      <h2 id="maintenance-title">{{confirmationTitle()}}?</h2>
+      <p id="maintenance-description">{{confirmationDescription()}}</p>
       <div class="dialog-actions">
       <button type="button" class="secondary-button dialog-cancel" (click)="cancelConfirmation()" autofocus>Cancel</button>
-      <button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Restart environment</button></div>
+      <button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">{{confirmationTitle()}}</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
+    @if(fullyStopped()) {<p class="workspace-stopped" role="status">Dev server shutting down. Start it again from the CLI with <code>fz dev</code> in this workspace, or from another active dashboard.</p>}
+    @else if(state.maintenance?.workspaceStopped) {<p class="workspace-stopped" role="status">Workspace stopped. Only dashboard controls remain available. Choose Start to start the workspace again.</p>}
+    @else {
     <section class="applications-section" aria-labelledby="applications-title">
       <header class="applications-heading"><h2 id="applications-title">Applications</h2>
       </header>
@@ -114,7 +119,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     </div>
     @if(state.testResults?.paused) {<p class="test-pause-status" role="status">Automatic tests paused.@if(state.testResults.running) { Current test run will finish.}</p>}
     <dev-test-output [lines]="state.testOutput || []" [paused]="!!state.testResults?.paused" [pauseBusy]="changingTestPause() || !state.testResults?.runnable" (toggleTests)="toggleTests()"/></div></section>
-    </section>}`})
+    }</section>}`})
 @Handler()
 export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -144,6 +149,7 @@ export class EnvironmentComponent {
   actionError = signal('');
   submitting = signal(false);
   readonly maintenanceAction = signal<string | null>(null);
+  readonly fullyStopped = computed(() => this.status()?.state === 'shutdown');
   private maintenanceStatus?: Status;
   private maintenanceTimeout?: ReturnType<typeof setTimeout>;
   constructor() {
@@ -164,10 +170,21 @@ export class EnvironmentComponent {
   busy() { return !!this.maintenanceAction() || this.submitting() || !!this.status()?.maintenance?.busy; }
   requestMaintenance(action: string) {
     if (this.busy()) return;
-    if (action !== 'restart-devserver') { void this.maintain(action); return; }
+    if (!['restart-devserver', 'stop-workspace', 'stop-devserver'].includes(action)) { void this.maintain(action); return; }
     this.confirmAction.set(action);
     this.changeDetector.detectChanges();
     this.confirmation?.nativeElement.showModal();
+  }
+  confirmationTitle() {
+    return this.confirmAction() === 'stop-workspace' ? 'Stop workspace'
+      : this.confirmAction() === 'stop-devserver' ? 'Stop everything' : 'Restart environment';
+  }
+  confirmationDescription() {
+    return this.confirmAction() === 'stop-workspace'
+      ? 'This stops apps, UI servers, automatic builds and tests, and supporting services. In-memory application data is lost. Dashboard controls remain available so you can start again here. Monitoring history on disk is retained.'
+      : this.confirmAction() === 'stop-devserver'
+      ? 'This stops the entire workspace and closes the dev server, including this dashboard connection. In-memory application data is lost. To start again, run fz dev in this workspace or use another active dashboard. Monitoring history on disk is retained.'
+      : 'This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Monitoring history stored on disk is retained; resource graphs start fresh.';
   }
   cancelConfirmation() { this.confirmation?.nativeElement.close(); this.confirmAction.set(null); }
   confirmMaintenance(action: string) {
@@ -180,7 +197,7 @@ export class EnvironmentComponent {
     this.maintenanceAction.set(action);
     this.maintenanceTimeout = setTimeout(() => this.finishMaintenance(), 60_000);
     this.submitting.set(true); this.actionError.set(''); this.confirmAction.set(null);
-    try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment', action); }
+    try { await sendCommand<Promise<void>>(this.elementRef.nativeElement, 'maintainEnvironment', action); if (action === 'stop-devserver') {this.finishMaintenance();} }
     catch (error: any) {
       this.actionError.set(error?.error?.error || 'Maintenance could not be started.');
       this.finishMaintenance();

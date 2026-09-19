@@ -583,6 +583,7 @@ public class DevServer implements AutoCloseable {
         }
     }
 
+    static final String STOP_REQUESTED = "dev server stopped from dashboard";
     static final String RESTART_REQUESTED = "dev server restart requested";
     private boolean restartSupported;
     private java.util.function.BiFunction<String, Integer, DevServerConfig> profileResolver;
@@ -615,12 +616,22 @@ public class DevServer implements AutoCloseable {
     private volatile String maintenanceError = "";
     private volatile Thread maintenanceThread;
     private volatile boolean automaticTestsPaused;
+    private final Object shutdownLock = new Object();
+    private volatile Map<String, Object> stoppedWorkspaceStatus;
+    private java.util.concurrent.ScheduledExecutorService dashboardHeartbeat;
     private volatile String buildPauseState = "running";
     private volatile java.util.concurrent.CountDownLatch buildResume;
     private final TestOutput testOutput = new TestOutput();
     private final Map<String, TestStatus> lastTestResults = new ConcurrentHashMap<>();
 
     private Map<String, Object> consoleStatus() {
+        var stopped = stoppedWorkspaceStatus;
+        if (stopped != null) {
+            var result = new LinkedHashMap<>(stopped);
+            result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
+                    "stopSupported", restartSupported, "workspaceStopped", "idle".equals(stopped.get("state"))));
+            return result;
+        }
         List<Map<String, Object>> components = new java.util.ArrayList<>();
         components.add(component("devserver", "Fluxzero Dev Server",
                 new DevSession.ServiceStatus("devserver", session.status(), publicUrl, session.gateway().port(), session.pid(), null), false));
@@ -696,7 +707,7 @@ public class DevServer implements AutoCloseable {
         result.put("components", components);
         result.put("profiles", consoleProfiles());
         result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", testServer != null && testServer.resetSupported(),
-                "restartSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
+                "restartSupported", restartSupported, "stopSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
         Map<String, Object> testResults = new LinkedHashMap<>();
         testResults.put("state", testsRunning ? "running" : testsIncomplete
                 ? "incomplete" : failed > 0 ? "failed" : "passed");
@@ -757,6 +768,27 @@ public class DevServer implements AutoCloseable {
     }
 
     private synchronized Runnable requestMaintenance(String action) {
+        if (Set.of("stop-workspace", "stop-devserver", "start-workspace").contains(action)) {
+            if (!restartSupported) throw new IllegalStateException("Workspace controls require the standalone dev server.");
+            if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
+            if ("start-workspace".equals(action)) {
+                if (stoppedWorkspaceStatus == null) throw new IllegalStateException("The workspace is not stopped.");
+                try { profileResolver.apply(config.profile(), session.gateway().port()); }
+                catch (RuntimeException e) { throw new IllegalStateException("Unable to start the workspace. Check .fluxzero/dev.yaml."); }
+            } else if ("stop-workspace".equals(action) && closed.get()) {
+                throw new IllegalStateException("The workspace is already stopped.");
+            }
+            maintenanceBusy.set(true);
+            maintenanceError = "";
+            return () -> maintenanceThread = Thread.ofVirtual().name("dev-workspace-control").start(() -> {
+                if ("stop-workspace".equals(action)) {
+                    try { stopWorkspace(); }
+                    finally { maintenanceBusy.set(false); if (devGateway != null) devGateway.refreshConsole(); }
+                } else {
+                    shutdownRequested.complete("start-workspace".equals(action) ? RESTART_REQUESTED : STOP_REQUESTED);
+                }
+            });
+        }
         if (closed.get()) throw new IllegalStateException("The dev server is unavailable.");
         if ("resume-builds".equals(action)) {
             var resume = buildResume;
@@ -1940,11 +1972,62 @@ public class DevServer implements AutoCloseable {
         requestShutdown(summary);
     }
 
+    private void stopWorkspace() {
+        synchronized (shutdownLock) {
+            if (closed.get()) return;
+            Map<String, Object> snapshot = new LinkedHashMap<>(consoleStatus());
+            DevSession.ServiceStatus gateway = session.gateway();
+            snapshot.put("state", "stopping");
+            snapshot.put("components", List.of());
+            stoppedWorkspaceStatus = Map.copyOf(snapshot);
+            updateSession(current -> current.withStatus("stopping"));
+            closeResources(true);
+            synchronized (this) {
+                session = session.withStoppedServices("Workspace stopped; dashboard remains available")
+                        .withStatus("idle").withGateway(gateway).withHeartbeat();
+                sessionStore.writeSession(session);
+            }
+            snapshot.put("state", "idle");
+            for (String key : List.of("runtime", "applications", "frontend", "tests")) snapshot.put(key, "stopped");
+            snapshot.put("components", List.of());
+            snapshot.put("monitoring", Map.of("enabled", false));
+            var profiles = consoleProfiles();
+            profiles.put("switchSupported", false);
+            snapshot.put("profiles", profiles);
+            snapshot.remove("testResults");
+            stoppedWorkspaceStatus = Map.copyOf(snapshot);
+            dashboardHeartbeat = Executors.newSingleThreadScheduledExecutor(
+                    Thread.ofPlatform().daemon().name("dev-dashboard-heartbeat").factory());
+            dashboardHeartbeat.scheduleAtFixedRate(() -> {
+                synchronized (DevServer.this) {
+                    if (dashboardHeartbeat == null) return;
+                    try {
+                        session = session.withHeartbeat();
+                        sessionStore.writeSession(session);
+                    } catch (RuntimeException e) { log.warn("Failed to write dashboard heartbeat", e); }
+                }
+            }, 2, 2, TimeUnit.SECONDS);
+        }
+    }
+
     @Override
     public void close() {
-        if (!closed.compareAndSet(false, true)) {
-            return;
+        synchronized (shutdownLock) {
+            closeResources(false);
+            synchronized (this) {
+                if (dashboardHeartbeat != null) {
+                    dashboardHeartbeat.shutdownNow();
+                    dashboardHeartbeat = null;
+                    stopSession(shutdownDetail.get());
+                }
+            }
+            closeQuietly(devGateway);
+            closeQuietly(sessionLock);
         }
+    }
+
+    private void closeResources(boolean keepDashboard) {
+        if (!closed.compareAndSet(false, true)) return;
         Thread maintenance = maintenanceThread;
         if (maintenance != null && maintenance != Thread.currentThread() && maintenance.isAlive()) {
             maintenance.interrupt();
@@ -1957,7 +2040,7 @@ public class DevServer implements AutoCloseable {
         closeQuietly(greenfieldWatcher);
         sessionStore.invalidateCommandStatus(
                 session.sessionId(), "Test Server session stopped; command will run again in the next session");
-        stopSession(shutdownDetail.get());
+        if (!keepDashboard) stopSession(shutdownDetail.get());
         closeQuietly(lifetime);
         projects.values().forEach(DevServer::closeQuietly);
         closeQuietly(frontendUpdates);
@@ -1965,7 +2048,7 @@ public class DevServer implements AutoCloseable {
         scheduler.shutdownNow();
         closeQuietly(commandPipeline);
         // Stop accepting browser traffic before shutting down the processes and embedded services behind it.
-        closeQuietly(devGateway);
+        if (!keepDashboard) closeQuietly(devGateway);
         closeQuietly(mcpServer);
         frontendProcesses.values().forEach(DevServer::closeQuietly);
         frontendProcesses.clear();
@@ -1980,7 +2063,7 @@ public class DevServer implements AutoCloseable {
         closeQuietly(monitoring);
         closeQuietly(idpService);
         closeQuietly(testServer);
-        closeQuietly(sessionLock);
+        if (!keepDashboard) closeQuietly(sessionLock);
         closeQuietly(embeddedLogCapture);
         closeQuietly(devLogStore);
         closeQuietly(terminalProgress);

@@ -589,3 +589,11 @@ same-origin HTTP protections and flush their acceptance before a gateway restart
   <a href="https://fluxzero.io/about">About us</a> &nbsp;·&nbsp;
   <a href="https://fluxzero.io/contact">Contact us</a>
 </p>
+
+### Stop and start from the dashboard
+
+The workspace page offers **Stop** with two scopes. **Workspace** is the default: it stops managed apps, frontends, builds, tests and supporting services, while retaining the dashboard controls and workspace ownership. Choose **Start** to initialize the workspace again on the same URL and with its current profile. In-memory application data is lost; monitoring history stored on disk is retained.
+
+**Everything** also closes the dashboard and exits the dev server. Start again with `fz dev` in the workspace, or through another running workspace’s dashboard. Both stop actions require confirmation. The complete shutdown scope is never saved as a default.
+
+A workspace whose dashboard remains available has session status `idle`; its gateway and heartbeat remain active, and its application, Test Server, MCP and supporting services are stopped. `fz dev` resumes it and `fz dev stop` closes it completely.

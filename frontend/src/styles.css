@@ -290,3 +290,9 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
   .workspace-heading > .workspace-actions {grid-column:2;grid-row:1;align-self:center;}
   .workspace-heading .project-title-row,.workspace-heading .project-path {grid-column:1/-1;}
 }
+
+.workspace-stopped {margin:24px 0 0;padding:20px 24px;border:1px solid var(--dashboard-border);border-radius:16px;background:var(--dashboard-surface);font-size:13px;line-height:1.6;}
+@media(max-width:650px) {
+  .workspace-action-buttons {gap:2px;flex-wrap:nowrap;}
+  .workspace-heading .environment-eyebrow {letter-spacing:0;gap:4px;}
+}

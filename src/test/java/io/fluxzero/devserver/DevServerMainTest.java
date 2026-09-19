@@ -89,6 +89,82 @@ class DevServerMainTest {
     }
 
     @Test
+    void stopsWorkspaceAndStartsAgainThroughItsRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        ObjectMapper mapper = new ObjectMapper();
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            var before = mapper.readTree(sessionFile(projectDirectory).toFile());
+            String base = before.path("gateway").path("url").asText();
+            long runtimePid = before.path("runtime").path("pid").asLong();
+            assertEquals(409, dashboardAction(http, base, "start-workspace"));
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            var stopped = awaitDashboardState(http, base, "idle");
+            assertTrue(stopped.path("maintenance").path("workspaceStopped").asBoolean());
+            assertFalse(stopped.path("maintenance").path("busy").asBoolean());
+            assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
+            assertTrue(process.isAlive(), "dashboard controller should remain alive");
+            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT)).build(),
+                                       java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals("idle", mapper.readTree(sessionFile(projectDirectory).toFile()).path("status").asText());
+            assertEquals(409, dashboardAction(http, base, "stop-workspace"));
+            assertEquals(409, dashboardAction(http, base, "restart-application"));
+            assertEquals(202, dashboardAction(http, base, "start-workspace"));
+            awaitDashboardState(http, base, "running");
+            var after = mapper.readTree(sessionFile(projectDirectory).toFile());
+            assertFalse(before.path("sessionId").equals(after.path("sessionId")));
+            assertEquals(base, after.path("gateway").path("url").asText());
+            assertEquals(process.pid(), after.path("pid").asLong());
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            awaitDashboardState(http, base, "idle");
+            try (var bootstrap = new DevServerBootstrap()) {
+                assertEquals(0, bootstrap.run(projectDirectory, List.of(), true, true));
+            }
+            awaitDashboardState(http, base, "running");
+            var resumed = mapper.readTree(sessionFile(projectDirectory).toFile());
+            assertEquals(process.pid(), resumed.path("pid").asLong());
+            assertEquals(202, dashboardAction(http, base, "stop-devserver"));
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS));
+            assertFalse(ProcessHandle.of(resumed.path("runtime").path("pid").asLong()).map(ProcessHandle::isAlive).orElse(false));
+        } finally {
+            if (process.isAlive()) { runControl(projectDirectory, "stop"); if (!process.waitFor(5, TimeUnit.SECONDS)) ProcessUtils.forceStopTree(process); }
+        }
+    }
+
+    @Test
+    void cliStopClosesTheRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
+        Process process = startServer(projectDirectory);
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
+            String base = new ObjectMapper().readTree(sessionFile(projectDirectory).toFile()).path("gateway").path("url").asText();
+            assertEquals(202, dashboardAction(http, base, "stop-workspace"));
+            awaitDashboardState(http, base, "idle");
+            assertEquals(0, runControl(projectDirectory, "stop").exitCode());
+            assertTrue(process.waitFor(5, TimeUnit.SECONDS));
+        } finally { if (process.isAlive()) ProcessUtils.forceStopTree(process); }
+    }
+
+    private static int dashboardAction(java.net.http.HttpClient http, String base, String action) throws Exception {
+        return http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+                .header("Origin", base).header("X-Fluxzero-Console", "1")
+                .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode();
+    }
+
+    private static com.fasterxml.jackson.databind.JsonNode awaitDashboardState(java.net.http.HttpClient http, String base, String state) throws Exception {
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
+        while (System.nanoTime() < deadline) {
+            try {
+                var response = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json"))
+                        .timeout(Duration.ofSeconds(2)).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                var status = new ObjectMapper().readTree(response.body());
+                if (state.equals(status.path("state").asText()) && !status.path("maintenance").path("busy").asBoolean()) return status;
+            } catch (IOException ignored) { }
+            Thread.sleep(50);
+        }
+        throw new AssertionError("Dashboard did not reach " + state);
+    }
+
+    @Test
     void restartsManagedEnvironmentOnTheSamePublicPort(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         ObjectMapper mapper = new ObjectMapper();

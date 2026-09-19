@@ -379,7 +379,7 @@ class DevServerLifecycleTest {
             assertTrue(ProcessHandle.of(runtimePid).orElseThrow().destroyForcibly());
 
             String reason = devServer.shutdownRequested().get(5, TimeUnit.SECONDS);
-            assertTrue(reason.contains("runtime stopped unexpectedly"), reason);
+            assertTrue(reason.contains("Test Server stopped unexpectedly"), reason);
             assertTrue(await(() -> "failed".equals(devServer.session().runtime().state())));
             assertEquals("failed", devServer.session().proxy().state());
         }

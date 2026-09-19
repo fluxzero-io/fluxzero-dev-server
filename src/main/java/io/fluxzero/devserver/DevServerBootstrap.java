@@ -54,6 +54,11 @@ final class DevServerBootstrap implements AutoCloseable {
             reused = active != null;
             if (active != null) {
                 pid = active.pid();
+                if ("idle".equals(active.status())) {
+                    startWorkspace(active);
+                    int ready = DevServerControlMain.waitForStartup(root, pid, Duration.ofMinutes(2), true, true);
+                    if (ready != 0) return ready;
+                }
                 if (!background) owned.set(new OwnedProcess(pid, active.startedAt(), root));
                 if (agentReady && !"running".equals(active.mcp().state())) {
                     int ready = DevServerControlMain.waitForStartup(root, pid, Duration.ofMinutes(2), true, true);
@@ -101,6 +106,22 @@ final class DevServerBootstrap implements AutoCloseable {
         }
         if (result == 0) owned.set(null); // explicit detach or normal server stop
         return result;
+    }
+
+    private static void startWorkspace(DevSession session) throws Exception {
+        var base = java.net.URI.create(session.gateway().url());
+        if (!"http".equals(base.getScheme()) || base.getRawUserInfo() != null
+            || !java.util.Set.of("localhost", "127.0.0.1", "[::1]").contains(base.getHost()) || base.getPort() < 1) {
+            throw new IllegalStateException("The stopped workspace has no local dashboard address.");
+        }
+        String origin = "http://" + base.getRawAuthority();
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
+            var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(origin + DevConsole.ROOT + "actions/start-workspace"))
+                    .header("Origin", origin).header("X-Fluxzero-Console", "1").timeout(Duration.ofSeconds(10))
+                    .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            int status = http.send(request, java.net.http.HttpResponse.BodyHandlers.discarding()).statusCode();
+            if (status != 202) throw new IllegalStateException("Unable to start the stopped workspace. Check its dashboard.");
+        }
     }
 
     static List<String> javaCommand(String main, List<String> args) {

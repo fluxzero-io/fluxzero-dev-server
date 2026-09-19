@@ -127,9 +127,14 @@ export class AppComponent implements OnInit, OnDestroy {
         {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
       return;
     }
-    if (!['truncate-data', 'restart-devserver', 'restart-application', 'pause-tests', 'resume-tests'].includes(action)) return;
+    if (!['truncate-data', 'restart-devserver', 'restart-application', 'pause-tests', 'resume-tests', 'stop-workspace', 'start-workspace', 'stop-devserver'].includes(action)) return;
     await firstValueFrom(this.http.post('actions/' + action, null,
       {headers: {'X-Fluxzero-Console': '1'}, timeout: 10000}));
+    if (action === 'stop-devserver') {
+      this.connection.close();
+      this.status.update(state => state ? {...state, state:'shutdown', components:[], monitoring:{enabled:false}} : state);
+      this.error.set('Disconnected');
+    }
   }
   @HandleCommand('switchProfile') async switchProfile(profile: string) {
     await firstValueFrom(this.http.post('actions/switch-profile', {profile},

@@ -27,7 +27,7 @@ describe('Dev console navigation', () => {
     const http = TestBed.inject(HttpTestingController);
     const status: Status = {resourceHistory: [], project: 'repair-cafe', projectDirectory: '/projects/repair-cafe', state: 'running',
       runtime: 'running', applications: 'running', tests: 'passed', frontend: 'stopped', monitoring: {enabled: false},
-      maintenance: {busy: false, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},
+      maintenance: {busy: false, stopSupported: true, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},
       components: [{id: 'devserver', name: 'Fluxzero Dev Server', state: 'running', memoryBytes: 20971520, application: false, port: 4200, url: 'http://localhost:4200/_fluxzero/dev/#projects'}, {id: 'testserver', name: 'Fluxzero Testserver & Proxy', state: 'running', memoryBytes: 104857600, application: false},
         {id: 'app', name: 'Repair Café', state: 'running', memoryBytes: 52428800, application: true, port: 4200, url: 'http://localhost:4200/'}],
       testResults: {available: true, passed: 8, failed: 2, skipped: 1, total: 11, label: 'Latest completed run per module'}};
@@ -840,6 +840,42 @@ describe('Dev console navigation', () => {
       expect(getComputedStyle(badge).justifyContent).toBe('flex-start');
       expect(badge.scrollWidth).toBeLessThanOrEqual(badge.clientWidth);
     }
+  });
+  it('defaults to stopping only the workspace, confirms, and offers Start after it stops', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop workspace?');
+    expect(root.querySelector('dialog[open]')?.textContent).toContain('Dashboard controls remain available');
+    http.expectNone('actions/stop-workspace');
+    (root.querySelector('dialog[open] .primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    http.expectOne('actions/stop-workspace').flush(null); await fixture.whenStable();
+    push({status:{...fixture.componentInstance.status()!, state:'idle', maintenance:{busy:false,error:'',stopSupported:true,workspaceStopped:true}},environments:[]});
+    await fixture.whenStable();
+    expect(root.textContent).toContain('Workspace stopped.');
+    expect(root.querySelector('.restart-action')).toBeNull();
+    expect(root.querySelector('.stop-action')?.textContent).toContain('Start');
+    (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
+    http.expectOne('actions/start-workspace').flush(null); await fixture.whenStable();
+  });
+  it('makes full shutdown optional and explains how to start again', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('.stop-choice') as HTMLButtonElement).click(); fixture.detectChanges();
+    const choices = root.querySelectorAll<HTMLButtonElement>('#stop-scope-menu button');
+    expect(choices[0].getAttribute('aria-checked')).toBe('true');
+    choices[1].click(); fixture.detectChanges();
+    http.expectNone('actions/stop-devserver');
+    expect(root.querySelector('.stop-action')?.textContent).toContain('Stop all');
+    (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(root.querySelector('dialog[open]')?.textContent).toContain('run fz dev');
+    (root.querySelector('dialog[open] .dialog-cancel') as HTMLButtonElement).click(); fixture.detectChanges();
+    http.expectNone('actions/stop-devserver');
+    (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
+    (root.querySelector('dialog[open] .primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    http.expectOne('actions/stop-devserver').flush(null); await fixture.whenStable(); fixture.detectChanges();
+    expect(root.textContent).toContain('Dev server shutting down.');
+    expect(root.querySelector('.stop-action')).toBeNull();
   });
   function chooseCompleteEnvironment() {
     const root: HTMLElement = fixture.nativeElement;

@@ -1,21 +1,21 @@
 import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener, inject, input, output, signal, ViewChild} from '@angular/core';
 
-@Component({selector: 'dev-workspace-restart', standalone: true, template: `
-  <div class="restart-control">
-    <button class="restart-action" type="button" [attr.aria-label]="'Restart ' + selected().label"
-      [title]="selected().description" [disabled]="busy() || !supported(selected().key)" [attr.aria-busy]="restarting()"
-      (click)="restart.emit(selected().key)">
-      @if(restarting()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting"></span>}
-      @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
-      <span><span class="restart-verb">Restart </span>{{selected().label}}</span>
+@Component({selector: 'dev-workspace-stop', standalone: true, template: `
+  <div class="stop-control">
+    <button class="stop-action" type="button" [attr.aria-label]="stopped() ? 'Start workspace' : 'Stop ' + selected().label"
+      [title]="stopped() ? 'Start the workspace again' : selected().description" [disabled]="busy()" [attr.aria-busy]="working()"
+      (click)="actionRequested.emit(stopped() ? 'start-workspace' : selected().key)">
+      @if(working()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Working"></span>}
+      @else {<i class="bi" [class.bi-play]="stopped()" [class.bi-stop]="!stopped()" aria-hidden="true"></i>}
+      <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop all' : 'Stop'}}</span>
     </button>
-    <button #trigger class="restart-choice" type="button" aria-label="Choose restart scope" aria-haspopup="menu"
-      aria-controls="restart-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
+    <button #trigger class="stop-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
+      aria-controls="stop-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
     </button>
   </div>
   @if(open()) {
-    <div #menu id="restart-scope-menu" class="restart-menu" role="menu" aria-label="Restart scope">
+    <div #menu id="stop-scope-menu" class="stop-menu" role="menu" aria-label="Stop scope">
       @for(option of options; track option.key) {
         <button type="button" role="menuitemradio" [attr.aria-checked]="scope() === option.key" tabindex="-1"
           [disabled]="busy() || !supported(option.key)" (click)="choose(option.key)">
@@ -26,46 +26,39 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
-  .restart-control {display:flex;align-items:center;}
-  .restart-control button {border:0;background:transparent;color:var(--dashboard-muted);font-size:12px;height:30px;}
-  .restart-action {display:flex;align-items:center;gap:6px;padding:0 4px 0 6px;border-radius:5px;text-align:left;white-space:nowrap;}
-  .restart-action span {font-size:12px;font-weight:400;}
-  .restart-choice {width:24px;border-radius:5px;font-size:10px!important;}
+  .stop-control {display:flex;align-items:center;}
+  .stop-control button {border:0;background:transparent;color:var(--dashboard-muted);font-size:12px;height:30px;}
+  .stop-action {display:flex;align-items:center;gap:6px;padding:0 4px 0 6px;border-radius:5px;text-align:left;white-space:nowrap;}
+  .stop-action span {font-size:12px;font-weight:400;}
+  .stop-choice {width:24px;border-radius:5px;font-size:10px!important;}
   button:hover:not(:disabled) {background:var(--dashboard-panel-soft);}
   button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
-  .restart-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
+  .stop-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
     border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
-  .restart-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
+  .stop-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
     border:0;border-radius:6px;background:transparent;color:var(--dashboard-text);text-align:left;}
-  .restart-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
-  .restart-menu strong {font-size:13px;font-weight:600;}
-  @media(max-width:480px) {.restart-verb {display:none;}}
-  .restart-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
+  .stop-menu button[aria-checked=true] {background:var(--dashboard-active-soft);}
+  .stop-menu strong {font-size:13px;font-weight:600;}
+  .stop-menu small {display:block;font-size:12px;line-height:1.5;color:var(--dashboard-muted);margin-top:4px;}
 `})
-export class WorkspaceRestartComponent {
+export class WorkspaceStopComponent {
   readonly busy = input(false);
-  readonly action = input<string | null>(null);
-  readonly appsSupported = input(false);
-  readonly environmentSupported = input(false);
-  readonly restart = output<string>();
-  readonly scope = signal(this.savedScope());
+  readonly working = input(false);
+  readonly stopped = input(false);
+  readonly actionRequested = output<string>();
+  readonly scope = signal('stop-workspace');
   readonly open = signal(false);
   readonly options = [
-    {key:'restart-application', label:'Apps', description:'Restart backend apps and UI servers. Keep shared services running.'},
-    {key:'restart-devserver', label:'Environment', description:'Restart apps, UI, the dev server and all supporting services. Resets in-memory app data.'}
+    {key:'stop-workspace', label:'Workspace', description:'Stop apps, UI servers, tests and supporting services. Keep this dashboard available to start again.'},
+    {key:'stop-devserver', label:'Everything', description:'Also close the dev server and dashboard. Start again from the CLI or another active dashboard.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
-  readonly restarting = computed(() => this.action() === 'restart-application' || this.action() === 'restart-devserver');
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly changes = inject(ChangeDetectorRef);
   @ViewChild('trigger') trigger?: ElementRef<HTMLButtonElement>;
   @ViewChild('menu') menu?: ElementRef<HTMLElement>;
-  constructor() { effect(() => { if (this.busy()) this.close(); }); }
-  private savedScope() {
-    try { return localStorage.getItem('devRestartScope') === 'restart-devserver' ? 'restart-devserver' : 'restart-application'; }
-    catch { return 'restart-application'; }
-  }
-  supported(key: string) { return key === 'restart-application' ? this.appsSupported() : this.environmentSupported(); }
+  constructor() { effect(() => { if (this.busy()) this.close(); }); effect(() => { this.stopped(); this.scope.set('stop-workspace'); }); }
+  supported(key: string) { return !this.stopped() || key === 'stop-devserver'; }
   toggle() {
     if (this.busy()) return;
     this.open.set(!this.open());
@@ -79,8 +72,8 @@ export class WorkspaceRestartComponent {
     if (this.busy() || !this.supported(key)) return;
     if (!this.options.some(option => option.key === key)) return;
     this.scope.set(key);
-    try { localStorage.setItem('devRestartScope', key); } catch { /* Selection also works without storage. */ }
     this.close(true);
+    if (this.stopped() && key === 'stop-devserver') this.actionRequested.emit(key);
   }
   private close(restoreFocus = false) {
     this.open.set(false);
