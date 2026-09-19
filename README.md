@@ -497,7 +497,9 @@ Choosing a scope does not execute the action. Apps reuses the last ready backend
 managed frontend processes while retaining their ports and the Test Server. Each app also has an individual restart.
 Environment replaces the managed environment within the standalone launcher JVM, retaining the public
 port. It always asks for confirmation and warns that in-memory application data is reset because a fresh Test Server
-is started. Configured initial commands run again; on-disk monitoring history is retained. The launcher PID stays unchanged.
+is started. Configured initial commands run again; on-disk VictoriaLogs monitoring history is retained, subject to its retention policy.
+The five-minute resource graph history and process-local counters start fresh. With `monitoring.storage: testserver`,
+monitoring data is in-memory and resets too. The launcher PID stays unchanged.
 There is no separate Reset data action in the dashboard. Legacy per-store HTTP maintenance actions remain for
 compatibility. All maintenance actions require a same-origin loopback POST.
 
@@ -514,9 +516,8 @@ The theme icon beside the connection status opens a vertical menu for Light, Dar
 It shows the current preference (System follows operating-system appearance changes), and the selected option
 is highlighted. Theme preferences are saved in browser local storage for the current dev-server address.
 
-Truncating data always opens a confirmation dialog covering both application and monitoring data.
-Cancel or Escape dismisses it without deleting anything. Confirmation cannot be disabled, including by
-preferences saved in earlier versions. Old Settings links redirect to Projects.
+Environment restart always opens a confirmation dialog. Cancel or Escape dismisses it without restarting.
+Confirmation cannot be disabled, including by preferences saved in earlier versions. Old Settings links redirect to Projects.
 
 ### Live test progress and output
 

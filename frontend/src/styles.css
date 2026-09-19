@@ -118,8 +118,6 @@ button:disabled { opacity: .35; cursor: default; }
 .application-link { flex-shrink: 0; font-size: 14px; }
 
 .test-summary {margin-top:24px;display:flex;flex-direction:column;gap:12px;}
-.test-heading {display:flex;align-items:center;gap:12px;padding-left:12px;}
-.test-heading h3 {margin:0;font-size:16px;}
 .test-controls {display:flex;align-items:center;gap:6px;min-width:0;}
 .test-controls .test-bar {flex:1;min-width:0;}
 .test-controls>.icon-button {flex:0 0 32px;width:32px;}
@@ -132,7 +130,6 @@ button:disabled { opacity: .35; cursor: default; }
 .test-summary>small {margin-left:38px;color:var(--dashboard-muted);}
 .maintenance-confirm {padding:16px;border:1px solid var(--dashboard-border);border-radius:8px;}
 .maintenance-confirm button {margin:0;}
-@media(max-width:650px){.test-heading {padding-left:0;}}
 
 dialog.maintenance-confirm {width:min(540px,calc(100vw - 40px));box-sizing:border-box;background:var(--dashboard-surface);color:var(--dashboard-text);padding:32px;box-shadow:0 20px 80px #0004;}
 dialog.maintenance-confirm::backdrop {background:#0007;}
@@ -229,17 +226,14 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table tbody .component-memory,.component-table tbody .component-storage {display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:left;padding:14px 0;min-height:78px;white-space:normal;border-top:1px solid var(--dashboard-border);}
 .component-memory::before,.component-storage::before {content:attr(data-label);display:block;font-size:12px;color:var(--dashboard-muted);margin-bottom:8px;}
 .component-table .resource-value {font-variant-numeric:tabular-nums;font-size:13px;line-height:1.5;}
-.environment-tests {padding:24px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
+.tests-card {padding:24px;border:1px solid var(--dashboard-border);border-radius:18px;background:var(--dashboard-surface);box-shadow:var(--dashboard-card-shadow);}
 .environment-tests .test-summary {margin-top:0;}
-.environment-tests .test-heading {padding:0;margin-bottom:8px;}
-.environment-tests .test-heading > i {font-size:24px;color:var(--dashboard-active);}
-.environment-tests .test-heading p {margin-top:4px;font-size:12px;}
 .environment-tests .test-bar {height:34px;border-radius:9px;}
 .test-bar.empty-tests {background:var(--dashboard-panel-soft);}
 .test-empty-label {padding:8px 12px;font-size:12px;color:var(--dashboard-muted);}
 .maintenance-confirm {border-radius:16px;}
 @media(max-width:1100px) {.component-table tbody {grid-template-columns:1fr;}}
-@media(max-width:650px) {.current-project > .page-heading,.environment-tests {padding:20px;}.component-table tbody tr {padding:18px;}.current-project .project-title-row h1 {padding-left:0;}}
+@media(max-width:650px) {.current-project > .page-heading,.tests-card {padding:20px;}.component-table tbody tr {padding:18px;}.current-project .project-title-row h1 {padding-left:0;}}
 
 /* Customer work and shared infrastructure have separate visual scopes. */
 .applications-section {margin-top:24px;}
@@ -251,9 +245,8 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .applications-empty {margin:0;}
 .environment-tests {margin-top:24px;min-width:0;}
 .infrastructure-section {margin-top:32px;padding-top:24px;border-top:1px solid var(--dashboard-border);}
-.infrastructure-section header {margin-bottom:16px;}
-.infrastructure-section h2 {font-size:17px;}
-.infrastructure-section header p {font-size:12px;margin-top:6px;}
+.infrastructure-section header,.environment-tests header {margin-bottom:16px;}
+.infrastructure-section h2,.environment-tests h2 {font-size:17px;}
 .infrastructure-section .component-table-scroll {margin:0;}
 .infrastructure-section .component-table tbody tr {grid-template-columns:minmax(150px,1.2fr) repeat(2,minmax(0,1fr));gap:12px 20px;box-shadow:none;background:var(--dashboard-panel-soft);border-radius:14px;}
 .infrastructure-section .component-table tbody .component-name {grid-column:1;grid-row:1;font-size:14px;}

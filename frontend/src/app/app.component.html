@@ -2,13 +2,13 @@
   <button class="mobile-menu icon-button" (click)="menuOpen.set(!menuOpen())" aria-label="Toggle navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list"></i></button>
   @if(menuOpen()) {<button class="nav-backdrop" (click)="menuOpen.set(false)" aria-label="Close navigation"></button>}
   <aside class="dashboard-sidebar" [class.open]="menuOpen()">
-    <a class="dashboard-brand" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero dev server home">
+    <a class="dashboard-brand" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Dev dashboard home">
       <img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt="">
-      <span class="brand-title">Fluxzero<span> dev server</span></span>
+      <span class="brand-title">Fluxzero<span>Dev dashboard</span></span>
     </a>
     <dev-environment-selector [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
     <dev-profile-selector [status]="status()" [connected]="connected()"/>
-    <nav aria-label="Dev server navigation">
+    <nav aria-label="Dev dashboard navigation">
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Dev environment</span></a>
       <div class="dashboard-nav-section">

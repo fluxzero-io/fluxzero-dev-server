@@ -1,7 +1,6 @@
 import {Component, ElementRef, inject, input, signal, ViewChild, ChangeDetectorRef, computed, DestroyRef, effect} from '@angular/core';
 import {NgTemplateOutlet} from '@angular/common';
 import {ProjectPathComponent} from './project-path.component';
-import {EnvironmentNameComponent} from './environment-name.component';
 import {Status} from './models';
 import {WorkspaceRestartComponent} from './workspace-restart.component';
 import {ResourceDetailComponent} from './resource-detail.component';
@@ -11,13 +10,12 @@ import {totalMemory, usedMemory} from './resource-history';
 import {formatBytes} from './format-bytes';
 import {Handler, HandleQuery, sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceRestartComponent, NgTemplateOutlet, EnvironmentNameComponent, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
+@Component({selector: 'dev-environment', standalone: true, imports: [WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent, TestOutputComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
     <div class="environment-eyebrow"><i class="bi bi-terminal" aria-hidden="true"></i> YOUR WORKSPACE</div>
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
-      @if(projectId()) {<dev-environment-name [id]="projectId()" [name]="displayName() || state.project" [directory]="state.projectDirectory"/>}
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
     </div>
@@ -63,7 +61,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     <dialog #confirmation class="maintenance-confirm" aria-labelledby="maintenance-title" aria-describedby="maintenance-description" (cancel)="cancelConfirmation()">
     @if(confirmAction(); as action) {
       <h2 id="maintenance-title">Restart environment?</h2>
-      <p id="maintenance-description">This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again.</p>
+      <p id="maintenance-description">This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Monitoring history stored on disk is retained; resource graphs start fresh.</p>
       <div class="dialog-actions">
       <button type="button" class="secondary-button dialog-cancel" (click)="cancelConfirmation()" autofocus>Cancel</button>
       <button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">Restart environment</button></div>
@@ -79,8 +77,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       </div>
     </section>
     <section class="infrastructure-section" aria-labelledby="infrastructure-title">
-      <header><h2 id="infrastructure-title">Development infrastructure</h2>
-        <p>Combined usage of the dev server, Test Server and Proxy, monitoring and supporting services.</p></header>
+      <header><h2 id="infrastructure-title">Dev resources</h2></header>
       <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
@@ -88,8 +85,9 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
     }
     @if(state.monitoring.droppedLogLines) {<p role="status">{{state.monitoring.droppedLogLines}} log lines dropped</p>}
     </section>
-    <section class="environment-tests" aria-label="Tests"><div class="test-summary">
-      <div class="test-heading"><i class="bi bi-check2-circle" aria-hidden="true"></i><div><h3>Tests</h3><p>Test results for this workspace.</p></div></div>
+    <section class="environment-tests" aria-labelledby="tests-title">
+      <header><h2 id="tests-title">Tests</h2></header>
+      <div class="tests-card"><div class="test-summary">
       <div class="test-controls">
         <button class="icon-button" type="button" aria-label="Run tests" title="Run tests"
           [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()"><i class="bi bi-rocket-takeoff" aria-hidden="true"></i></button>
@@ -114,7 +112,7 @@ import {Handler, HandleQuery, sendCommand} from './dom-handlers';
       }
       @if(testError()) {<small role="alert">{{testError()}}</small>}
     </div>
-    <dev-test-output [lines]="state.testOutput || []"/></section>
+    <dev-test-output [lines]="state.testOutput || []"/></div></section>
     </section>}`})
 @Handler()
 export class EnvironmentComponent {

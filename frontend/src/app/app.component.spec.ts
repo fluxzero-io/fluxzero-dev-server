@@ -215,42 +215,6 @@ describe('Dev console navigation', () => {
     }
     expect(environmentConsoleUrl({...current, status:'stopped'})).toBeNull();
   });
-  it('renames through the DOM, updates the selected server everywhere and keeps the application name', async () => {
-    const root: HTMLElement = fixture.nativeElement;
-    (root.querySelector('.project-title-row [aria-label="Rename dev server"]') as HTMLButtonElement).click(); fixture.detectChanges();
-    const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
-    const input = dialog.querySelector('input')!;
-    expect(dialog.open).toBeTrue();
-    expect(input.value).toBe('repair-cafe');
-    input.value = 'Repair preview'; input.dispatchEvent(new Event('input')); fixture.detectChanges();
-    dialog.querySelector('form')!.dispatchEvent(new Event('submit', {cancelable:true}));
-    const request = TestBed.inject(HttpTestingController).expectOne('projects/' + 'a'.repeat(64) + '/rename');
-    expect(request.request.body).toEqual({name:'Repair preview'});
-    request.flush({...fixture.componentInstance.environments()[0], projectName:'Repair preview'});
-    await fixture.whenStable();fixture.detectChanges();
-    expect(dialog.open).toBeFalse();
-    expect(root.querySelector('.server-picker-button')?.textContent).toContain('Repair preview');
-    expect(root.querySelector('.current-project-title')?.textContent).toBe('Repair preview');
-    expect(root.querySelector('.component-table tbody th')?.textContent).toContain('Repair Café');
-    fixture.componentInstance.navigate('monitoring/logs');fixture.detectChanges();
-    expect(root.querySelector('.monitoring-heading p')?.textContent).toBe('Repair preview');
-  });
-  it('keeps the rename dialog open on failure and can restore the folder name', async () => {
-    const root: HTMLElement = fixture.nativeElement;
-    fixture.componentInstance.environments.update(list => list.map(e => ({...e, projectName:'Custom'})));
-    fixture.detectChanges();
-    (root.querySelector('.project-title-row [aria-label="Rename dev server"]') as HTMLButtonElement).click();fixture.detectChanges();
-    const dialog = root.querySelector('[aria-labelledby="server-name-title"]') as HTMLDialogElement;
-    (dialog.querySelector('.folder-name') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(dialog.querySelector('input')!.value).toBe('repair-cafe');
-    dialog.querySelector('form')!.dispatchEvent(new Event('submit', {cancelable:true}));
-    TestBed.inject(HttpTestingController).expectOne('projects/' + 'a'.repeat(64) + '/rename')
-      .flush({error:'Unable to save name.'},{status:503,statusText:'Unavailable'});
-    await fixture.whenStable();fixture.detectChanges();
-    expect(dialog.open).toBeTrue();
-    expect(dialog.querySelector('[role="alert"]')?.textContent).toBe('Unable to save name.');
-    expect(root.querySelector('.server-picker-button')?.textContent).toContain('Custom');
-  });
   it('dismisses the picker with Escape and an outside click', () => {
     const root:HTMLElement = fixture.nativeElement;
     openPicker();
@@ -443,7 +407,10 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.cards')).toBeNull();
     expect(root.querySelector('.application-overview .component-storage')).toBeNull();
     expect(root.querySelector('.application-overview')?.textContent).not.toContain('Storage');
-    expect(root.querySelector('.infrastructure-section h2')?.textContent).toBe('Development infrastructure');
+    expect(root.querySelector('.infrastructure-section h2')?.textContent).toBe('Dev resources');
+    expect(root.querySelector('[aria-label="Rename dev server"]')).toBeNull();
+    expect(root.querySelector('.environment-tests > header h2')?.textContent).toBe('Tests');
+    expect(root.querySelector('.tests-card h2,.tests-card h3')).toBeNull();
     expect(root.querySelector('.infrastructure-section')?.contains(root.querySelectorAll('.component-table')[1])).toBeTrue();
     expect(root.querySelector('.applications-section')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
     expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
