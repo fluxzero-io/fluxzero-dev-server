@@ -14,13 +14,10 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           @if(test.variants; as variants) {
             <button type="button" class="scenario-row scenario-group" [attr.aria-expanded]="expanded().has(test.key)"
               [attr.aria-controls]="'variants-' + test.key" (click)="toggle(test.key)">
-              <i class="bi" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
+              <i class="bi scenario-chevron" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
+              <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" role="img" [attr.aria-label]="label(test.state)"></i>
               <span class="scenario-name"><strong>{{test.name}}</strong><small>{{test.suite}} · {{test.project}}</small></span>
-              <span class="scenario-group-summary"><span>{{total(variants)}} {{total(variants) === 1 ? 'scenario' : 'scenarios'}}</span>
-                <span class="variant-counts">
-                  @for(state of states; track state) {@if(variants[state]) {<span [class.failed]="state === 'failed'" [class.passed]="state === 'passed'">{{variants[state]}} {{state === 'pending' ? 'not completed' : state}}</span>}}
-                </span>
-              </span>
+              <span class="scenario-group-summary">{{variants['passed'] || 0}} / {{total(variants)}} passed</span>
             </button>
             <div [id]="'variants-' + test.key" [hidden]="!expanded().has(test.key)" class="scenario-variants">
               @if(expanded().has(test.key)) {<dev-scenario-list [group]="test.key" [filter]="filter()" [query]="query()"/>}
@@ -52,20 +49,21 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
   .scenario-row {display:flex;align-items:center;gap:12px;padding:14px 0;width:100%;}
   .scenario-group {border:0;background:transparent;color:var(--dashboard-text);text-align:left;font:inherit;cursor:pointer;}
   .scenario-group:hover {background:var(--dashboard-action-bg);}
-  .scenario-group > i {font-size:12px;color:var(--dashboard-muted);}
+  .scenario-chevron {font-size:12px;color:var(--dashboard-muted);}
   .scenario-status {flex:0 0 auto;color:var(--dashboard-muted);}.passed {color:var(--dashboard-success-text);}.failed {color:var(--dashboard-danger-text);font-weight:600;}
   .scenario-name {flex:1;min-width:0;overflow-wrap:anywhere;}.scenario-name strong {display:block;font-size:14px;font-weight:500;}
   .scenario-name small {display:block;color:var(--dashboard-muted);font-size:11px;margin-top:4px;}
   .scenario-state,.scenario-group-summary {font-size:12px;color:var(--dashboard-muted);white-space:nowrap;}
-  .scenario-group-summary {text-align:right;}.variant-counts {display:flex;gap:8px;margin-top:4px;justify-content:flex-end;}
-  .scenario-variants {padding:0 0 12px 26px;}
+  .scenario-group-summary {text-align:right;}
+  .scenario-variants {padding:0 0 12px 52px;}
   .scenario-empty {padding:24px 0;text-align:center;color:var(--dashboard-muted);font-size:13px;}
   .scenario-empty p {margin:8px 0;}
   .icon-button {width:auto;height:auto;min-height:30px;padding:6px 10px;gap:6px;white-space:nowrap;}
   .scenario-pagination {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:12px;font-size:12px;color:var(--dashboard-muted);}
   @media(max-width:650px) {
     .scenario-row {flex-wrap:wrap;gap:8px;}.scenario-name {flex-basis:calc(100% - 32px);}.scenario-state,.scenario-group-summary {padding-left:24px;}
-    .scenario-group-summary {display:flex;gap:10px;text-align:left;flex-wrap:wrap;white-space:normal;}.variant-counts {margin:0;flex-wrap:wrap;justify-content:flex-start;}
+    .scenario-group .scenario-name {flex-basis:calc(100% - 56px);}
+    .scenario-group-summary {display:flex;gap:10px;text-align:left;flex-wrap:wrap;white-space:normal;}
     .scenario-variants {padding-left:14px;}
   }
 `})
@@ -78,7 +76,6 @@ export class ScenarioListComponent implements OnInit, OnChanges, OnDestroy {
   readonly loading = signal(false);
   readonly error = signal('');
   readonly expanded = signal(new Set<string>());
-  readonly states = ['failed','pending','passed','skipped'];
   private readonly http = inject(HttpClient);
   private readonly zone = inject(NgZone);
   private request?:Subscription;

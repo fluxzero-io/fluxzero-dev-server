@@ -90,7 +90,9 @@ describe('Scenario catalog', () => {
     http.expectOne(r=>r.url==='tests.json' && r.params.get('grouped')==='true').flush(grouped);fixture.detectChanges();
     let toggle=fixture.nativeElement.querySelector('.scenario-group') as HTMLButtonElement;
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
-    expect(toggle.textContent).toContain('75 scenarios');expect(toggle.textContent).toContain('1 failed');
+    expect(toggle.textContent).toContain('74 / 75 passed');
+    expect(toggle.querySelector('.scenario-status')?.getAttribute('aria-label')).toBe('Failed');
+    expect(toggle.querySelector('.bi-x-circle')).not.toBeNull();
     http.expectNone(r=>r.params.has('group'));
     toggle.click();fixture.detectChanges();
     const variants=http.expectOne(r=>r.params.get('group')==='template');
