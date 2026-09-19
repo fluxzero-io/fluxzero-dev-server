@@ -46,7 +46,7 @@
           <span class="preview-copy-status" role="status">{{previewCopyError() || (previewCopied() ? 'URL copied' : '')}}</span>
         </div>
         <div class="application-tools preview-display-tools">
-          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-fullscreen-exit]="previewExpanded()" aria-hidden="true"></i></button>
+          <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-arrows-angle-contract]="previewExpanded()" aria-hidden="true"></i></button>
         @if(applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }
