@@ -15,7 +15,7 @@ import {StartedAgoComponent} from './started-ago.component';
 @Component({selector: 'dev-environment', standalone: true, imports: [ProjectRenameComponent, StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
   @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
     <div class="project-title-row">
-      @if(embedded()) {<h3 class="current-project-title"><a href="#projects" (click)="openProjects($event)">{{displayName() || state.project}}</a></h3>}
+      @if(embedded()) {<h3 class="current-project-title">{{displayName() || state.project}}</h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
       <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
@@ -176,11 +176,6 @@ export class EnvironmentComponent {
       this.finishMaintenance();
     }
     finally { this.maintenanceStatus = this.status(); this.submitting.set(false); }
-  }
-  openProjects(event: MouseEvent) {
-    if (event.button || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
-    event.preventDefault();
-    sendCommand(this.elementRef.nativeElement, 'navigate', 'projects');
   }
   readonly formatBytes = formatBytes;
 }

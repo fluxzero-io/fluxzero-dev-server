@@ -475,14 +475,6 @@ describe('Dev console navigation', () => {
     expect((root.querySelector('[aria-label="Rerun"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(root.querySelector('.test-status')?.textContent).toContain('Running tests');
   });
-  it('keeps the projects page when selecting the current environment through the DOM', async () => {
-    (fixture.nativeElement.querySelector('.current-project-title a') as HTMLAnchorElement).click();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    expect(location.hash).toBe('#projects');
-    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Workspace');
-    expect(fixture.nativeElement.querySelector('main').textContent).not.toContain('/projects/orders');
-  });
   it('keeps monitoring views in the left navigation even without a configured backend', async () => {
     const link = fixture.nativeElement.querySelector('nav a[href="#monitoring/logs"]') as HTMLAnchorElement;
     link.click();
