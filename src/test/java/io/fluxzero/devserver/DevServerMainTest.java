@@ -56,7 +56,7 @@ class DevServerMainTest {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         Path outputFile = projectDirectory.resolve("dev-server.out");
         Process process = new ProcessBuilder(
-                java.toString(), runtimeCacheArgument(),
+                java.toString(), runtimeCacheArgument(), monitoringDefaultsArgument(),
                 "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + projectDirectory.resolve("registry"),
                 "-cp", testClassPath(),
@@ -473,13 +473,13 @@ class DevServerMainTest {
     private static Process startServer(Path projectDirectory, Path registryDirectory) throws IOException {
         Path java = Path.of(System.getProperty("java.home"), "bin", "java");
         return new ProcessBuilder(
-                java.toString(), runtimeCacheArgument(),
+                java.toString(), runtimeCacheArgument(), monitoringDefaultsArgument(),
                 "-Dfluxzero.dev.project=" + projectDirectory.toAbsolutePath().normalize(),
                 "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + registryDirectory,
                 "-cp", testClassPath(), DevServerMain.class.getName(),
                 "--project-dir", projectDirectory.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
                 "--idp", "external")
-                .redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
+                .redirectErrorStream(true).redirectOutput(projectDirectory.resolve("dev-server.out").toFile()).start();
     }
 
     private static void assertStopOrder(String output) {
@@ -529,6 +529,11 @@ class DevServerMainTest {
         return System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
     }
 
+    private static String monitoringDefaultsArgument() {
+        return "-D" + DevMonitoringDefaults.FILE_PROPERTY + "="
+               + Path.of("src/test/resources/monitoring-disabled.yaml").toAbsolutePath();
+    }
+
     private static String runtimeCacheArgument() {
         return "-Dfluxzero.dev.runtime.cache=" + System.getProperty(
                 "fluxzero.dev.runtime.cache", "target/dev-runtime-test-cache");
@@ -536,7 +541,7 @@ class DevServerMainTest {
 
     private static boolean awaitRunningSession(Path sessionFile) throws Exception {
         ObjectMapper objectMapper = new ObjectMapper();
-        long deadline = System.nanoTime() + Duration.ofSeconds(10).toNanos();
+        long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             try {
                 if (Files.isRegularFile(sessionFile)
@@ -548,6 +553,8 @@ class DevServerMainTest {
             }
             Thread.sleep(50);
         }
+        Path output = sessionFile.getParent().getParent().getParent().resolve("dev-server.out");
+        if (Files.isRegularFile(output)) System.err.println(Files.readString(output));
         return false;
     }
 

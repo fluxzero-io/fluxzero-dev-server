@@ -128,6 +128,8 @@ class DevServerBootstrapTest {
         if (background) args.add("--bootstrap-background");
         var command = new java.util.ArrayList<>(DevServerBootstrap.javaCommand(DevServerBootstrapMain.class.getName(), args));
         command.add(command.indexOf("-cp"), "-D" + DevEnvironmentRegistry.DIRECTORY_PROPERTY + "=" + directory.resolve("registry"));
+        command.add(command.indexOf("-cp"), "-D" + DevMonitoringDefaults.FILE_PROPERTY + "="
+                + Path.of("src/test/resources/monitoring-disabled.yaml").toAbsolutePath());
         return new ProcessBuilder(command)
                 .redirectOutput(ProcessBuilder.Redirect.DISCARD)
                 .redirectError(ProcessBuilder.Redirect.appendTo(directory.resolve("bootstrap-test.log").toFile())).start();

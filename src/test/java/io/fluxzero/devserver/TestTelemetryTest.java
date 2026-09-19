@@ -22,7 +22,6 @@ import java.util.HashMap;
 import java.util.UUID;
 import java.net.Socket;
 import java.io.DataOutputStream;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import static org.junit.jupiter.api.Assertions.*;
@@ -48,8 +47,7 @@ class TestTelemetryTest {
     }
 
     @Test void acceptsOnlyThisRunsTokenAndKeepsAnIncompleteStreamPartial(@TempDir Path directory) throws Exception {
-        var notified=new CompletableFuture<Void>();
-        try(var events=new TestTelemetry(()->notified.complete(null))) {
+        try(var events=new TestTelemetry(()->{})) {
             var env=new HashMap<String,String>();events.configure(new java.util.ArrayList<>(),env,BuildTool.MAVEN,directory);
             int port=Integer.parseInt(env.get("FLUXZERO_DEV_TEST_PORT"));
             try(var bad=new Socket("127.0.0.1",port);var out=new DataOutputStream(bad.getOutputStream())) {
@@ -59,7 +57,10 @@ class TestTelemetryTest {
                 out.writeUTF("fz-test-v1");out.writeUTF(env.get("FLUXZERO_DEV_TEST_TOKEN"));out.writeUTF(UUID.randomUUID().toString());out.writeUTF("junit");out.writeUTF("module");
                 out.writeUTF("plan");out.writeUTF("");out.writeUTF("registered");out.writeUTF("pending");out.writeUTF("started");out.writeUTF("pending");out.flush();
             }
-            notified.get(2,TimeUnit.SECONDS);events.drain();
+            // Rejecting the bad socket also signals a change. Wait for the authenticated stream instead.
+            long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (!events.progress().lost() && System.nanoTime() < deadline) Thread.sleep(10);
+            events.drain();
             assertTrue(events.progress().available());assertEquals(1,events.progress().discovered());
             assertEquals(0,events.progress().counts().total());assertTrue(events.progress().lost());
             assertFalse(events.progress().streamsEnded());
