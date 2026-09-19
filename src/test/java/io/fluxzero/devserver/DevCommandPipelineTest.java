@@ -83,6 +83,13 @@ class DevCommandPipelineTest {
 
                 assertTrue(awaitStatus(status, "succeeded"));
                 assertEquals("Ada", processedName.get());
+                var entry = status.get().commands().getFirst();
+                JsonNode json = pipeline.commandJson("test-session", entry.path(), entry.hash());
+                assertEquals("Ada", json.path("payload").path("name").asText());
+                assertEquals(entry.type(), json.path("type").asText());
+                org.junit.jupiter.api.Assertions.assertNull(pipeline.commandJson("previous-session", entry.path(), entry.hash()));
+                org.junit.jupiter.api.Assertions.assertNull(pipeline.commandJson("test-session", entry.path(), "outdated"));
+                org.junit.jupiter.api.Assertions.assertNull(pipeline.commandJson("test-session", "../other.json", entry.hash()));
                 assertEquals("$system", processedMetadata.get().get("$user"));
             } finally {
                 registration.cancel();

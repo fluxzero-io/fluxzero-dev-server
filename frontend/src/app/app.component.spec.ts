@@ -92,7 +92,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('dev-startup')).toBeNull();
     (root.querySelector('a[href="#startup"]') as HTMLAnchorElement).click();fixture.detectChanges();
     expect(component.route()).toBe('startup');
-    expect(root.querySelector('h1')?.textContent).toBe('Startup data');
+    expect(root.querySelector('h1')?.textContent).toBe('Startup commands');
     expect(root.querySelectorAll('.startup-row').length).toBe(2);
     component.readRoute();expect(component.route()).toBe('startup');
     component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:3},startup:{state:'failed',actions:[actions[0],{...actions[1],state:'failed'}]}}));fixture.detectChanges();
@@ -106,7 +106,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.workspace-stopped')?.textContent).toContain('Workspace stopped');
     component.status.update(s=>({...s!,maintenance:{...s!.maintenance!,workspaceStopped:false},testResults:undefined,startup:{state:'idle',actions:[]}}));fixture.detectChanges();
     expect(root.querySelector('.nav-result-badge')).toBeNull();
-    expect(root.querySelector('dev-startup-page')?.textContent).toContain('No startup data configured');
+    expect(root.querySelector('dev-startup-page')?.textContent).toContain('No startup commands configured');
   });
   it('confirms a profile switch, keeps the active label until reconnect, and refreshes the preview', async () => {
     const component = fixture.componentInstance;

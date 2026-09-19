@@ -1,7 +1,8 @@
 import {Component, computed, input, signal} from '@angular/core';
+import {StartupJsonComponent} from './startup-json.component';
 import {Status} from './models';
 
-@Component({selector:'dev-startup', standalone:true, template:`
+@Component({selector:'dev-startup', standalone:true, imports:[StartupJsonComponent], template:`
   @if(startup(); as data) {
     @if(data.actions.length || data.state === 'failed') {
       <section aria-label="Startup actions">
@@ -14,10 +15,13 @@ import {Status} from './models';
               }
             </div>
             <div id="startup-actions">
-              @for(action of visibleActions(); track action.id) {
-                <div class="startup-row">
+              @for(action of visibleActions(); track startup()?.sessionId + action.id + action.hash) {
+                <div class="startup-entry">
+                <button type="button" class="startup-row" [attr.aria-expanded]="expanded().has(action.id)" [attr.aria-label]="action.name + (expanded().has(action.id) ? ' — Hide JSON' : ' — Show JSON')" (click)="toggle(action.id)">
                   <i class="bi" [class.bi-check-circle]="action.state === 'succeeded'" [class.bi-x-circle]="action.state === 'failed'" [class.bi-clock]="action.state !== 'succeeded' && action.state !== 'failed'" [class.success]="action.state === 'succeeded'" [class.failure]="action.state === 'failed'" aria-hidden="true"></i>
-                  <span class="action-name">{{action.name}}</span><span class="action-state" [class.failure]="action.state === 'failed'">{{label(action.state)}}</span>
+                  <i class="bi" [class.bi-chevron-down]="expanded().has(action.id)" [class.bi-chevron-right]="!expanded().has(action.id)" aria-hidden="true"></i><span class="action-name">{{action.name}}</span><span class="action-state" [class.failure]="action.state === 'failed'">{{label(action.state)}}</span>
+                </button>
+                @if(expanded().has(action.id)) {<dev-startup-json [sessionId]="data.sessionId" [id]="action.id" [hash]="action.hash"/>}
                 </div>
               } @empty {<p class="startup-empty">{{query() ? 'No matching actions in this filter.' : 'No ' + filter() + ' actions.'}}</p>}
             </div>
@@ -42,8 +46,10 @@ import {Status} from './models';
     .startup-filters button:hover {background:var(--dashboard-action-bg);color:var(--dashboard-active);}
     .startup-filters span {display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;font-size:11px;background:var(--dashboard-action-bg);font-variant-numeric:tabular-nums;}
     .startup-filters .selected span {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
-    .startup-row {display:flex;align-items:center;gap:12px;padding:14px 0;font-size:14px;color:var(--dashboard-text);}
-    .startup-row + .startup-row {border-top:1px solid var(--dashboard-border);}
+    .startup-row {width:100%;text-align:left;border:0;background:transparent;display:flex;align-items:center;gap:12px;padding:14px 0;font-size:14px;color:var(--dashboard-text);}
+    .startup-entry + .startup-entry {border-top:1px solid var(--dashboard-border);}
+    .startup-row:hover {background:var(--dashboard-action-bg);}
+    .startup-row:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:-2px;}
     .action-name {flex:1;min-width:0;overflow-wrap:anywhere;}
     .action-state {font-size:12px;color:var(--dashboard-muted);}
     .success {color:var(--dashboard-success-text);}.failure {color:var(--dashboard-danger-text);}
@@ -56,6 +62,8 @@ import {Status} from './models';
   `})
 export class StartupComponent {
   readonly startup = input<Status['startup']>();
+  readonly expanded=signal(new Set<string>());
+  toggle(id:string) {this.expanded.update(current=>{const next=new Set(current);next.has(id) ? next.delete(id) : next.add(id);return next;});}
   readonly query = signal('');
   readonly filter = signal('all');
   readonly limit = signal(50);

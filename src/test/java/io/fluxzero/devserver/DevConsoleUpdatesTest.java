@@ -180,6 +180,28 @@ class DevConsoleUpdatesTest {
         }
     }
 
+    @Test void servesStartupJsonOnlyOnDemandFromTheLocalConsole(@TempDir Path directory) throws Exception {
+        var console = new DevConsole(() -> Map.of(), null, new DevEnvironmentRegistry(directory))
+                .withStartupJson((session, id, hash) -> "current".equals(session) && "command".equals(id) && "hash".equals(hash)
+                        ? Map.of("payload", Map.of("name", "Home")) : null);
+        try (var gateway = DevGateway.start(null, List.of(new DevGateway.FrontendRoute("app", "/", "http://localhost:1", () -> false)),
+                () -> false, List.of(), 0, () -> {}, false, console); var client = HttpClient.newHttpClient()) {
+            var endpoint = URI.create(gateway.url() + DevConsole.ROOT + "startup-command.json");
+            for (String origin : List.of(gateway.url(), "https://foreign.example")) {
+                var request = java.net.http.HttpRequest.newBuilder(endpoint).header("Origin", origin)
+                        .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString(
+                                "{\"sessionId\":\"current\",\"id\":\"command\",\"hash\":\"hash\"}")).build();
+                var response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertEquals(origin.equals(gateway.url()) ? 200 : 403, response.statusCode());
+                if (response.statusCode() == 200) {
+                    assertEquals("Home", JSON.readTree(response.body()).path("payload").path("name").asText());
+                    assertEquals("no-store", response.headers().firstValue("Cache-Control").orElseThrow());
+                }
+            }
+            assertFalse(console.updates.snapshot().toString().contains("payload"));
+        }
+    }
+
     @Test void servesNamedTestsAsABoundedSeparateReadEndpoint(@TempDir Path directory) throws Exception {
         var cases = new java.util.ArrayList<TestCatalog.Case>();
         for (int i = 0; i < 70; i++) cases.add(TestCatalog.describe("app", "m", "demo.Test#case" + i, null, "passed"));

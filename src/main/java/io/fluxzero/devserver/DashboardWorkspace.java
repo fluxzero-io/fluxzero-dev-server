@@ -25,13 +25,13 @@ import java.util.stream.Stream;
 final class DashboardWorkspace {
     private static final Set<String> FAILURES = Set.of("failed", "exited", "incomplete");
 
-    record StartupAction(String id, String name, String state) {}
-    record Startup(String state, List<StartupAction> actions) {}
+    record StartupAction(String id, String name, String state, String hash) {}
+    record Startup(String state, List<StartupAction> actions, String sessionId) {}
 
     static Startup startup(DevCommandStatus status, String sessionId) {
-        if (status == null || !java.util.Objects.equals(status.sessionId(), sessionId)) return new Startup("idle", List.of());
+        if (status == null || !java.util.Objects.equals(status.sessionId(), sessionId)) return new Startup("idle", List.of(), sessionId);
         return new Startup(status.state(), status.commands().stream()
-                .map(entry -> new StartupAction(entry.path(), commandName(entry), entry.state())).toList());
+                .map(entry -> new StartupAction(entry.path(), commandName(entry), entry.state(), entry.hash())).toList(), sessionId);
     }
 
     private static String commandName(DevCommandStatus.Entry entry) {

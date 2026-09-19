@@ -38,10 +38,10 @@ These indicators clear on recovery and do not surface historical log errors or o
 Detailed diagnostics remain available through MCP.
 
 Workspace also shows the server's relative start time, with its exact local timestamp on hover.
-The Startup data page, labeled Startup directly below Tests in navigation, lists reported startup actions in execution order with readable names and individual results.
+The Startup commands page, labeled Startup directly below Tests in navigation, lists reported startup actions in execution order with readable names and individual results.
 Actions are visible by default, with search and All, Completed, Failed and Pending filters. Pending includes blocked
-actions, whose rows retain their Blocked status. Large lists offer Show more after 50 entries. Raw command payloads
-and diagnostic details remain in the existing agent tools rather than the dashboard.
+actions, whose rows retain their Blocked status. Large lists offer Show more after 50 entries. Expand a command to load its JSON (type, revision and payload), then use Copy to copy the displayed JSON.
+Command details are loaded only on demand for the active session; diagnostic details remain in the agent tools.
 
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
 Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups

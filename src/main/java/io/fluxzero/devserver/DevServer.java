@@ -1003,6 +1003,10 @@ public class DevServer implements AutoCloseable {
         }
         DevConsole console = new DevConsole(this::consoleStatus,
                 monitoring == null ? null : monitoring.assets()).withDeferredMaintenance(this::requestMaintenance)
+                .withStartupJson((sessionId, id, hash) -> {
+                    var pipeline = commandPipeline;
+                    return pipeline == null ? null : pipeline.commandJson(sessionId, id, hash);
+                })
                 .withTestCases(() -> projects.values().stream().filter(p -> p.config.testsEnabled())
                         .flatMap(p -> p.testPipeline.testCases(p.id).stream()).toList());
         devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),

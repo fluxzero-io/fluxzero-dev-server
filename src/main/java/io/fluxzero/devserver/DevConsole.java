@@ -42,6 +42,9 @@ final class DevConsole implements AutoCloseable {
     private final DevConsoleProjectStarter projectStarter;
     private java.util.function.Function<String, Runnable> maintenance;
     private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
+    @FunctionalInterface interface StartupJson { Object get(String sessionId, String id, String hash) throws Exception; }
+    private StartupJson startupJson = (sessionId, id, hash) -> null;
+    DevConsole withStartupJson(StartupJson supplier) {this.startupJson = supplier; return this;}
     DevConsole withTestCases(Supplier<java.util.List<TestCatalog.Case>> testCases) {
         this.testCases = testCases; return this;
     }
@@ -85,6 +88,24 @@ final class DevConsole implements AutoCloseable {
             return false;
         }
         if (isApi(request)) return false;
+        if (path.equals(ROOT + "startup-command.json")) {
+            if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
+            if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Requires the local console.");
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(8193);
+                if (body.length > 8192) return actionResult(response, callback, 413, "Request too large.");
+                var json = new ObjectMapper().readTree(body);
+                if (json == null || !json.path("sessionId").isTextual() || !json.path("id").isTextual() || !json.path("hash").isTextual())
+                    return actionResult(response, callback, 400, "Select a startup command.");
+                Object value = startupJson.get(json.path("sessionId").asText(), json.path("id").asText(), json.path("hash").asText());
+                if (value == null) return actionResult(response, callback, 404, "This command is no longer available. Refresh and try again.");
+                response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+                response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
+                response.getHeaders().put("X-Content-Type-Options", "nosniff");
+                response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(value)), callback);
+                return true;
+            }
+        }
         if (path.startsWith(ROOT + "actions/")) return maintenanceAction(path, request, response, callback);
         if (path.startsWith(ROOT + "projects/")) return projectAction(path, request, response, callback);
         if (!request.getMethod().equals("GET") && !request.getMethod().equals("HEAD")) {
