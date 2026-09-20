@@ -192,9 +192,9 @@ class AgentDocsMcpTest {
                 "-Dfluxzero.dev.docs.sdk.archive=" + archive)) {
             client.initialize();
             var tools = client.listTools().tools();
-            assertEquals(29, tools.size());
+            assertEquals(30, tools.size());
             assertTrue(tools.stream().map(McpSchema.Tool::name).toList().containsAll(List.of(
-                    "get_progress", "upsert_progress_milestone", "upsert_progress_feature",
+                    "get_workflow", "get_progress", "upsert_progress_milestone", "upsert_progress_feature",
                     "list_issues", "get_issue", "resolve_issue", "reopen_issue", "mute_issue", "unmute_issue")));
             assertFalse(tools.stream().filter(t -> t.name().equals("start_dev")).findFirst().orElseThrow().annotations().readOnlyHint());
             assertTrue(DevMcpStdioMain.INSTRUCTIONS.length() <= 512);
