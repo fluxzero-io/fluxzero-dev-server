@@ -87,7 +87,13 @@ describe('Dev console navigation', () => {
     expect(row.querySelector('[aria-label="Start project"]')).not.toBeNull();
     expect((row.querySelector('[aria-label="Remove from list"]') as HTMLButtonElement).disabled).toBeTrue();
     const starting=manager.startProject(project);
-    http.expectOne('actions/start-workspace').flush(null);await starting;
+    http.expectOne('actions/start-workspace').flush(null);await starting;fixture.detectChanges();
+    expect(row.querySelector('[aria-label="Starting project"]')).not.toBeNull();
+    push({status:{...app.status()!,maintenance:{busy:true,error:'',workspaceStopped:false}},environments:app.environments()});fixture.detectChanges();
+    expect(row.querySelector('[aria-label="Starting project"]')).not.toBeNull();
+    push({status:{...app.status()!,maintenance:{busy:false,error:'',workspaceStopped:false}},environments:app.environments()});fixture.detectChanges();
+    expect(row.querySelector('[aria-label="Starting project"]')).toBeNull();
+    expect(row.querySelector('[aria-label="Stop project"]')).not.toBeNull();
     http.expectNone('actions/stop-devserver');
     http.verify();
   });

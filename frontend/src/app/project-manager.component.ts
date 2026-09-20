@@ -1,4 +1,4 @@
-import {Component, ElementRef, ViewChild, computed, inject, input, signal} from '@angular/core';
+import {Component, ElementRef, ViewChild, computed, effect, inject, input, signal} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {firstValueFrom} from 'rxjs';
 import {Environment} from './models';
@@ -26,7 +26,9 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
           <div class="row-actions" role="group" [attr.aria-label]="'Actions for ' + project.projectName">
             @if(project.projectDirectory !== currentDirectory()) {<button class="icon-button project-action manager-open-action" [title]="switchingProject() === project.id ? 'Starting project…' : 'Switch to project'" aria-label="Switch to project" [disabled]="isBusy() || !project.directoryExists" (click)="openProject(project)">@if(switchingProject() === project.id) {<i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i>} @else {<svg class="switch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a4 4 0 0 1 4-4h14m-4-4 4 4-4 4M21 14a4 4 0 0 1-4 4H3m4-4-4 4 4 4"/></svg>}</button>}
 
-            @if(project.status === 'running') {
+            @if(busyProject() === project.id) {
+              <button class="icon-button project-action manager-start-action" disabled aria-label="Starting project" title="Starting…" aria-busy="true"><i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i></button>
+            } @else if(project.status === 'running') {
 
               <button class="icon-button project-action manager-stop-action" [disabled]="isBusy()" title="Stop project" aria-label="Stop project" (click)="requestStop(project)"><i class="bi bi-stop-fill" aria-hidden="true"></i></button>
             } @else {<button class="icon-button project-action manager-start-action" [disabled]="isBusy() || !project.directoryExists" [title]="busyProject() === project.id ? 'Starting…' : 'Start project'" [attr.aria-label]="busyProject() === project.id ? 'Starting project' : 'Start project'" (click)="startProject(project)"><i [class]="busyProject() === project.id ? 'bi bi-arrow-repeat starting-icon' : 'bi bi-play-fill'" aria-hidden="true"></i></button>}
@@ -71,7 +73,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
 `})
 export class ProjectManagerComponent {
   workspaceStopped=input(false); workspaceBusy=input(false); workspaceError=input('');
-  isBusy() {return this.busy() || this.workspaceBusy();}
+  isBusy() {return this.busy() || this.workspaceBusy() || !!this.busyProject();}
   environments=input<Environment[]>([]); currentDirectory=input('');
   sortedProjects=computed(()=>{
     const current=this.currentDirectory();
@@ -113,7 +115,22 @@ export class ProjectManagerComponent {
     this.stopping.set(project);
   }
   async stopProject(project:Environment) {await this.act(async()=>{if(project.projectDirectory === this.currentDirectory())await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-workspace');else await this.post(project.id+'/stop',null);this.stopping.set(null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
-  async startProject(project:Environment) {this.busyProject.set(project.id);await this.act(async()=>{if(project.projectDirectory === this.currentDirectory())await sendCommand(this.element.nativeElement,'maintainEnvironment','start-workspace');else await sendCommand(this.element.nativeElement,'startProjectInBackground',project.id);});this.busyProject.set('');}
+  constructor() {
+    effect(()=>{
+      const pending=this.busyProject();
+      const current=this.environments().find(project=>project.id===pending)?.projectDirectory===this.currentDirectory();
+      if(pending && current && !this.busy() && (this.workspaceError() || (!this.workspaceStopped() && !this.workspaceBusy())))this.busyProject.set('');
+    });
+  }
+  async startProject(project:Environment) {
+    const current=project.projectDirectory===this.currentDirectory();
+    await this.act(async()=>{
+      this.busyProject.set(project.id);
+      if(current)await sendCommand(this.element.nativeElement,'maintainEnvironment','start-workspace');
+      else await sendCommand(this.element.nativeElement,'startProjectInBackground',project.id);
+    });
+    if(!current || this.error())this.busyProject.set('');
+  }
   async openProject(project:Environment) {if(this.isBusy() || !project.directoryExists)return; if(project.status!=='running')this.switchingProject.set(project.id); await this.act(async()=>{if(project.status==='running')await sendCommand(this.element.nativeElement,'openEnvironment',project);else await sendCommand(this.element.nativeElement,'startEnvironment',project.id);this.dialog.nativeElement.close();});this.switchingProject.set('');}
   async submit() {await this.act(async()=>{const p=await this.post<Environment>(this.mode()==='new'?'create':'open',{path:this.folderPath(),name:this.projectName()});await sendCommand(this.element.nativeElement,'refreshProjects');await sendCommand(this.element.nativeElement,'startEnvironment',p.id);this.dialog.nativeElement.close();});}
 }
