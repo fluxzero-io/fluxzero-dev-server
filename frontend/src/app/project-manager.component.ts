@@ -6,7 +6,7 @@ import {sendCommand} from './dom-handlers';
 
 type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; truncated:boolean; project:boolean; ancestors:{name:string;path:string}[]};
 @Component({selector:'dev-project-manager',standalone:true,template:`
-  <dialog #dialog aria-labelledby="manage-projects-title" (cancel)="cancel($event)" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
+  <dialog #dialog aria-labelledby="manage-projects-title" (pointerdown)="backdropPressed = isBackdrop($event)" (click)="dismissBackdrop($event)" (cancel)="cancel($event)" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
     <header><h2 id="manage-projects-title">{{mode() === 'list' ? 'Manage projects' : mode() === 'new' ? 'New project' : 'Open other project'}}</h2>
       <button class="icon-button" aria-label="Close project manager" [disabled]="busy()" (click)="dialog.close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
     @if(error()) {<p class="error" role="alert">{{error()}}</p>}
@@ -80,12 +80,24 @@ export class ProjectManagerComponent {
   @ViewChild('dialog') dialog!:ElementRef<HTMLDialogElement>;
   private element=inject<ElementRef<HTMLElement>>(ElementRef); private http=inject(HttpClient);
   private trigger?:HTMLElement;
+  backdropPressed=false;
   mode=signal<'list'|'open'|'new'>('list'); busy=signal(false); loading=signal(false); error=signal(''); editing=signal('');
   folder=signal<Folder|undefined>(undefined); folderPath=signal(''); projectName=signal('');
   busyProject=signal(''); switchingProject=signal('');
   crumbs() {const all=this.folder()?.ancestors || [];return !this.expandedPath() && all.length>4 ? [all[0],{name:'…',path:'…'},...all.slice(-2)] : all;}
   missing() {return this.environments().filter(p=>!p.directoryExists && p.status==='stopped');}
   show(trigger:HTMLElement) {this.trigger=trigger;this.mode.set('list');this.error.set('');this.editing.set('');this.stopping.set(null);this.dialog.nativeElement.showModal();}
+  isBackdrop(event:MouseEvent) {
+    const dialog=this.dialog.nativeElement;
+    if(event.target!==dialog)return false;
+    const rect=dialog.getBoundingClientRect();
+    return event.clientX<rect.left || event.clientX>rect.right || event.clientY<rect.top || event.clientY>rect.bottom;
+  }
+  dismissBackdrop(event:MouseEvent) {
+    const dismiss=this.backdropPressed && this.isBackdrop(event);
+    this.backdropPressed=false;
+    if(dismiss && !this.busy() && !this.stopping())this.dialog.nativeElement.close();
+  }
   restoreFocus() {this.trigger?.focus();}
   cancel(event:Event) {if(this.busy()) event.preventDefault();}
   async begin(mode:'open'|'new') {this.mode.set(mode);this.error.set('');await this.browse(this.folderPath());}
