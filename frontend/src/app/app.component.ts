@@ -1,3 +1,4 @@
+import {ServerUpdateComponent} from './server-update.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
 import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
@@ -15,7 +16,7 @@ import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -235,6 +236,10 @@ export class AppComponent implements OnInit, OnDestroy {
     } catch (error: any) {
       this.actionError.set(error?.error?.error || (action === 'forget' ? 'Unable to remove the project from the overview.' : 'Unable to open the project folder.'));
     }
+  }
+  @HandleCommand('updateDevServer') async updateDevServer(version:string) {
+    await firstValueFrom(this.http.post('actions/update-devserver', {version},
+      {headers: {'X-Fluxzero-Console': '1'}, timeout:10000}));
   }
   @HandleCommand('maintainEnvironment') async maintainEnvironment(action: string) {
     if (action.startsWith('restart-app:')) {

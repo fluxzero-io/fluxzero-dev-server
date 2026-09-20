@@ -696,3 +696,20 @@ instructions, explicitly labelled as such; agents should read again after starti
 An older pinned server without this tool returns an explicit unavailable response: agents use its advertised
 tools and configuration reference, without upgrading the project implicitly.
 
+### Updating from Devboard
+
+When launched by an update-aware CLI without an explicit version pin, Devboard checks for a newer stable,
+compatible dev-server release shortly after startup and then hourly. The quiet **Update & restart** action
+appears above the sidebar connection indicator only when an update is available. Offline checks and older
+CLI installations leave the workspace usable and do not show an issue. Snapshot builds and explicit pins
+are excluded.
+
+The dev server delegates version selection and checksum-verified artifact preparation to `fz dev check-update`
+and `fz dev prepare-update`. It downloads before stopping anything and revalidates the selected version.
+Confirmation resets local in-memory application data and monitoring history, reruns startup commands, and
+preserves source files and `.fluxzero/progress.yaml`. The replacement uses the same URL and selected profile.
+If the replacement cannot start its control plane, the previous distribution is restarted; cleared data is
+not restored. Application build failures remain visible in the new server for diagnosis.
+
+This requires both the updated CLI and dev server. Restart an existing session through the updated CLI to
+enable checks. The action updates only the selected workspace's server, never the CLI or agent plugins.

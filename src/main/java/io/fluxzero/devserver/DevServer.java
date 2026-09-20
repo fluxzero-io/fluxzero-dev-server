@@ -585,11 +585,16 @@ public class DevServer implements AutoCloseable {
 
     static final String STOP_REQUESTED = "dev server stopped from dashboard";
     static final String RESTART_REQUESTED = "dev server restart requested";
+    static final String UPDATE_REQUESTED = "dev server update requested";
+    private DevServerUpdates updates;
+    private volatile java.nio.file.Path preparedUpdate;
+    java.nio.file.Path preparedUpdate() { return preparedUpdate; }
     private boolean restartSupported;
     private java.util.function.BiFunction<String, Integer, DevServerConfig> profileResolver;
     private volatile String requestedProfile;
     DevServer withRestartSupport(java.util.function.BiFunction<String, Integer, DevServerConfig> resolver) {
         restartSupported = true;
+        updates = new DevServerUpdates(config.projectDirectory());
         profileResolver = resolver;
         return this;
     }
@@ -629,6 +634,7 @@ public class DevServer implements AutoCloseable {
         var stopped = stoppedWorkspaceStatus;
         if (stopped != null) {
             var result = new LinkedHashMap<>(stopped);
+            result.put("update", updates == null ? Map.of() : updates.status());
             result.put("workspaceIssue", "");
             result.put("progress", new ProjectProgress(config.projectDirectory()).view());
             result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
@@ -713,6 +719,7 @@ public class DevServer implements AutoCloseable {
         result.put("monitoring", monitoring == null ? Map.of("enabled", false) : monitoring.status());
         result.put("components", components);
         result.put("profiles", consoleProfiles());
+        result.put("update", updates == null ? Map.of() : updates.status());
         result.put("maintenance", Map.of("buildPauseState", buildPauseState, "busy", maintenanceBusy.get(), "error", maintenanceError, "resetSupported", testServer != null && testServer.resetSupported(),
                 "restartSupported", restartSupported, "stopSupported", restartSupported, "applicationRestartSupported", projects.values().stream().anyMatch(p -> p.compilePipeline.activeSnapshot() != null) || frontendProcesses.values().stream().anyMatch(FrontendProcess::managed)));
         Map<String, Object> testResults = new LinkedHashMap<>();
@@ -841,6 +848,32 @@ public class DevServer implements AutoCloseable {
             Runnable restart = requestMaintenance("restart-devserver", false);
             requestedProfile = profile;
             return restart;
+        }
+        if (action.startsWith("update-devserver:")) {
+            if (!restartSupported || updates == null) throw new IllegalStateException("Updating is not supported by this launcher.");
+            if (!maintenanceBusy.compareAndSet(false, true)) throw new IllegalStateException("Maintenance is already running.");
+            System.setProperty("fluxzero.dev.updateAttempt", java.util.UUID.randomUUID().toString());
+            System.clearProperty("fluxzero.dev.updateError");
+            maintenanceError = "";
+            return () -> maintenanceThread = Thread.ofVirtual().name("dev-server-update").start(() -> {
+                try {
+                    var artifact = updates.prepare(action.substring("update-devserver:".length()));
+                    if (!applicationLifecycleLock.tryLock(30, TimeUnit.SECONDS))
+                        throw new IllegalStateException("Application work is still busy. Try again later.");
+                    try {
+                        if (closed.get()) return;
+                        clearMonitoringForRestart();
+                        preparedUpdate = artifact;
+                        requestShutdown(UPDATE_REQUESTED);
+                    } finally { applicationLifecycleLock.unlock(); }
+                } catch (Exception e) {
+                    if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                    maintenanceError = oneLine(e.getMessage());
+                } finally {
+                    maintenanceBusy.set(false);
+                    if (devGateway != null) devGateway.refreshConsole();
+                }
+            });
         }
         if ("restart-devserver".equals(action) && !restartSupported)
             throw new IllegalStateException("Restart is only available in the standalone dev server.");
@@ -2052,6 +2085,7 @@ public class DevServer implements AutoCloseable {
 
     @Override
     public void close() {
+        if (updates != null) updates.close();
         synchronized (shutdownLock) {
             closeResources(false);
             synchronized (this) {

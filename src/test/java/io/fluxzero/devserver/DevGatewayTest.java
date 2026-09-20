@@ -190,6 +190,16 @@ public class DevGatewayTest {
             assertEquals(202, projectPost(url, base, true).statusCode());
             assertEquals("truncate-testserver-data", called.get());
             assertEquals(409, projectPost(url, base, true).statusCode());
+            called.set(null);
+            String update = base + DevConsole.ROOT + "actions/update-devserver";
+            assertEquals(403, projectPost(update, "https://example.com", true).statusCode());
+            for (String body : List.of("{}", "{", "{\"version\":\"../../server.jar\"}")) {
+                assertEquals(400, renamePost(update, base, body).statusCode());
+                assertEquals(null, called.get());
+            }
+            assertEquals(413, renamePost(update, base, " ".repeat(1025)).statusCode());
+            assertEquals(202, renamePost(update, base, "{\"version\":\"1.99.0\"}").statusCode());
+            assertEquals("update-devserver:1.99.0", called.get());
             for (String action : List.of("pause-tests", "resume-tests")) {
                 called.set(null);
                 String testAction = base + DevConsole.ROOT + "actions/" + action;

@@ -55,6 +55,45 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  it('confirms an available update before sending its exact version', async () => {
+    const root=fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('dev-server-update .update-button')).toBeNull();
+    const status=fixture.componentInstance.status()!;
+    push({status:{...status, update:{status:'available',latestVersion:'1.99.0'}},environments:[]});
+    fixture.detectChanges();
+    (root.querySelector('dev-server-update .update-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    const dialog=root.querySelector('dev-server-update dialog') as HTMLDialogElement;
+    expect(dialog.open).toBeTrue(); expect(dialog.textContent).toContain('resets local app data');
+    TestBed.inject(HttpTestingController).expectNone('actions/update-devserver');
+    (dialog.querySelector('.dialog-cancel') as HTMLButtonElement).click(); fixture.detectChanges();
+    expect(dialog.open).toBeFalse();
+    (root.querySelector('dev-server-update .update-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    (dialog.querySelector('.primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
+    const request=TestBed.inject(HttpTestingController).expectOne('actions/update-devserver');
+    expect(request.request.body).toEqual({version:'1.99.0'});
+    expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush({}); await fixture.whenStable(); fixture.detectChanges();
+    expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Updating');
+    push({status:{...status,versions:{devServer:'1.99.0'},update:{status:'current'}},environments:[]});
+    fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
+    expect(root.querySelector('dev-server-update .update-button')).toBeNull();
+  });
+
+  it('allows retrying after an earlier update failure and shows a new failure', async () => {
+    const root=fixture.nativeElement as HTMLElement, status=fixture.componentInstance.status()!;
+    const failed={...status,update:{status:'available',latestVersion:'1.99.0',attemptId:'first',error:'Previous version restored'}};
+    push({status:failed,environments:[]}); fixture.detectChanges();
+    (root.querySelector('dev-server-update .update-button') as HTMLButtonElement).click();fixture.detectChanges();
+    (root.querySelector('dev-server-update .primary-button') as HTMLButtonElement).click();fixture.detectChanges();
+    TestBed.inject(HttpTestingController).expectOne('actions/update-devserver').flush({});
+    await fixture.whenStable();fixture.detectChanges();
+    expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Updating');
+    // Intermediate busy/cleared-error snapshots can be coalesced by the browser.
+    push({status:{...failed,update:{...failed.update,attemptId:'second'}},environments:[]});fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Update & restart');
+    expect(root.querySelector('dev-server-update [role="alert"]')?.textContent).toContain('Previous version restored');
+  });
+
   function openTests() {
     fixture.componentInstance.navigate('tests');fixture.detectChanges();
     TestBed.inject(HttpTestingController).expectOne(r => r.url === 'tests.json')
