@@ -1,4 +1,4 @@
-import {Component, ElementRef, ViewChild, inject, input, signal} from '@angular/core';
+import {Component, ElementRef, ViewChild, computed, inject, input, signal} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {firstValueFrom} from 'rxjs';
 import {Environment} from './models';
@@ -15,7 +15,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
 
       @if(stopping();as target) {<div class="stop-confirm" role="group" aria-label="Confirm stop"><p>Stop {{target.projectName}}?</p><p class="hint">Its app and local services will stop. You can start it again here.</p><div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="busy()" (click)="stopping.set(null)">Cancel</button><button class="primary-button" [disabled]="busy()" (click)="stopProject(target)">{{busy() ? 'Stopping…' : 'Stop project'}}</button></div></div>}
       <div class="project-list">
-      @for(project of environments();track project.id) {
+      @for(project of sortedProjects();track project.id) {
         <div class="project-row">
           <div class="project-info">
             @if(editing() === project.id) {
@@ -71,6 +71,11 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
 `})
 export class ProjectManagerComponent {
   environments=input<Environment[]>([]); currentDirectory=input('');
+  sortedProjects=computed(()=>{
+    const current=this.currentDirectory();
+    const rank=(project:Environment)=>project.projectDirectory === current ? 0 : project.status === 'running' ? 1 : 2;
+    return [...this.environments()].sort((a,b)=>rank(a)-rank(b) || a.projectName.localeCompare(b.projectName,undefined,{numeric:true,sensitivity:'base'}) || a.id.localeCompare(b.id));
+  });
   expandedPath=signal(false); stopping=signal<Environment|null>(null);
   @ViewChild('dialog') dialog!:ElementRef<HTMLDialogElement>;
   private element=inject<ElementRef<HTMLElement>>(ElementRef); private http=inject(HttpClient);
