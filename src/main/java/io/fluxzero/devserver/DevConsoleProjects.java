@@ -59,9 +59,31 @@ final class DevConsoleProjects implements AutoCloseable {
                     .limit(201).map(p -> Map.of("name", p.getFileName().toString(), "path", p.toString())).toList();
             return Map.of("path", path.toString(), "parent", path.getParent() == null ? "" : path.getParent().toString(),
                     "folders", folders.subList(0, Math.min(200, folders.size())), "truncated", folders.size() > 200,
-                    "project", isProject(path));
+                    "project", isProject(path), "ancestors", ancestors(path));
         }
     }
+    private static List<Map<String, String>> ancestors(Path path) {
+        var result = new java.util.ArrayList<Map<String, String>>();
+        for (Path current = path; current != null; current = current.getParent()) {
+            result.addFirst(Map.of("name", current.getFileName() == null ? current.toString() : current.getFileName().toString(),
+                    "path", current.toString()));
+        }
+        return result;
+    }
+    CompletableFuture<Void> stop(String id) {
+        var project = registry.findKnown(id).orElseThrow(() -> new IllegalArgumentException("Project is no longer listed."));
+        return CompletableFuture.runAsync(() -> {
+            try {
+                var directory = Path.of(project.projectDirectory());
+                DevServerUpdates.run(DevServerBootstrap.javaCommand(DevServerControlMain.class.getName(),
+                        List.of("stop", "--project-dir", directory.toString())), directory, Duration.ofSeconds(30));
+            } catch (Exception e) {
+                if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+                throw new IllegalStateException("Could not stop the project. Try again from its Workspace page.", e);
+            }
+        }, worker);
+    }
+
     DevEnvironmentRegistry.ConsoleEnvironment open(String value) throws java.io.IOException {
         Path path = folder(value);
         if (!isProject(path)) throw new IllegalArgumentException("Choose a Fluxzero project folder with a Maven, Gradle or .fluxzero/dev.yaml configuration.");

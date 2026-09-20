@@ -717,7 +717,9 @@ enable checks. The action updates only the selected workspace's server, never th
 ### Managing projects in Devboard
 
 Choose **Manage projects…** in the Project selector to open an existing local project,
-create a project, rename its display label, or remove stopped projects from the list.
+create a project, start or stop another project, rename its display label, or remove stopped projects from the list.
+Starting a project keeps the manager open; **Open** navigates to its Devboard.
+For the current project, **Workspace…** opens its existing stop controls.
 Removal only changes the local registry; project files are kept. Missing folders can
 be removed together. Running projects must be stopped before removing their entry.
 
@@ -727,4 +729,6 @@ folder. Existing folders are never overwritten. If scaffolding fails, any genera
 files remain available for inspection. After scaffolding, the project opens in its
 own Devboard. **Open existing** accepts Maven, Gradle or `.fluxzero/dev.yaml` projects.
 The folder browser lists local directories only and accepts manually entered paths,
-including hidden folders. These actions require the same-origin local console.
+including hidden folders. Click a breadcrumb to navigate to a parent folder; long
+paths collapse their middle folders into an expandable ellipsis. These actions
+require the same-origin local console.

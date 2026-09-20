@@ -260,10 +260,23 @@ final class DevConsole implements AutoCloseable {
                         : "Unable to read this folder. Check the path and permissions.");
             }
         }
-        var match = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(ROOT) + "projects/([a-f0-9]{64})/(open-folder|forget|rename|start)").matcher(path);
+        var match = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(ROOT) + "projects/([a-f0-9]{64})/(open-folder|forget|rename|start|stop)").matcher(path);
         if (!match.matches()) return actionResult(response, callback, 404, "Unknown project action.");
         var project = environments.findKnown(match.group(1)).orElse(null);
         if (project == null) return actionResult(response, callback, 404, "Project is no longer listed.");
+        if ("stop".equals(match.group(2))) {
+            String currentDirectory = updates.snapshot().path("status").path("projectDirectory").asText();
+            if (!currentDirectory.isBlank() && Files.isSameFile(Path.of(project.projectDirectory()), Path.of(currentDirectory)))
+                return actionResult(response, callback, 409, "Use Workspace to stop this project while keeping its controls available.");
+            var stopping = projects.stop(project.id());
+            request.addIdleTimeoutListener(timeout -> stopping.isDone());
+            stopping.whenComplete((ignored, error) -> {
+                try { actionResult(response, callback, error == null ? 204 : 409,
+                        error == null ? null : "Could not stop this project. Open its Workspace page to try again."); }
+                catch (Exception failure) { callback.failed(failure); }
+            });
+            return true;
+        }
         if ("start".equals(match.group(2))) {
             try {
                 var startup = projectStarter.start(project.id());

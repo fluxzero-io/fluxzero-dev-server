@@ -44,7 +44,7 @@ import {sendCommand} from './dom-handlers';
       <button class="manage-projects secondary-button" (click)="open.set(false); manager.show(trigger)">Manage projects…</button>
     </div>
   }
-  <dev-project-manager #manager [environments]="environments()"/>
+  <dev-project-manager #manager [environments]="environments()" [currentDirectory]="current()?.projectDirectory || ''"/>
   <dialog #startDialog class="start-dialog" aria-labelledby="server-start-title" (close)="restoreFocus()">
     <h2 id="server-start-title">{{selectedToStart()?.directoryExists ? 'Start dev server?' : 'Dev server unavailable'}}</h2>
     @if(selectedToStart()?.directoryExists) {<p>{{selectedToStart()?.projectName}} is inactive. Would you like to start it?</p>}
@@ -82,6 +82,9 @@ import {sendCommand} from './dom-handlers';
   .server-option:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
   .server-option-name {grid-column:1;min-width:0;font-weight:600;overflow-wrap:anywhere;}
   .server-path {grid-column:1;min-width:0;font-size:12px;color:var(--dashboard-muted);overflow-wrap:anywhere;}
+  .manage-projects {flex:none;margin-top:12px;padding:10px;text-align:left;border:0;border-top:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-panel-soft);}
+  .manage-projects:hover {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+  .manage-projects:active {background:var(--dashboard-primary-badge-bg);}
   .server-empty {padding:16px 10px;}
   .start-dialog {width:420px;max-width:calc(100vw - 24px);padding:24px;border:1px solid var(--dashboard-border);border-radius:8px;background:var(--dashboard-popover-bg);color:var(--dashboard-text);box-shadow:var(--dashboard-popover-shadow);}
   .start-dialog::backdrop {background:rgba(0,0,0,.4);}

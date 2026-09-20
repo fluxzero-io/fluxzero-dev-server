@@ -222,6 +222,12 @@ export class AppComponent implements OnInit, OnDestroy {
     const result=await firstValueFrom(this.http.get<{environments:Environment[]}>('environments.json'));
     this.environments.set(result.environments);
   }
+  @HandleCommand('showWorkspace') showWorkspace() {this.navigate('projects');}
+  @HandleCommand('startProjectInBackground') async startProjectInBackground(id:string) {
+    if(!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown project.');
+    await firstValueFrom(this.http.post('projects/'+id+'/start',null,{headers:{'X-Fluxzero-Console':'1'},timeout:130000}));
+    await this.refreshProjects();
+  }
   @HandleCommand('startEnvironment') async startEnvironment(id: string) {
     if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown dev server.');
     const environment = await firstValueFrom(this.http.post<Environment>('projects/' + id + '/start', null,

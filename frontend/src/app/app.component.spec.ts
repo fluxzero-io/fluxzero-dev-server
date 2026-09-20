@@ -1,6 +1,7 @@
 import {TestBed, ComponentFixture} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
+import {ProjectManagerComponent} from './project-manager.component';
 import {AppComponent} from './app.component';
 import {monitoringPath, environmentConsoleUrl, Status, Environment} from './models';
 import {ConsoleConnection, ConsoleState} from './console-connection';
@@ -624,6 +625,15 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.application-empty').textContent).toContain('not available yet');
     expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBeNull();
   });
+  it('collapses long folder paths while keeping every ancestor reachable', () => {
+    const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
+    const ancestors=['/','/one','/one/two','/one/two/three','/one/two/three/four'].map(path=>({name:path.split('/').pop()||'/',path}));
+    manager.folder.set({path:ancestors[4].path,parent:ancestors[3].path,folders:[],truncated:false,project:false,ancestors});
+    expect(manager.crumbs().map(c=>c.path)).toEqual(['/', '…', ancestors[3].path, ancestors[4].path]);
+    manager.expandedPath.set(true);
+    expect(manager.crumbs()).toEqual(ancestors);
+  });
+
   it('opens project management and browses folders without creating a project', async () => {
     const root=fixture.nativeElement as HTMLElement;
     (root.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();fixture.detectChanges();

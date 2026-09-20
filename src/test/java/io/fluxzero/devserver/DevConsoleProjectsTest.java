@@ -63,6 +63,9 @@ class DevConsoleProjectsTest {
         try(var projects=new DevConsoleProjects(new DevEnvironmentRegistry(root.resolve("registry")))) {
             var result=projects.folders(root.toString());
             assertEquals(true,result.get("truncated"));
+            var ancestors=(java.util.List<java.util.Map<String,String>>)result.get("ancestors");
+            assertEquals(root.toRealPath().toString(),ancestors.getLast().get("path"));
+            assertEquals(root.getRoot().toString(),ancestors.getFirst().get("path"));
             assertEquals(200,((java.util.List<?>)result.get("folders")).size());
             assertFalse(result.toString().contains("secret"));assertFalse(result.toString().contains(".hidden"));
             assertThrows(IllegalArgumentException.class,()->projects.folders("relative"));

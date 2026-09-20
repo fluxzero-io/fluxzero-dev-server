@@ -114,7 +114,7 @@ public class DevGatewayTest {
         store.writeSession(session);
         registry.register(session);
         var opened = new AtomicReference<java.nio.file.Path>();
-        var console = new DevConsole(java.util.Map::of, null, registry, opened::set);
+        var console = new DevConsole(() -> java.util.Map.of("projectDirectory", project.toString()), null, registry, opened::set);
         try (TestUpstream backend = TestUpstream.start("backend");
              DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
             String base = gateway.url();
@@ -128,6 +128,9 @@ public class DevGatewayTest {
             assertEquals(204, projectPost(projectUrl + "/open-folder", base, true).statusCode());
             assertEquals(project.toRealPath(), opened.get());
             assertEquals(409, projectPost(projectUrl + "/forget", base, true).statusCode());
+            assertEquals(403, projectPost(projectUrl + "/stop", "https://example.com", true).statusCode());
+            assertEquals(409, projectPost(projectUrl + "/stop", base, true).statusCode());
+            assertEquals(404, projectPost(base + DevConsole.ROOT + "projects/" + "0".repeat(64) + "/stop", base, true).statusCode());
             store.writeSession(session.withStatus("stopped"));
             assertEquals(204, projectPost(projectUrl + "/forget", base, true).statusCode());
             assertTrue(registry.listKnown().isEmpty());
