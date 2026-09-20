@@ -178,13 +178,13 @@ final class DevServerBootstrap implements AutoCloseable {
 
     @Override
     public void close() {
-        OwnedProcess process;
         synchronized (owned) {
             closed = true;
-            process = owned.getAndSet(null);
+            OwnedProcess process = owned.getAndSet(null);
+            // A shutdown hook must wait for concurrent EOF cleanup before the JVM can exit.
+            if (process != null) ProcessUtils.stopIfOwned(process.pid(), process.root().toString(),
+                    process.startedAt(), Duration.ofSeconds(3));
         }
-        if (process != null) ProcessUtils.stopIfOwned(process.pid(), process.root().toString(),
-                process.startedAt(), Duration.ofSeconds(3));
     }
 
     private record OwnedProcess(long pid, long startedAt, Path root) {}
