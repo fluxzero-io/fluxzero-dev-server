@@ -283,7 +283,9 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-app-restart .dashboard-action {height:32px;font-size:12px;}
 .workspace-actions {margin-left:auto;}
 .workspace-action-buttons {display:flex;align-items:center;gap:8px;}
-.current-project > .page-heading {flex-wrap:wrap;}
+.current-project > .page-heading {flex-wrap:nowrap;}
+.workspace-summary {flex:1;min-width:0;}
+.workspace-actions {flex-shrink:0;}
 @media(max-width:900px) {
   .workspace-actions {margin-left:auto;align-self:flex-end;}
 }

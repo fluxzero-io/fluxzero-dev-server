@@ -94,7 +94,7 @@ describe('Dev console navigation', () => {
     const app=fixture.componentInstance, http=TestBed.inject(HttpTestingController), root=fixture.nativeElement as HTMLElement;
     const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
     const clickStop=()=>{(root.querySelector('.manager-stop-action') as HTMLButtonElement).click();fixture.detectChanges();};
-    clickStop();expect(root.querySelector('[aria-label="Confirm full stop"]')?.textContent).toContain('This page will disconnect');
+    clickStop();expect(root.querySelector('[aria-label="Confirm full stop"]')?.textContent).toContain('closes Devboard');
     http.expectNone('actions/stop-devserver');
     (root.querySelector('[aria-label="Confirm full stop"] .dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
     expect(manager.stopConfirmation()).toBeNull();http.expectNone('actions/stop-devserver');
@@ -792,7 +792,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.infrastructure-section .component-table')?.textContent).toContain('120.0 MiB');
     const componentRows = root.querySelectorAll('.component-table tbody tr');
     expect(componentRows[0].querySelector('.component-restart')).toBeNull();
-    expect(root.querySelector('.workspace-actions .restart-action')?.getAttribute('aria-label')).toBe('Restart Apps');
+    expect(root.querySelector('.workspace-actions .restart-action')?.getAttribute('aria-label')).toBe('Restart apps');
     expect(root.querySelector('.applications-heading button')).toBeNull();
     expect(root.querySelector('[aria-label="Reset data"]')).toBeNull();
     expect(componentRows[1].querySelector('.component-restart,.component-actions')).toBeNull();
@@ -826,7 +826,7 @@ describe('Dev console navigation', () => {
     expect(detail.querySelector('[role=tooltip]')!.textContent).not.toContain('Orders');
     detail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(root.querySelectorAll('.application-overview .component-restart,.application-overview .component-storage').length).toBe(0);
-    expect(root.querySelectorAll('[aria-label="Restart Apps"]').length).toBe(1);
+    expect(root.querySelectorAll('[aria-label="Restart apps"]').length).toBe(1);
     const applications = root.querySelector('.applications-section')!;
     expect(root.querySelector('.environment-tests')).toBeNull();
     expect(applications.nextElementSibling).toBe(root.querySelector('.infrastructure-section'));
@@ -945,23 +945,23 @@ describe('Dev console navigation', () => {
   it('confirms maintenance before dispatching the protected DOM command', async () => {
     chooseCompleteEnvironment();
     const root: HTMLElement = fixture.nativeElement;
-    (root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
     http.expectNone('actions/restart-devserver');
-    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')?.textContent).toContain('In-memory application data will be reset');
-    expect(root.querySelector('dev-environment .maintenance-confirm')?.textContent).toContain('Stored monitoring history (VictoriaLogs) is deleted too');
+    expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')?.textContent).toContain('Local app data and activity history will be cleared');
+    expect(root.querySelector('dev-environment .maintenance-confirm')?.textContent).toContain('Your code and progress are kept');
     (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
     const request = http.expectOne('actions/restart-devserver');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
     request.flush(null);
     await fixture.whenStable(); fixture.detectChanges();
-    expect((root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).disabled).toBeTrue();
+    expect((root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).disabled).toBeTrue();
   });
   it('cancels the full restart without resetting data', () => {
     chooseCompleteEnvironment();
     const root: HTMLElement = fixture.nativeElement;
-    (root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     const dialog = root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!;
     expect(dialog.open).toBeTrue();
@@ -977,7 +977,7 @@ describe('Dev console navigation', () => {
     const http = TestBed.inject(HttpTestingController);
     expect(localStorage.getItem('devConfirmTruncate')).toBe('false');
     for (let attempt = 0; attempt < 2; attempt++) {
-      (root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).click();
+      (root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).click();
       fixture.detectChanges();
       expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
       expect(root.querySelector('dev-environment .maintenance-confirm input')).toBeNull();
@@ -1060,12 +1060,12 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     fixture.componentInstance.status.update(s => s ? {...s, monitoring: {enabled:true, storage:'victorialogs'}, components:[{id:'storage',name:'Monitoring database',state:'running',application:false,memoryBytes:0}]} : s);
     fixture.detectChanges();
-    (root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
     expect(root.querySelector('dev-environment .maintenance-confirm input')).toBeNull();
     (root.querySelector('dev-environment .maintenance-confirm .secondary-button') as HTMLButtonElement).click();
-    (root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement).click();
+    (root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(root.querySelector<HTMLDialogElement>('dev-environment .maintenance-confirm')!.open).toBeTrue();
     TestBed.inject(HttpTestingController).expectNone('actions/restart-devserver');
@@ -1089,7 +1089,7 @@ describe('Dev console navigation', () => {
     expect(rows[0].querySelector('.badge')?.textContent).toBe('stopped');
     expect(rows[0].querySelector('dev-resource-detail')).toBeNull();
     expect(rows[0].querySelector('.application-link')).toBeNull();
-    expect((root.querySelector('[aria-label="Restart Apps"]') as HTMLButtonElement).disabled).toBeTrue();
+    expect((root.querySelector('[aria-label="Restart apps"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(rows[1].querySelector('.badge')?.textContent).toBe('running');
     expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB');
   });
@@ -1180,8 +1180,8 @@ describe('Dev console navigation', () => {
     const http = TestBed.inject(HttpTestingController);
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
-    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop workspace?');
-    expect(root.querySelector('dialog[open]')?.textContent).toContain('Dashboard controls remain available');
+    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop apps?');
+    expect(root.querySelector('dialog[open]')?.textContent).toContain('Devboard stays open');
     http.expectNone('actions/stop-workspace');
     (root.querySelector('dialog[open] .primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
     http.expectOne('actions/stop-workspace').flush(null); await fixture.whenStable();
@@ -1193,7 +1193,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.stop-choice')).toBeNull();
     expect(root.querySelector('#stop-scope-menu')).toBeNull();
     (root.querySelector('.stop-all-action') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop All?');
+    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop project?');
     http.expectNone('actions/stop-devserver');
     (root.querySelector('dialog[open] .dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
@@ -1207,15 +1207,15 @@ describe('Dev console navigation', () => {
     expect(choices[0].getAttribute('aria-checked')).toBe('true');
     choices[1].click(); fixture.detectChanges();
     http.expectNone('actions/stop-devserver');
-    expect(root.querySelector('.stop-action')?.textContent).toContain('Stop All');
+    expect(root.querySelector('.stop-action')?.textContent).toContain('Stop all');
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
-    expect(root.querySelector('dialog[open]')?.textContent).toContain('run fz dev');
+    expect(root.querySelector('dialog[open]')?.textContent).toContain('Ask your agent to start');
     (root.querySelector('dialog[open] .dialog-cancel') as HTMLButtonElement).click(); fixture.detectChanges();
     http.expectNone('actions/stop-devserver');
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
     (root.querySelector('dialog[open] .primary-button') as HTMLButtonElement).click(); fixture.detectChanges();
     http.expectOne('actions/stop-devserver').flush(null); await fixture.whenStable(); fixture.detectChanges();
-    expect(root.textContent).toContain('Dev server shutting down.');
+    expect(root.textContent).toContain('Project stopped.');
     expect(root.querySelector('.stop-action')).toBeNull();
   });
   function chooseCompleteEnvironment() {
@@ -1225,11 +1225,11 @@ describe('Dev console navigation', () => {
   }
   it('remembers the restart scope across dashboard navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(root.querySelector('.restart-action')?.textContent).toContain('Restart Apps');
+    expect(root.querySelector('.restart-action')?.textContent).toContain('Restart apps');
     chooseCompleteEnvironment();
     (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click(); fixture.detectChanges();
     (root.querySelector('nav a[href="#projects"]') as HTMLAnchorElement).click(); fixture.detectChanges();
-    expect(root.querySelector('.restart-action')?.textContent).toContain('Restart All');
+    expect(root.querySelector('.restart-action')?.textContent).toContain('Restart all');
     TestBed.inject(HttpTestingController).expectNone(request => request.url.startsWith('actions/'));
   });
   it('changes restart scope without executing it and supports keyboard dismissal', () => {
@@ -1242,7 +1242,7 @@ describe('Dev console navigation', () => {
     options[0].dispatchEvent(new KeyboardEvent('keydown', {key:'ArrowDown',bubbles:true}));
     expect(document.activeElement).toBe(options[1]);
     options[1].click(); fixture.detectChanges();
-    expect(root.querySelector('.restart-action')?.textContent).toContain('All');
+    expect(root.querySelector('.restart-action')?.textContent).toContain('all');
     expect(document.activeElement).toBe(trigger);
     TestBed.inject(HttpTestingController).expectNone(request => request.url.startsWith('actions/'));
     trigger.click(); fixture.detectChanges();
@@ -1250,7 +1250,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('#restart-scope-menu')).toBeNull();
     expect(document.activeElement).toBe(trigger);
   });
-  for (const [label, action] of [['Restart Apps','restart-application'], ['Restart All','restart-devserver']]) {
+  for (const [label, action] of [['Restart apps','restart-application'], ['Restart all','restart-devserver']]) {
     it('dispatches ' + action + ' with confirmation only for the complete environment', async () => {
       if (action === 'restart-devserver') chooseCompleteEnvironment();
       const button = fixture.nativeElement.querySelector('[aria-label="' + label + '"]') as HTMLButtonElement;
@@ -1286,7 +1286,7 @@ describe('Dev console navigation', () => {
   it('shows restart progress only after confirmation and restores it after a reconnect snapshot', async () => {
     chooseCompleteEnvironment();
     const root: HTMLElement = fixture.nativeElement;
-    const button = root.querySelector('[aria-label="Restart All"]') as HTMLButtonElement;
+    const button = root.querySelector('[aria-label="Restart all"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     expect(root.querySelector('.spinner-border')).toBeNull();
     (root.querySelector('dev-environment .maintenance-confirm .primary-button') as HTMLButtonElement).click();
@@ -1306,7 +1306,7 @@ describe('Dev console navigation', () => {
   it('restores the icon when the maintenance request fails', async () => {
     const environment = fixture.debugElement.query(By.directive(EnvironmentComponent)).componentInstance as EnvironmentComponent;
     const maintain = spyOn(environment,'maintain').and.callThrough();
-    const button = fixture.nativeElement.querySelector('[aria-label="Restart Apps"]') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector('[aria-label="Restart apps"]') as HTMLButtonElement;
     button.click(); fixture.detectChanges();
     TestBed.inject(HttpTestingController).expectOne('actions/restart-application')
       .flush({error:'Unable to restart application.'},{status:503,statusText:'Unavailable'});
@@ -1324,7 +1324,7 @@ describe('Dev console navigation', () => {
       return nativeTimeout(handler,delay,...args);
     }) as typeof window.setTimeout);
     chooseCompleteEnvironment();
-    const button = fixture.nativeElement.querySelector('[aria-label="Restart All"]') as HTMLButtonElement;
+    const button = fixture.nativeElement.querySelector('[aria-label="Restart all"]') as HTMLButtonElement;
     const http = TestBed.inject(HttpTestingController);
     button.click(); fixture.detectChanges();
     fixture.nativeElement.querySelector('dev-environment .maintenance-confirm .primary-button').click(); fixture.detectChanges();

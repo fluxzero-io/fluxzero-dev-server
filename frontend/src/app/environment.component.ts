@@ -71,7 +71,7 @@ import {StartedAgoComponent} from './started-ago.component';
       <button type="button" class="primary-button" [disabled]="busy()" (click)="confirmMaintenance(action)">{{confirmationTitle()}}</button></div>
     }</dialog>
     @if(actionError() || state.maintenance?.error) {<p role="alert">{{actionError() || state.maintenance?.error}}</p>}
-    @if(fullyStopped()) {<p class="workspace-stopped" role="status">Dev server shutting down. Start it again from the CLI with <code>fz dev</code> in this workspace, or from another active dashboard.</p>}
+    @if(fullyStopped()) {<p class="workspace-stopped" role="status">Project stopped. Ask your agent to start it again when you need it.</p>}
     @else if(state.maintenance?.workspaceStopped) {<p class="workspace-stopped" role="status">Workspace stopped. Only dashboard controls remain available. Choose Start to start the workspace again.</p>}
     @else {
     <section class="applications-section" aria-labelledby="applications-title">
@@ -149,15 +149,15 @@ export class EnvironmentComponent {
     this.confirmation?.nativeElement.showModal();
   }
   confirmationTitle() {
-    return this.confirmAction() === 'stop-workspace' ? 'Stop workspace'
-      : this.confirmAction() === 'stop-devserver' ? 'Stop All' : 'Restart environment';
+    return this.confirmAction() === 'stop-workspace' ? 'Stop apps'
+      : this.confirmAction() === 'stop-devserver' ? 'Stop project' : 'Restart project';
   }
   confirmationDescription() {
     return this.confirmAction() === 'stop-workspace'
-      ? 'This stops apps, UI servers, automatic builds and tests, and supporting services. In-memory application data is lost. Dashboard controls remain available so you can start again here. Monitoring history on disk is retained.'
+      ? 'This stops your apps and resets their local data. Devboard stays open, so you can start again here. Your code and progress are kept.'
       : this.confirmAction() === 'stop-devserver'
-      ? 'This stops the entire workspace and closes the dev server, including this dashboard connection. In-memory application data is lost. To start again, run fz dev in this workspace or use another active dashboard. Monitoring history on disk is retained.'
-      : 'This restarts all apps, UI servers and supporting services. In-memory application data will be reset and startup commands will run again. Stored monitoring history (VictoriaLogs) is deleted too; resource graphs start fresh.';
+      ? 'This stops your apps and closes Devboard. Local app data will be reset. Your code and progress are kept. Ask your agent to start the project again when you need it.'
+      : 'This restarts your project. Local app data and activity history will be cleared, and startup data will be loaded again. Your code and progress are kept.';
   }
   cancelConfirmation() { this.confirmation?.nativeElement.close(); this.confirmAction.set(null); }
   confirmMaintenance(action: string) {

@@ -2,12 +2,12 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
 
 @Component({selector: 'dev-workspace-restart', standalone: true, template: `
   <div class="restart-control split-action">
-    <button class="restart-action split-action-main" type="button" [attr.aria-label]="'Restart ' + selected().label"
+    <button class="restart-action split-action-main" type="button" [attr.aria-label]="'Restart ' + selected().label.toLowerCase()"
       [title]="selected().description + (selected().warning ? ' ' + selected().warning : '')" [disabled]="busy() || !supported(selected().key)" [attr.aria-busy]="restarting()"
       (click)="restart.emit(selected().key)">
       @if(restarting()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Restarting"></span>}
       @else {<i class="bi bi-arrow-clockwise" aria-hidden="true"></i>}
-      <span><span class="restart-verb">Restart </span>{{selected().label}}</span>
+      <span><span class="restart-verb">Restart </span>{{selected().label.toLowerCase()}}</span>
     </button>
     <button #trigger class="restart-choice split-action-choice" type="button" aria-label="Choose restart scope" aria-haspopup="menu"
       aria-controls="restart-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">

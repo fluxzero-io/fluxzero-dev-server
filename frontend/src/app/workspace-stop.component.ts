@@ -7,14 +7,14 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
       (click)="actionRequested.emit(stopped() ? 'start-workspace' : selected().key)">
       @if(working()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Working"></span>}
       @else {<i class="bi" [class.bi-play]="stopped()" [class.bi-stop]="!stopped()" aria-hidden="true"></i>}
-      <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop All' : 'Stop'}}</span>
+      <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop all' : 'Stop'}}</span>
     </button>
     @if(!stopped()) {<button #trigger class="stop-choice split-action-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
       aria-controls="stop-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
     </button>}
   </div>
-  @if(stopped()) {<button class="stop-all-action dashboard-action" type="button" aria-label="Stop All" title="Close Devboard and stop the entire environment" [disabled]="busy()" (click)="actionRequested.emit('stop-devserver')"><i class="bi bi-stop" aria-hidden="true"></i><span>Stop All</span></button>}
+  @if(stopped()) {<button class="stop-all-action dashboard-action" type="button" aria-label="Stop all" title="Close Devboard and stop the entire environment" [disabled]="busy()" (click)="actionRequested.emit('stop-devserver')"><i class="bi bi-stop" aria-hidden="true"></i><span>Stop all</span></button>}
   </div>
   @if(open() && !stopped()) {
     <div #menu id="stop-scope-menu" class="stop-menu" role="menu" aria-label="Stop scope">
@@ -47,8 +47,8 @@ export class WorkspaceStopComponent {
   readonly scope = signal('stop-workspace');
   readonly open = signal(false);
   readonly options = [
-    {key:'stop-workspace', label:'Workspace', description:'Stop apps, UI servers, tests and supporting services. Keep this dashboard available to start again.'},
-    {key:'stop-devserver', label:'All', description:'Also close the dev server and dashboard. Start again from the CLI or another active dashboard.'}
+    {key:'stop-workspace', label:'Workspace', description:'Stop your apps. Keep Devboard open so you can start again here.'},
+    {key:'stop-devserver', label:'All', description:'Stop your project and close Devboard. Ask your agent to start it again.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);

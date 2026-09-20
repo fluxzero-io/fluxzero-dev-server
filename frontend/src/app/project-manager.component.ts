@@ -14,8 +14,8 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
       <div class="toolbar"><button class="secondary-button" [disabled]="isBusy()" (click)="begin('open')">Open other…</button><button class="primary-button" [disabled]="isBusy()" (click)="begin('new')">New project…</button></div>
 
       @if(stopConfirmation();as project) {<section class="remove-confirm" role="group" aria-label="Confirm full stop">
-        <p>Stop All?</p><p class="hint">This stops {{project.projectName}} and all its services, including this Devboard. This page will disconnect. To start again, use your agent, run fz dev in the project folder, or open the project from another Devboard.</p>
-        <div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="isBusy()" (click)="stopConfirmation.set(null)">Cancel</button><button class="primary-button" [disabled]="isBusy()" (click)="stopProject(project)">Stop All</button></div>
+        <p>Stop project?</p><p class="hint">This stops your apps and closes Devboard. Local app data will be reset. Your code and progress are kept. Ask your agent to start the project again when you need it.</p>
+        <div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="isBusy()" (click)="stopConfirmation.set(null)">Cancel</button><button class="primary-button" [disabled]="isBusy()" (click)="stopProject(project)">Stop project</button></div>
       </section>}
       @if(removing().length) {<section class="remove-confirm" role="group" aria-label="Confirm removal">
         <p>{{removing().length === 1 ? 'Remove ' + removing()[0].projectName + ' from the list?' : 'Remove missing projects from the list?'}}</p>
