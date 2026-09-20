@@ -685,3 +685,14 @@ The workspace page offers **Stop** with two scopes. **Workspace** is the default
 **Everything** also closes the dashboard and exits the dev server. Start again with `fz dev` in the workspace, or through another running workspace’s dashboard. Both stop actions require confirmation. The complete shutdown scope is never saved as a default.
 
 A workspace whose dashboard remains available has session status `idle`; its gateway and heartbeat remain active, and its application, Test Server, MCP and supporting services are stopped. `fz dev` resumes it and `fz dev stop` closes it completely.
+
+### Agent workflow guidance
+
+MCP `get_workflow` returns versioned guidance for `setup`, `development`, `preview`, `monitoring`,
+`progress` and `startup` (`overview` lists the topics). The installed agent plugin keeps stable routing
+and safety agreements; evolving workflows are shipped with the dev server. The stdio bridge forwards
+this tool to the selected running project's server. Before startup it can provide the bridge's bundled
+instructions, explicitly labelled as such; agents should read again after starting or selecting a project.
+An older pinned server without this tool returns an explicit unavailable response: agents use its advertised
+tools and configuration reference, without upgrading the project implicitly.
+

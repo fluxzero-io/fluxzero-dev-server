@@ -48,7 +48,7 @@ final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
-    static final String INSTRUCTIONS = "Call get_status; retain cursor. After edits use wait_for_change with sessionId/"
+    static final String INSTRUCTIONS = "Read get_workflow for relevant dev-server guidance. Call get_status; retain cursor. After edits use wait_for_change with sessionId/"
                                        + "afterSequence; drain hasMore until relevant work is terminal. Apply problemChanges "
                                        + "by id; get_active_problems on activeProblemCount mismatch, sessionChanged or lost "
                                        + "state. If waiting-for-project, generate in session.projectDirectory without "
@@ -92,6 +92,7 @@ final class DevMcpServer implements AutoCloseable {
                                           .resources(true, false)
                                           .build())
                     .tools(DevMcpTools.tools(queryService, objectMapper))
+                    .tools(AgentWorkflows.tool(objectMapper, null))
                     .tools(ProgressTools.tools(() -> projectDirectory, objectMapper))
                     .tools(MonitoringTools.tools(new MonitoringQueryService(() -> queryService.getStatus().session()), objectMapper))
                     .resources(DevMcpTools.diagnosticsResource(queryService, objectMapper))
