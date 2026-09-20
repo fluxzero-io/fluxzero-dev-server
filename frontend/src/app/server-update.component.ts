@@ -6,7 +6,7 @@ import {sendCommand} from './dom-handlers';
   @if(status()?.update?.status === 'available' || pending()) {
     <button #trigger type="button" class="update-button" [disabled]="disabled()" (click)="open()"
       [title]="'Devboard ' + (status()?.update?.latestVersion || selected())">
-      <i class="bi bi-arrow-repeat" aria-hidden="true"></i>{{pending() ? 'Updating…' : 'Update available'}}
+      <i class="bi bi-arrow-repeat" [class.updating]="pending()" aria-hidden="true"></i>{{pending() ? 'Updating…' : 'Update available'}}
     </button>
   }
   @if(error() || status()?.update?.error) {<small role="alert">{{error() || status()?.update?.error}}</small>}
@@ -27,6 +27,9 @@ import {sendCommand} from './dom-handlers';
     .update-button {display:flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:7px;
       width:100%;box-sizing:border-box;padding:10px 12px;margin-bottom:12px;
       color:#fff;background:#0d6efd;font-size:13px;font-weight:500;}
+    .update-button .updating {display:inline-block;animation:update-spin 1s linear infinite;}
+    @keyframes update-spin {to {transform:rotate(360deg);}}
+    @media (prefers-reduced-motion:reduce) {.update-button .updating {animation-duration:2s;}}
     .update-button:hover:not(:disabled) {background:#0b5ed7;}
     .update-button:active:not(:disabled) {background:#0a58ca;}
     .update-button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
