@@ -73,10 +73,10 @@ describe('Dev console navigation', () => {
     const app=fixture.componentInstance, http=TestBed.inject(HttpTestingController);
     const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
     const project=app.environments()[0];
-    manager.requestStop(project);fixture.detectChanges();
-    expect(manager.stopping()).toEqual(project);
-    http.expectNone('actions/stop-workspace');
-    const stopping=manager.stopProject(project);
+    const stop=spyOn(manager,'stopProject').and.callThrough();
+    ((fixture.nativeElement as HTMLElement).querySelector('.manager-stop-action') as HTMLButtonElement).click();
+    const stopping=stop.calls.mostRecent().returnValue;
+    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="Confirm stop"]')).toBeNull();
     http.expectOne('actions/stop-workspace').flush(null);
     await Promise.resolve();await Promise.resolve();
     http.match('environments.json').forEach(r=>r.flush({environments:app.environments()}));
@@ -96,6 +96,26 @@ describe('Dev console navigation', () => {
     expect(row.querySelector('[aria-label="Stop project"]')).not.toBeNull();
     http.expectNone('actions/stop-devserver');
     http.verify();
+  });
+
+  it('confirms removal from project management and allows cancelling without removing files or registration', async () => {
+    const http=TestBed.inject(HttpTestingController), root=fixture.nativeElement as HTMLElement;
+    const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
+    const remove=root.querySelectorAll<HTMLButtonElement>('.manager-remove-action')[1];
+    remove.click();fixture.detectChanges();
+    expect(root.querySelector('.remove-confirm')?.textContent).toContain('Your files stay on disk');
+    http.expectNone(request=>request.url.endsWith('/forget'));
+    (root.querySelector('.remove-confirm .dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(manager.removing()).toEqual([]);
+    remove.click();fixture.detectChanges();
+    const confirm=spyOn(manager,'confirmRemoval').and.callThrough();
+    (root.querySelector('.remove-confirm .primary-button') as HTMLButtonElement).click();
+    http.expectOne('projects/'+'b'.repeat(64)+'/forget').flush(null);
+    await Promise.resolve();await Promise.resolve();
+    http.expectOne('environments.json').flush({environments:fixture.componentInstance.environments().slice(0,1)});
+    await confirm.calls.mostRecent().returnValue;fixture.detectChanges();
+    expect(root.querySelectorAll('.project-row').length).toBe(1);
+    expect(root.querySelector('.remove-confirm')).toBeNull();http.verify();
   });
 
   it('confirms an available update before sending its exact version', async () => {
