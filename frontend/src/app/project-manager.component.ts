@@ -20,16 +20,16 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
           <div class="project-info">
             @if(editing() === project.id) {
               <form (submit)="$event.preventDefault(); rename(project, name.value)"><input #name aria-label="Project name" [value]="project.projectName" maxlength="100"><button class="secondary-button" [disabled]="busy()">Save</button><button type="button" class="secondary-button" (click)="editing.set('')">Cancel</button></form>
-            } @else {<strong>{{project.projectName}}</strong>}
+            } @else {<div class="project-name"><strong>{{project.projectName}}</strong><button class="icon-button" title="Rename project" aria-label="Rename project" [disabled]="busy()" (click)="editing.set(project.id)"><i class="bi bi-pencil" aria-hidden="true"></i></button></div>}
             <span class="path">{{project.projectDirectory}}</span><span class="hint">{{!project.directoryExists ? 'Folder not found' : project.status === 'running' ? 'Running' : 'Stopped'}}</span>
           </div>
           <div class="row-actions">
-            <button class="icon-button" title="Rename project" aria-label="Rename project" [disabled]="busy()" (click)="editing.set(project.id)"><i class="bi bi-pencil" aria-hidden="true"></i></button>
+
             @if(project.status === 'running') {
               <button class="secondary-button" [disabled]="busy()" (click)="openProject(project)">Open</button>
-              <button class="secondary-button" [disabled]="busy()" (click)="requestStop(project)">{{project.projectDirectory === currentDirectory() ? 'Workspace…' : 'Stop'}}</button>
-            } @else {<button class="secondary-button" [disabled]="busy() || !project.directoryExists" (click)="startProject(project)">{{busyProject() === project.id ? 'Starting…' : 'Start'}}</button>}
-            <button class="icon-button" title="Remove from list (stop the project first if running)" aria-label="Remove from list" [disabled]="busy() || project.status !== 'stopped'" (click)="remove(project)"><i class="bi bi-trash" aria-hidden="true"></i></button>
+              <button class="icon-button" [disabled]="busy()" [title]="project.projectDirectory === currentDirectory() ? 'Stop via Workspace' : 'Stop project'" [attr.aria-label]="project.projectDirectory === currentDirectory() ? 'Stop via Workspace' : 'Stop project'" (click)="requestStop(project)"><i class="bi bi-stop" aria-hidden="true"></i></button>
+            } @else {<button class="icon-button" [disabled]="busy() || !project.directoryExists" [title]="busyProject() === project.id ? 'Starting…' : 'Start project'" [attr.aria-label]="busyProject() === project.id ? 'Starting project' : 'Start project'" (click)="startProject(project)"><i [class]="busyProject() === project.id ? 'bi bi-arrow-repeat starting-icon' : 'bi bi-play'" aria-hidden="true"></i></button>}
+            <button class="icon-button" [title]="project.status === 'stopped' ? 'Remove from list — keeps files' : 'Stop the project before removing it from the list'" aria-label="Remove from list" [disabled]="busy() || project.status !== 'stopped'" (click)="remove(project)"><i class="bi bi-dash-circle" aria-hidden="true"></i></button>
           </div>
         </div>
       } @empty {<p>No projects yet.</p>}
@@ -60,6 +60,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
   dialog {width:720px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);box-sizing:border-box;padding:24px;border:1px solid var(--dashboard-border);border-radius:14px;background:var(--dashboard-surface);color:var(--dashboard-text);overflow:auto;}
   dialog::backdrop {background:#10233d66;} header,.toolbar,.row-actions,.folder-heading,.path-input {display:flex;align-items:center;gap:10px;} header {justify-content:space-between;margin-bottom:20px;} h2 {margin:0;font-size:22px;} .toolbar {margin-bottom:12px;flex-wrap:wrap;}
   .hint,.path {color:var(--dashboard-muted);font-size:12px;} .path {overflow-wrap:anywhere;display:block;} .error {color:var(--dashboard-danger-text);}
+  .project-name {display:flex;align-items:center;gap:6px;} .row-actions .icon-button {font-size:18px;} .project-name .icon-button {font-size:14px;width:28px;height:28px;min-height:28px;} .starting-icon {display:inline-block;animation:project-spin 1s linear infinite;} @keyframes project-spin {to {transform:rotate(360deg);}}
   .project-list {max-height:50dvh;overflow:auto;} .project-row {display:flex;gap:12px;align-items:center;padding:14px 0;border-top:1px solid var(--dashboard-border);} .project-info {flex:1;min-width:0;} strong {font-size:14px;} .row-actions {flex-shrink:0;} .cleanup {margin-top:14px;}
   label {display:block;margin:16px 0;font-size:14px;} input {display:block;box-sizing:border-box;width:100%;min-width:0;margin-top:6px;padding:9px 10px;border:1px solid var(--dashboard-border);border-radius:6px;background:var(--dashboard-surface);color:var(--dashboard-text);font:inherit;} .path-input input {margin:0;} .path-input {margin-top:6px;} .folder-heading {margin:12px 0;}
   .breadcrumbs {gap:4px;flex-wrap:wrap;min-width:0;} .breadcrumbs > i {font-size:10px;color:var(--dashboard-muted);} .crumb {border:0;border-radius:5px;background:transparent;color:var(--dashboard-muted);padding:6px;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;} .crumb:hover:not(:disabled) {background:var(--dashboard-active-soft);color:var(--dashboard-active);} .crumb[aria-current] {color:var(--dashboard-text);opacity:1;} .stop-confirm {padding:14px;margin:12px 0;border:1px solid var(--dashboard-border);border-radius:8px;}

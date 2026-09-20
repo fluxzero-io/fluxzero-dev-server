@@ -41,7 +41,7 @@ import {sendCommand} from './dom-handlers';
           </section>
         } @empty {<p class="server-empty">No matching dev servers</p>}
       </div>
-      <button class="manage-projects secondary-button" (click)="open.set(false); manager.show(trigger)">Manage projects…</button>
+      <div class="manage-footer"><button class="manage-projects" (click)="open.set(false); manager.show(trigger)"><i class="bi bi-sliders" aria-hidden="true"></i>Manage projects…</button></div>
     </div>
   }
   <dev-project-manager #manager [environments]="environments()" [currentDirectory]="current()?.projectDirectory || ''"/>
@@ -55,7 +55,7 @@ import {sendCommand} from './dom-handlers';
       <button class="secondary-button dialog-cancel" type="button" autofocus [disabled]="starting() || removing()" (click)="startDialog.close()">Cancel</button>
       <button class="icon-button remove-project" type="button" [disabled]="starting() || removing()"
         [attr.aria-label]="'Remove ' + selectedToStart()?.projectName + ' from overview'" title="Remove from overview; keep project files"
-        (click)="forget()"><i class="bi bi-trash" aria-hidden="true"></i></button>
+        (click)="forget()"><i class="bi bi-dash-circle" aria-hidden="true"></i></button>
       @if(selectedToStart()?.directoryExists) {<button class="primary-button" type="button" [disabled]="starting() || removing()" (click)="startServer()">
         @if(starting()) {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>}{{starting() ? 'Starting…' : 'Start dev server'}}
       </button>}
@@ -82,7 +82,9 @@ import {sendCommand} from './dom-handlers';
   .server-option:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
   .server-option-name {grid-column:1;min-width:0;font-weight:600;overflow-wrap:anywhere;}
   .server-path {grid-column:1;min-width:0;font-size:12px;color:var(--dashboard-muted);overflow-wrap:anywhere;}
-  .manage-projects {flex:none;margin-top:12px;padding:10px;text-align:left;border:0;border-top:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-panel-soft);}
+  .manage-footer {flex:none;margin-top:8px;padding-top:6px;border-top:1px solid var(--dashboard-border);}
+  .manage-projects {display:flex;align-items:center;gap:10px;width:100%;padding:10px;text-align:left;border:0;border-radius:5px;background:transparent;color:var(--dashboard-text);font:inherit;}
+  .manage-projects:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
   .manage-projects:hover {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
   .manage-projects:active {background:var(--dashboard-primary-badge-bg);}
   .server-empty {padding:16px 10px;}
