@@ -1,9 +1,10 @@
+import {ProjectManagerComponent} from './project-manager.component';
 import {ChangeDetectorRef, Component, computed, ElementRef, HostListener, inject, input, signal, ViewChild} from '@angular/core';
 import {Environment, environmentConsoleUrl} from './models';
 import {NgTemplateOutlet} from '@angular/common';
 import {sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet], template: `
+@Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet, ProjectManagerComponent], template: `
   <div class="dashboard-section-label">Project</div>
   <button #trigger class="server-picker-button" type="button" aria-label="Choose workspace" aria-haspopup="dialog"
     aria-controls="dev-server-picker" [attr.aria-expanded]="open()" [title]="currentName()" (click)="toggle()">
@@ -40,8 +41,10 @@ import {sendCommand} from './dom-handlers';
           </section>
         } @empty {<p class="server-empty">No matching dev servers</p>}
       </div>
+      <button class="manage-projects secondary-button" (click)="open.set(false); manager.show(trigger)">Manage projects…</button>
     </div>
   }
+  <dev-project-manager #manager [environments]="environments()"/>
   <dialog #startDialog class="start-dialog" aria-labelledby="server-start-title" (close)="restoreFocus()">
     <h2 id="server-start-title">{{selectedToStart()?.directoryExists ? 'Start dev server?' : 'Dev server unavailable'}}</h2>
     @if(selectedToStart()?.directoryExists) {<p>{{selectedToStart()?.projectName}} is inactive. Would you like to start it?</p>}
@@ -110,7 +113,7 @@ export class EnvironmentSelectorComponent {
       .sort((a, b) => a.projectName.localeCompare(b.projectName) || a.projectDirectory.localeCompare(b.projectDirectory));
     return [
       {label: 'Running', environments: matches.filter(e => e.status === 'running')},
-      {label: 'Stopped', environments: matches.filter(e => e.status === 'stopped')}
+      {label: 'Stopped', environments: matches.filter(e => e.status === 'stopped').slice(0,5)}
     ].filter(group => group.environments.length);
   });
 

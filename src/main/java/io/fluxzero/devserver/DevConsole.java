@@ -40,6 +40,7 @@ final class DevConsole implements AutoCloseable {
     private final DevEnvironmentRegistry environments;
     private final FolderOpener folderOpener;
     private final DevConsoleProjectStarter projectStarter;
+    private final DevConsoleProjects projects;
     private java.util.function.Function<String, Runnable> maintenance;
     private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
     @FunctionalInterface interface StartupJson { Object get(String sessionId, String id, String hash) throws Exception; }
@@ -70,12 +71,14 @@ final class DevConsole implements AutoCloseable {
         this.folderOpener = folderOpener;
         this.environments = environments;
         this.projectStarter = new DevConsoleProjectStarter(environments);
+        this.projects = new DevConsoleProjects(environments);
         this.updates = new DevConsoleUpdates(status, environments::listKnown);
         this.monitoringAssets = monitoringAssets;
     }
 
     void start() { updates.start(); }
-    @Override public void close() { updates.close(); projectStarter.close(); }
+    @Override public void close() { updates.close(); projectStarter.close();
+        projects.close(); }
 
     boolean isApi(Request request) {
         String path = request.getHttpURI().getPath();
@@ -231,6 +234,32 @@ final class DevConsole implements AutoCloseable {
             return actionResult(response, callback, 405, "Use POST for project actions.");
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Project actions require the local console.");
+        String operation = path.substring((ROOT + "projects/").length());
+        if (java.util.Set.of("folders", "open", "create").contains(operation)) {
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(8193);
+                if (body.length > 8192) return actionResult(response, callback, 413, "Project request is too large.");
+                var data = new ObjectMapper().readTree(body);
+                if (data == null || !data.isObject()) return actionResult(response, callback, 400, "Provide project details.");
+                if ("create".equals(operation)) {
+                    var creation = projects.create(data.path("path").asText(), data.path("name").asText());
+                    request.addIdleTimeoutListener(timeout -> creation.isDone());
+                    creation.whenComplete((result, error) -> {
+                        try {
+                            if (error != null) actionResult(response, callback, 400,
+                                    error.getCause() == null ? error.getMessage() : error.getCause().getMessage());
+                            else projectJson(response, callback, result);
+                        } catch (Exception failure) { callback.failed(failure); }
+                    });
+                    return true;
+                }
+                return projectJson(response, callback, "folders".equals(operation)
+                        ? projects.folders(data.path("path").asText()) : projects.open(data.path("path").asText()));
+            } catch (IllegalArgumentException | java.io.IOException e) {
+                return actionResult(response, callback, 400, e instanceof IllegalArgumentException ? e.getMessage()
+                        : "Unable to read this folder. Check the path and permissions.");
+            }
+        }
         var match = java.util.regex.Pattern.compile(java.util.regex.Pattern.quote(ROOT) + "projects/([a-f0-9]{64})/(open-folder|forget|rename|start)").matcher(path);
         if (!match.matches()) return actionResult(response, callback, 404, "Unknown project action.");
         var project = environments.findKnown(match.group(1)).orElse(null);
@@ -279,6 +308,12 @@ final class DevConsole implements AutoCloseable {
             catch (java.io.IOException e) { return actionResult(response, callback, 503, "Unable to open the file manager."); }
         }
         return actionResult(response, callback, 204, null);
+    }
+
+    private static boolean projectJson(Response response, Callback callback, Object value) throws Exception {
+        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+        response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(value)), callback);
+        return true;
     }
 
     private static boolean localConsoleRequest(Request request) {

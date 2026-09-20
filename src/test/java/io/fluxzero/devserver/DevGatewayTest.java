@@ -137,6 +137,29 @@ public class DevGatewayTest {
     }
 
     @Test
+    void projectFolderDiscoveryAndImportRequireLocalOrigin(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var project = java.nio.file.Files.createDirectory(directory.resolve("app"));
+        java.nio.file.Files.writeString(project.resolve("pom.xml"), "original");
+        var console = new DevConsole(java.util.Map::of, null, registry);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "projects/";
+            for (String operation : List.of("folders", "open", "create")) {
+                assertEquals(403, projectPost(url + operation, "https://example.com", true).statusCode());
+                assertEquals(403, projectPost(url + operation, gateway.url(), false).statusCode());
+            }
+            String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of("path", project.toString()));
+            var result = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url + "open"))
+                    .header("Origin", gateway.url()).header("X-Fluxzero-Console", "1")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, result.statusCode());
+            assertEquals(1, registry.listKnown().size());
+            assertEquals("original", java.nio.file.Files.readString(project.resolve("pom.xml")));
+        }
+    }
+
+    @Test
     void renamesKnownProjectsThroughProtectedBoundedJsonEndpoint(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
         var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
         var project = directory.resolve("orders");

@@ -624,9 +624,29 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.application-empty').textContent).toContain('not available yet');
     expect(fixture.nativeElement.querySelector('iframe[name="dev-application"]')).toBeNull();
   });
+  it('opens project management and browses folders without creating a project', async () => {
+    const root=fixture.nativeElement as HTMLElement;
+    (root.querySelector('[aria-label="Choose workspace"]') as HTMLButtonElement).click();fixture.detectChanges();
+    (root.querySelector('.manage-projects') as HTMLButtonElement).click();fixture.detectChanges();
+    const dialog=root.querySelector('dev-project-manager dialog') as HTMLDialogElement;
+    expect(dialog.open).toBeTrue();
+    expect(dialog.textContent).toContain('Folder not found');
+    (dialog.querySelector('.toolbar .primary-button') as HTMLButtonElement).click();fixture.detectChanges();
+    const http=TestBed.inject(HttpTestingController);
+    const browse=http.expectOne('projects/folders');
+    expect(browse.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    browse.flush({path:'/projects',parent:'/',folders:[],truncated:false,project:false});
+    await fixture.whenStable();fixture.detectChanges();
+    expect((dialog.querySelector('[aria-label="Folder path"]') as HTMLInputElement).value).toBe('/projects');
+    expect((dialog.querySelector('.dialog-actions .primary-button') as HTMLButtonElement).disabled).toBeTrue();
+    http.expectNone('projects/create');
+    (dialog.querySelector('.dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(dialog.textContent).toContain('Manage projects');
+  });
+
   it('renames the current project and keeps a rejected draft available', async () => {
     const root: HTMLElement = fixture.nativeElement;
-    (root.querySelector('[aria-label="Rename project"]') as HTMLButtonElement).click();
+    (root.querySelector('dev-project-rename [aria-label="Rename project"]') as HTMLButtonElement).click();
     fixture.detectChanges();
     const dialog = root.querySelector('dev-project-rename dialog') as HTMLDialogElement;
     const input = dialog.querySelector('input')!;
