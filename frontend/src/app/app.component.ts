@@ -142,7 +142,13 @@ export class AppComponent implements OnInit, OnDestroy {
     else if(!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
   }
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
-  readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
+  readonly current = computed(() => {
+    const status = this.status();
+    const port = status?.components?.find(component => component.id === 'devserver')?.port
+      ?? (location.port ? Number(location.port) : location.protocol === 'https:' ? 443 : 80);
+    return this.environments().find(e => e.projectDirectory === status?.projectDirectory)
+      ?? this.environments().find(e => e.status === 'running' && port != null && e.port === port);
+  });
   readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
   readonly progressBadge = computed(() => progressCount(this.status()?.progress));
   readonly testBadge = computed(() => {
@@ -217,6 +223,16 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!url) return;
     if (environment.projectDirectory === this.status()?.projectDirectory) this.navigate('application');
     else location.assign(url);
+  }
+  @HandleCommand('refreshProjects') async refreshProjects() {
+    const result=await firstValueFrom(this.http.get<{environments:Environment[]}>('environments.json'));
+    this.environments.set(result.environments);
+  }
+  @HandleCommand('showWorkspace') showWorkspace() {this.navigate('projects');}
+  @HandleCommand('startProjectInBackground') async startProjectInBackground(id:string) {
+    if(!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown project.');
+    await firstValueFrom(this.http.post('projects/'+id+'/start',null,{headers:{'X-Fluxzero-Console':'1'},timeout:130000}));
+    await this.refreshProjects();
   }
   @HandleCommand('startEnvironment') async startEnvironment(id: string) {
     if (!/^[a-f0-9]{64}$/.test(id)) throw Error('Unknown dev server.');

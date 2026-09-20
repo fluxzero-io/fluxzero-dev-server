@@ -713,3 +713,22 @@ not restored. Application build failures remain visible in the new server for di
 
 This requires both the updated CLI and dev server. Restart an existing session through the updated CLI to
 enable checks. The action updates only the selected workspace's server, never the CLI or agent plugins.
+
+### Managing projects in Devboard
+
+Choose **Manage projects…** in the Project selector to open an existing local project,
+create a project, start or stop another project, rename its display label, or remove stopped projects from the list.
+Starting a project keeps the manager open; **Open** navigates to its Devboard.
+For the current project, **Workspace…** opens its existing stop controls.
+Removal only changes the local registry; project files are kept. Missing folders can
+be removed together. Running projects must be stopped before removing their entry.
+
+**New project** takes a name and a parent folder. Devboard invokes the installed
+`fz init` with the standard Java/Maven template and initializes Git in a new child
+folder. Existing folders are never overwritten. If scaffolding fails, any generated
+files remain available for inspection. After scaffolding, the project opens in its
+own Devboard. **Open existing** accepts Maven, Gradle or `.fluxzero/dev.yaml` projects.
+The folder browser lists local directories only and accepts manually entered paths,
+including hidden folders. Click a breadcrumb to navigate to a parent folder; long
+paths collapse their middle folders into an expandable ellipsis. These actions
+require the same-origin local console.

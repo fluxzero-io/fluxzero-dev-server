@@ -105,6 +105,12 @@ final class DevEnvironmentRegistry {
         return directory.resolve("history").resolve(hash(project.toString()) + ".json");
     }
 
+    synchronized ConsoleEnvironment add(Path directory) {
+        Path project = canonicalProject(directory);
+        write(historyFile(project), new KnownProject(SCHEMA_VERSION, project.toString(), null, false));
+        return findKnown(hash(project.toString())).orElseThrow();
+    }
+
     synchronized Optional<ConsoleEnvironment> findKnown(String id) {
         return listKnown().stream().filter(e -> e.id().equals(id)).findFirst();
     }

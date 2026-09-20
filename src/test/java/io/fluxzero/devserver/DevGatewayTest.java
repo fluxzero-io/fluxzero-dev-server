@@ -114,7 +114,7 @@ public class DevGatewayTest {
         store.writeSession(session);
         registry.register(session);
         var opened = new AtomicReference<java.nio.file.Path>();
-        var console = new DevConsole(java.util.Map::of, null, registry, opened::set);
+        var console = new DevConsole(() -> java.util.Map.of("projectDirectory", project.toString()), null, registry, opened::set);
         try (TestUpstream backend = TestUpstream.start("backend");
              DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
             String base = gateway.url();
@@ -128,11 +128,37 @@ public class DevGatewayTest {
             assertEquals(204, projectPost(projectUrl + "/open-folder", base, true).statusCode());
             assertEquals(project.toRealPath(), opened.get());
             assertEquals(409, projectPost(projectUrl + "/forget", base, true).statusCode());
+            assertEquals(403, projectPost(projectUrl + "/stop", "https://example.com", true).statusCode());
+            assertEquals(409, projectPost(projectUrl + "/stop", base, true).statusCode());
+            assertEquals(404, projectPost(base + DevConsole.ROOT + "projects/" + "0".repeat(64) + "/stop", base, true).statusCode());
             store.writeSession(session.withStatus("stopped"));
             assertEquals(204, projectPost(projectUrl + "/forget", base, true).statusCode());
             assertTrue(registry.listKnown().isEmpty());
             assertTrue(java.nio.file.Files.isDirectory(project));
             assertEquals("stopped", store.readSession().orElseThrow().status());
+        }
+    }
+
+    @Test
+    void projectFolderDiscoveryAndImportRequireLocalOrigin(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
+        var project = java.nio.file.Files.createDirectory(directory.resolve("app"));
+        java.nio.file.Files.writeString(project.resolve("pom.xml"), "original");
+        var console = new DevConsole(java.util.Map::of, null, registry);
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute("application", "/", backend.url(), () -> false)), () -> false, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "projects/";
+            for (String operation : List.of("folders", "open", "create")) {
+                assertEquals(403, projectPost(url + operation, "https://example.com", true).statusCode());
+                assertEquals(403, projectPost(url + operation, gateway.url(), false).statusCode());
+            }
+            String body = new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(java.util.Map.of("path", project.toString()));
+            var result = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url + "open"))
+                    .header("Origin", gateway.url()).header("X-Fluxzero-Console", "1")
+                    .POST(HttpRequest.BodyPublishers.ofString(body)).build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(200, result.statusCode());
+            assertEquals(1, registry.listKnown().size());
+            assertEquals("original", java.nio.file.Files.readString(project.resolve("pom.xml")));
         }
     }
 

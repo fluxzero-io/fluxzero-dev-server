@@ -1,9 +1,10 @@
+import {ProjectManagerComponent} from './project-manager.component';
 import {ChangeDetectorRef, Component, computed, ElementRef, HostListener, inject, input, signal, ViewChild} from '@angular/core';
 import {Environment, environmentConsoleUrl} from './models';
 import {NgTemplateOutlet} from '@angular/common';
 import {sendCommand} from './dom-handlers';
 
-@Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet], template: `
+@Component({selector: 'dev-environment-selector', standalone: true, imports: [NgTemplateOutlet, ProjectManagerComponent], template: `
   <div class="dashboard-section-label">Project</div>
   <button #trigger class="server-picker-button" type="button" aria-label="Choose workspace" aria-haspopup="dialog"
     aria-controls="dev-server-picker" [attr.aria-expanded]="open()" [title]="currentName()" (click)="toggle()">
@@ -40,8 +41,10 @@ import {sendCommand} from './dom-handlers';
           </section>
         } @empty {<p class="server-empty">No matching dev servers</p>}
       </div>
+      <div class="manage-footer"><button class="manage-projects" (click)="open.set(false); manager.show(trigger)"><i class="bi bi-sliders" aria-hidden="true"></i>Manage projects…</button></div>
     </div>
   }
+  <dev-project-manager #manager [workspaceStopped]="workspaceStopped()" [workspaceBusy]="workspaceBusy()" [workspaceError]="workspaceError()" [environments]="environments()" [currentDirectory]="current()?.projectDirectory || ''"/>
   <dialog #startDialog class="start-dialog" aria-labelledby="server-start-title" (close)="restoreFocus()">
     <h2 id="server-start-title">{{selectedToStart()?.directoryExists ? 'Start dev server?' : 'Dev server unavailable'}}</h2>
     @if(selectedToStart()?.directoryExists) {<p>{{selectedToStart()?.projectName}} is inactive. Would you like to start it?</p>}
@@ -52,7 +55,7 @@ import {sendCommand} from './dom-handlers';
       <button class="secondary-button dialog-cancel" type="button" autofocus [disabled]="starting() || removing()" (click)="startDialog.close()">Cancel</button>
       <button class="icon-button remove-project" type="button" [disabled]="starting() || removing()"
         [attr.aria-label]="'Remove ' + selectedToStart()?.projectName + ' from overview'" title="Remove from overview; keep project files"
-        (click)="forget()"><i class="bi bi-trash" aria-hidden="true"></i></button>
+        (click)="forget()"><i class="bi bi-dash-circle" aria-hidden="true"></i></button>
       @if(selectedToStart()?.directoryExists) {<button class="primary-button" type="button" [disabled]="starting() || removing()" (click)="startServer()">
         @if(starting()) {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>}{{starting() ? 'Starting…' : 'Start dev server'}}
       </button>}
@@ -79,6 +82,11 @@ import {sendCommand} from './dom-handlers';
   .server-option:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
   .server-option-name {grid-column:1;min-width:0;font-weight:600;overflow-wrap:anywhere;}
   .server-path {grid-column:1;min-width:0;font-size:12px;color:var(--dashboard-muted);overflow-wrap:anywhere;}
+  .manage-footer {flex:none;margin-top:8px;padding-top:6px;border-top:1px solid var(--dashboard-border);}
+  .manage-projects {display:flex;align-items:center;gap:10px;width:100%;padding:10px;text-align:left;border:0;border-radius:5px;background:transparent;color:var(--dashboard-text);font:inherit;}
+  .manage-projects:focus-visible {outline:2px solid var(--dashboard-focus-border);outline-offset:-2px;}
+  .manage-projects:hover {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+  .manage-projects:active {background:var(--dashboard-primary-badge-bg);}
   .server-empty {padding:16px 10px;}
   .start-dialog {width:420px;max-width:calc(100vw - 24px);padding:24px;border:1px solid var(--dashboard-border);border-radius:8px;background:var(--dashboard-popover-bg);color:var(--dashboard-text);box-shadow:var(--dashboard-popover-shadow);}
   .start-dialog::backdrop {background:rgba(0,0,0,.4);}
@@ -94,6 +102,7 @@ export class EnvironmentSelectorComponent {
   @ViewChild('startDialog') startDialog?: ElementRef<HTMLDialogElement>;
   readonly environments = input<Environment[]>([]);
   readonly current = input<Environment>();
+  readonly workspaceStopped=input(false); readonly workspaceBusy=input(false); readonly workspaceError=input('');
   readonly currentName = input('Select dev server');
   readonly open = signal(false);
   readonly filter = signal('');
@@ -110,7 +119,7 @@ export class EnvironmentSelectorComponent {
       .sort((a, b) => a.projectName.localeCompare(b.projectName) || a.projectDirectory.localeCompare(b.projectDirectory));
     return [
       {label: 'Running', environments: matches.filter(e => e.status === 'running')},
-      {label: 'Stopped', environments: matches.filter(e => e.status === 'stopped')}
+      {label: 'Stopped', environments: matches.filter(e => e.status === 'stopped').slice(0,5)}
     ].filter(group => group.environments.length);
   });
 

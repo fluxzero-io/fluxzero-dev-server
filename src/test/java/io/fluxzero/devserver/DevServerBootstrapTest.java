@@ -15,6 +15,8 @@
 package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
@@ -106,9 +108,10 @@ class DevServerBootstrapTest {
         } finally { process.destroyForcibly(); stop(root); }
     }
 
-    @Test
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
     @DisabledOnOs(value = OS.WINDOWS, disabledReason = "Process.destroy uses TerminateProcess, not graceful SIGTERM; EOF cleanup is covered on every OS")
-    void terminatingAttachedBootstrapStopsItsServer() throws Exception {
+    void terminatingAttachedBootstrapStopsItsServer(boolean closeInputFirst) throws Exception {
         Path root = Files.createDirectory(directory.resolve("project"));
         Process process = process(root, false);
         try {
@@ -117,6 +120,7 @@ class DevServerBootstrapTest {
             while (store.readSession().filter(s -> "running".equals(s.mcp().state())).isEmpty()
                     && System.nanoTime() < deadline) TimeUnit.MILLISECONDS.sleep(25);
             DevSession session = store.readSession().orElseThrow();
+            if (closeInputFirst) process.getOutputStream().close();
             process.destroy();
             assertTrue(process.waitFor(10, TimeUnit.SECONDS));
             assertFalse(ProcessUtils.isAlive(session.pid(), session.startedAt()));
