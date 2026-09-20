@@ -5,16 +5,19 @@ import {sendCommand} from './dom-handlers';
 @Component({selector:'dev-server-update', standalone:true, template:`
   @if(status()?.update?.status === 'available' || pending()) {
     <button #trigger type="button" class="update-button" [disabled]="disabled()" (click)="open()"
-      [title]="'Dev Server ' + (status()?.update?.latestVersion || selected())">
+      [title]="'Devboard ' + (status()?.update?.latestVersion || selected())">
       <i class="bi bi-arrow-repeat" aria-hidden="true"></i>{{pending() ? 'Updating…' : 'Update & restart'}}
     </button>
   }
   @if(error() || status()?.update?.error) {<small role="alert">{{error() || status()?.update?.error}}</small>}
-  <dialog #dialog class="maintenance-confirm" aria-labelledby="update-title" aria-describedby="update-description" (close)="restoreFocus()">
-    <h2 id="update-title">Update Dev Server?</h2>
-    <p id="update-description">Install version {{selected()}} and restart this workspace.<br>
-      <strong>This resets local app data and monitoring history.</strong> Startup commands run again.
-      Your code and Progress are kept.</p>
+  <dialog #dialog class="maintenance-confirm" aria-labelledby="update-title" aria-describedby="update-versions update-description" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
+    <h2 id="update-title">Update Devboard?</h2>
+    <dl id="update-versions" class="update-versions">
+      <dt>Current version:</dt><dd>{{status()?.versions?.devServer || status()?.update?.currentVersion || '—'}}</dd>
+      <dt>New version:</dt><dd>{{selected()}}</dd>
+    </dl>
+    <p id="update-description">This resets local app data and monitoring history. Startup commands run again.
+      Your code and progress are kept.</p>
     <div class="dialog-actions">
       <button type="button" class="secondary-button dialog-cancel" (click)="dialog.close()" autofocus>Cancel</button>
       <button type="button" class="primary-button" [disabled]="disabled() || selected() !== status()?.update?.latestVersion" (click)="confirm()">Update & restart</button>
@@ -26,6 +29,10 @@ import {sendCommand} from './dom-handlers';
     .update-button:hover:not(:disabled) {background:var(--dashboard-action-hover);color:var(--dashboard-text);}
     .update-button:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
     .update-button:disabled {opacity:.6;cursor:default;}
+    .update-versions {display:grid;grid-template-columns:max-content minmax(0,1fr);gap:6px 16px;margin:0 0 20px;
+      color:var(--dashboard-muted);font-size:14px;line-height:1.6;}
+    .update-versions dt,.update-versions dd {margin:0;font-weight:400;}
+    .update-versions dd {color:var(--dashboard-text);overflow-wrap:anywhere;font-variant-numeric:tabular-nums;}
     small {display:block;color:var(--dashboard-muted);font-size:12px;margin:6px 0;}
   `})
 export class ServerUpdateComponent {
