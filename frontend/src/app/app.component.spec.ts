@@ -90,7 +90,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Updating');
     // Intermediate busy/cleared-error snapshots can be coalesced by the browser.
     push({status:{...failed,update:{...failed.update,attemptId:'second'}},environments:[]});fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Update & restart');
+    expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Update available');
     expect(root.querySelector('dev-server-update [role="alert"]')?.textContent).toContain('Previous version restored');
   });
 
