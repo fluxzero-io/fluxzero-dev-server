@@ -30,7 +30,9 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
           <div class="row-actions" role="group" [attr.aria-label]="'Actions for ' + project.projectName">
             @if(project.projectDirectory !== currentDirectory()) {<button class="icon-button project-action manager-open-action" [title]="switchingProject() === project.id ? 'Starting project…' : 'Switch to project'" aria-label="Switch to project" [disabled]="isBusy() || !project.directoryExists" (click)="openProject(project)">@if(switchingProject() === project.id) {<i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i>} @else {<svg class="switch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a4 4 0 0 1 4-4h14m-4-4 4 4-4 4M21 14a4 4 0 0 1-4 4H3m4-4-4 4 4 4"/></svg>}</button>}
 
-            @if(busyProject() === project.id) {
+            @if(stoppingProject() === project.id) {
+              <button class="icon-button project-action manager-stop-action" disabled aria-label="Stopping project" title="Stopping…" aria-busy="true"><i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i></button>
+            } @else if(busyProject() === project.id) {
               <button class="icon-button project-action manager-start-action" disabled aria-label="Starting project" title="Starting…" aria-busy="true"><i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i></button>
             } @else if(project.status === 'running') {
 
@@ -78,7 +80,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
 `})
 export class ProjectManagerComponent {
   workspaceStopped=input(false); workspaceBusy=input(false); workspaceError=input('');
-  isBusy() {return this.busy() || this.workspaceBusy() || !!this.busyProject();}
+  isBusy() {return this.busy() || this.workspaceBusy() || !!this.busyProject() || !!this.stoppingProject();}
   environments=input<Environment[]>([]); currentDirectory=input('');
   sortedProjects=computed(()=>{
     const current=this.currentDirectory();
@@ -92,7 +94,7 @@ export class ProjectManagerComponent {
   backdropPressed=false;
   mode=signal<'list'|'open'|'new'>('list'); busy=signal(false); loading=signal(false); error=signal(''); editing=signal('');
   folder=signal<Folder|undefined>(undefined); folderPath=signal(''); projectName=signal('');
-  busyProject=signal(''); switchingProject=signal('');
+  stoppingProject=signal(''); busyProject=signal(''); switchingProject=signal('');
   crumbs() {const all=this.folder()?.ancestors || [];return !this.expandedPath() && all.length>4 ? [all[0],{name:'…',path:'…'},...all.slice(-2)] : all;}
   missing() {return this.environments().filter(p=>!p.directoryExists && p.status==='stopped');}
   show(trigger:HTMLElement) {this.trigger=trigger;this.mode.set('list');this.error.set('');this.editing.set('');this.removing.set([]);this.dialog.nativeElement.showModal();}
@@ -115,8 +117,22 @@ export class ProjectManagerComponent {
   private async act(action:()=>Promise<unknown>) {if(this.isBusy())return;this.busy.set(true);this.error.set('');try{await action();}catch(e:any){this.error.set(e?.error?.error||e?.message||'Could not complete this action.');}finally{this.busy.set(false);}}
   async rename(project:Environment,name:string) {await this.act(async()=>{await sendCommand(this.element.nativeElement,'renameProject',{id:project.id,name});this.editing.set('');});}
   async confirmRemoval() {await this.act(async()=>{for(const project of this.removing())await this.post(project.id+'/forget',null);this.removing.set([]);await sendCommand(this.element.nativeElement,'refreshProjects');});}
-  async stopProject(project:Environment) {await this.act(async()=>{if(project.projectDirectory === this.currentDirectory())await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-workspace');else await this.post(project.id+'/stop',null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
+  async stopProject(project:Environment) {
+    const current=project.projectDirectory===this.currentDirectory();
+    await this.act(async()=>{
+      this.stoppingProject.set(project.id);
+      if(current)await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-workspace');
+      else await this.post(project.id+'/stop',null);
+      await sendCommand(this.element.nativeElement,'refreshProjects');
+    });
+    if(!current || this.error())this.stoppingProject.set('');
+  }
   constructor() {
+    effect(()=>{
+      const pending=this.stoppingProject();
+      const current=this.environments().find(project=>project.id===pending)?.projectDirectory===this.currentDirectory();
+      if(pending && current && !this.busy() && (this.workspaceError() || (this.workspaceStopped() && !this.workspaceBusy())))this.stoppingProject.set('');
+    });
     effect(()=>{
       const pending=this.busyProject();
       const current=this.environments().find(project=>project.id===pending)?.projectDirectory===this.currentDirectory();
