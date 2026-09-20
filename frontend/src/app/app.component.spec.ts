@@ -379,6 +379,32 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.server-menu')).toBeNull();
     expect(root.querySelector('[aria-label="Choose workspace"]')?.textContent).toContain('repair-cafe');
   });
+  for (const succeeds of [true, false]) it(`starts a stopped project from the manager and ${succeeds ? 'switches after success' : 'stays on failure'}`, async () => {
+    const app=fixture.componentInstance;
+    const navigate=spyOn(app,'openEnvironment');
+    const root=fixture.nativeElement as HTMLElement;
+    fixture.detectChanges();
+    const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
+    const switchProject=spyOn(manager,'openProject').and.callThrough();
+    const button=root.querySelector('dev-project-manager [aria-label="Switch to project"]') as HTMLButtonElement;
+    expect(button.disabled).toBeTrue(); // The initial fixture has a missing folder.
+    app.environments.update(list=>list.map(e=>({...e,directoryExists:true})));
+    fixture.detectChanges();
+    expect(button.disabled).toBeFalse();
+    button.click(); fixture.detectChanges();
+    expect(button.disabled).toBeTrue();
+    expect(button.querySelector('.starting-icon')).not.toBeNull();
+    expect(navigate).not.toHaveBeenCalled();
+    const request=TestBed.inject(HttpTestingController).expectOne('projects/'+'b'.repeat(64)+'/start');
+    if(succeeds) request.flush({...app.environments()[1],status:'running',consoleUrl:'http://localhost:4300/_fluxzero/dev/'});
+    else request.flush({error:'Could not start project.'},{status:409,statusText:'Conflict'});
+    await switchProject.calls.mostRecent().returnValue;
+    await fixture.whenStable(); fixture.detectChanges();
+    if(succeeds) expect(navigate).toHaveBeenCalledTimes(1);
+    else {expect(navigate).not.toHaveBeenCalled();expect(root.querySelector('dev-project-manager [role="alert"]')?.textContent).toContain('Could not start project.');}
+    expect(button.querySelector('.starting-icon')).toBeNull();
+  });
+
   it('requires confirmation before starting an inactive server and switches only after success', async () => {
     const component = fixture.componentInstance;
     component.environments.update(list => list.map(e => ({...e,directoryExists:true})));
