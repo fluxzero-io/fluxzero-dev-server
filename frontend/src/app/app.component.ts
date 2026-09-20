@@ -142,7 +142,12 @@ export class AppComponent implements OnInit, OnDestroy {
     else if(!event.shiftKey && document.activeElement===last) {event.preventDefault();first?.focus();}
   }
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
-  readonly current = computed(() => this.environments().find(e => e.projectDirectory === this.status()?.projectDirectory));
+  readonly current = computed(() => {
+    const status = this.status();
+    const port = status?.components?.find(component => component.id === 'devserver')?.port;
+    return this.environments().find(e => e.projectDirectory === status?.projectDirectory)
+      ?? this.environments().find(e => e.status === 'running' && port != null && e.port === port);
+  });
   readonly currentName = computed(() => this.current()?.projectName || this.status()?.project || 'Select dev server');
   readonly progressBadge = computed(() => progressCount(this.status()?.progress));
   readonly testBadge = computed(() => {

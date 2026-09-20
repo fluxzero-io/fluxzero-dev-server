@@ -56,6 +56,19 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  it('recognizes the current project through its dev-server port when directory aliases differ', () => {
+    const app = fixture.componentInstance;
+    const status = app.status()!;
+    push({status: {...status, projectDirectory: '/aliased/repair-cafe'}, environments: app.environments()});
+    fixture.detectChanges();
+    expect(app.current()?.projectName).toBe('repair-cafe');
+    const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.project-row'));
+    const current = rows.find(row => row.textContent?.includes('repair-cafe'))!;
+    expect(current.querySelector('[aria-label="Switch to project"]')).toBeNull();
+    expect(current.querySelector('[aria-label="Stop via Workspace"]')).not.toBeNull();
+    expect(rows.find(row => row.textContent?.includes('orders'))?.querySelector('[aria-label="Switch to project"]')).not.toBeNull();
+  });
+
   it('confirms an available update before sending its exact version', async () => {
     const root=fixture.nativeElement as HTMLElement;
     expect(root.querySelector('dev-server-update .update-button')).toBeNull();

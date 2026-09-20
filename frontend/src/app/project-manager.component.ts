@@ -24,7 +24,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
             <span class="path" [title]="project.projectDirectory">{{project.projectDirectory}}</span><span class="project-status" [class.running]="project.status === 'running'"><span class="status-dot" aria-hidden="true"></span>{{!project.directoryExists ? 'Folder not found' : project.status === 'running' ? 'Running' : 'Stopped'}}</span>
           </div>
           <div class="row-actions" role="group" [attr.aria-label]="'Actions for ' + project.projectName">
-            <button class="icon-button project-action manager-open-action" title="Open project" aria-label="Open project" [disabled]="busy() || project.status !== 'running'" (click)="openProject(project)"><i class="bi bi-folder2-open" aria-hidden="true"></i></button>
+            @if(project.projectDirectory !== currentDirectory()) {<button class="icon-button project-action manager-open-action" title="Switch to project" aria-label="Switch to project" [disabled]="busy() || project.status !== 'running'" (click)="openProject(project)"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></button>}
 
             @if(project.status === 'running') {
 
