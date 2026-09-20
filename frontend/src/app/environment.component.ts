@@ -150,7 +150,7 @@ export class EnvironmentComponent {
   }
   confirmationTitle() {
     return this.confirmAction() === 'stop-workspace' ? 'Stop workspace'
-      : this.confirmAction() === 'stop-devserver' ? 'Stop everything' : 'Restart environment';
+      : this.confirmAction() === 'stop-devserver' ? 'Stop All' : 'Restart environment';
   }
   confirmationDescription() {
     return this.confirmAction() === 'stop-workspace'

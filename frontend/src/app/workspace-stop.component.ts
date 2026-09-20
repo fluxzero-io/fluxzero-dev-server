@@ -1,18 +1,20 @@
 import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener, inject, input, output, signal, ViewChild} from '@angular/core';
 
 @Component({selector: 'dev-workspace-stop', standalone: true, template: `
-  <div class="stop-control split-action">
+  <div class="stop-controls"><div class="stop-control split-action">
     <button class="stop-action split-action-main" type="button" [attr.aria-label]="stopped() ? 'Start workspace' : 'Stop ' + selected().label"
       [title]="stopped() ? 'Start the workspace again' : selected().description" [disabled]="busy()" [attr.aria-busy]="working()"
       (click)="actionRequested.emit(stopped() ? 'start-workspace' : selected().key)">
       @if(working()) {<span class="spinner-border spinner-border-sm" role="status" aria-label="Working"></span>}
       @else {<i class="bi" [class.bi-play]="stopped()" [class.bi-stop]="!stopped()" aria-hidden="true"></i>}
-      <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop all' : 'Stop'}}</span>
+      <span>{{stopped() ? 'Start' : scope() === 'stop-devserver' ? 'Stop All' : 'Stop'}}</span>
     </button>
     @if(!stopped()) {<button #trigger class="stop-choice split-action-choice" type="button" aria-label="Choose stop scope" aria-haspopup="menu"
       aria-controls="stop-scope-menu" [attr.aria-expanded]="open()" [disabled]="busy()" (click)="toggle()">
       <i class="bi bi-chevron-down" aria-hidden="true"></i>
     </button>}
+  </div>
+  @if(stopped()) {<button class="stop-all-action dashboard-action" type="button" aria-label="Stop All" title="Close Devboard and stop the entire environment" [disabled]="busy()" (click)="actionRequested.emit('stop-devserver')"><i class="bi bi-stop" aria-hidden="true"></i><span>Stop All</span></button>}
   </div>
   @if(open() && !stopped()) {
     <div #menu id="stop-scope-menu" class="stop-menu" role="menu" aria-label="Stop scope">
@@ -26,6 +28,8 @@ import {ChangeDetectorRef, Component, computed, effect, ElementRef, HostListener
     </div>
   }`, styles: `
   :host {display:block;position:relative;max-width:100%;text-align:left;}
+  .stop-controls {display:flex;align-items:center;gap:8px;}
+  .stop-all-action {height:32px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;}
   .stop-menu {position:absolute;top:calc(100% + 6px);right:0;z-index:30;width:300px;max-width:calc(100vw - 48px);padding:6px;
     border:1px solid var(--dashboard-border);border-radius:10px;background:var(--dashboard-popover-bg);box-shadow:var(--dashboard-popover-shadow);}
   .stop-menu button {display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px;
@@ -44,7 +48,7 @@ export class WorkspaceStopComponent {
   readonly open = signal(false);
   readonly options = [
     {key:'stop-workspace', label:'Workspace', description:'Stop apps, UI servers, tests and supporting services. Keep this dashboard available to start again.'},
-    {key:'stop-devserver', label:'Everything', description:'Also close the dev server and dashboard. Start again from the CLI or another active dashboard.'}
+    {key:'stop-devserver', label:'All', description:'Also close the dev server and dashboard. Start again from the CLI or another active dashboard.'}
   ];
   readonly selected = computed(() => this.options.find(option => option.key === this.scope())!);
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);

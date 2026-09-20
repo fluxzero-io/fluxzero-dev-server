@@ -1159,6 +1159,10 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.stop-action')?.textContent).toContain('Start');
     expect(root.querySelector('.stop-choice')).toBeNull();
     expect(root.querySelector('#stop-scope-menu')).toBeNull();
+    (root.querySelector('.stop-all-action') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(root.querySelector('dialog[open] h2')?.textContent).toBe('Stop All?');
+    http.expectNone('actions/stop-devserver');
+    (root.querySelector('dialog[open] .dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
     http.expectOne('actions/start-workspace').flush(null); await fixture.whenStable();
   });
@@ -1170,7 +1174,7 @@ describe('Dev console navigation', () => {
     expect(choices[0].getAttribute('aria-checked')).toBe('true');
     choices[1].click(); fixture.detectChanges();
     http.expectNone('actions/stop-devserver');
-    expect(root.querySelector('.stop-action')?.textContent).toContain('Stop all');
+    expect(root.querySelector('.stop-action')?.textContent).toContain('Stop All');
     (root.querySelector('.stop-action') as HTMLButtonElement).click(); fixture.detectChanges();
     expect(root.querySelector('dialog[open]')?.textContent).toContain('run fz dev');
     (root.querySelector('dialog[open] .dialog-cancel') as HTMLButtonElement).click(); fixture.detectChanges();
