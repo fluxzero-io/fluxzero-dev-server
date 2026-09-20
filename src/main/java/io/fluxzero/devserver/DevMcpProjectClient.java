@@ -72,6 +72,29 @@ final class DevMcpProjectClient implements AutoCloseable {
         }
     }
 
+    McpSchema.CallToolResult workflow(McpSchema.CallToolRequest request) {
+        try {
+            Connection selected = connect();
+            if (selected != null) {
+                var available = selected.client().listTools().block(Duration.ofSeconds(6));
+                if (available != null && available.tools().stream().anyMatch(tool -> "get_workflow".equals(tool.name())))
+                    return selected.client().callTool(request).block(Duration.ofSeconds(6));
+                return DevMcpTools.result(Map.of("status", "workflow-unavailable", "source", "project-server",
+                        "message", "This project server predates workflow discovery. Use its advertised tool descriptions "
+                        + "and fz dev config; preserve its pin. Do not infer newer capabilities."), mapper);
+            }
+            var result = new java.util.LinkedHashMap<>(AgentWorkflows.read(
+                    request.arguments() == null ? Map.of() : request.arguments()));
+            result.put("source", "stdio-distribution");
+            result.put("projectDirectory", directory.toString());
+            result.put("message", "No active project MCP. Reread after start_dev or selecting a different project.");
+            return DevMcpTools.result(result, mapper);
+        } catch (RuntimeException e) {
+            return McpSchema.CallToolResult.builder().isError(true)
+                    .addTextContent("Unable to read project workflow: " + e.getMessage()).build();
+        }
+    }
+
     McpSchema.CallToolResult call(McpSchema.CallToolRequest request) {
         Connection selected = null;
         try {

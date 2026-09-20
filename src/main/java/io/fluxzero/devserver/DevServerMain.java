@@ -91,7 +91,7 @@ public final class DevServerMain {
         try {
             server.start();
             server.shutdownRequested().thenAccept(reason -> {
-                if (DevServer.RESTART_REQUESTED.equals(reason) || DevServer.STOP_REQUESTED.equals(reason)) shutdown.countDown();
+                if (DevServer.RESTART_REQUESTED.equals(reason) || DevServer.UPDATE_REQUESTED.equals(reason) || DevServer.STOP_REQUESTED.equals(reason)) shutdown.countDown();
                 else System.exit(0);
             });
             try {
@@ -108,13 +108,19 @@ public final class DevServerMain {
         }
         shutdown.await();
         String reason = server.shutdownRequested().getNow(null);
-        if (!DevServer.RESTART_REQUESTED.equals(reason) && !DevServer.STOP_REQUESTED.equals(reason)) return null;
+        if (!DevServer.RESTART_REQUESTED.equals(reason) && !DevServer.UPDATE_REQUESTED.equals(reason) && !DevServer.STOP_REQUESTED.equals(reason)) return null;
         Integer port = server.session().gateway().port();
         try {
             if (registered.compareAndSet(true, false)) registry.unregister(server.session());
         } finally {
             server.close();
             removeShutdownHook(shutdownHook);
+        }
+        if (DevServer.UPDATE_REQUESTED.equals(reason)) {
+            var restart = new Restart(port, server.restartProfile());
+            return DevServerUpgrade.start(server.preparedUpdate(), server.session().projectDirectory() == null
+                    ? java.nio.file.Path.of("") : java.nio.file.Path.of(server.session().projectDirectory()), restart.arguments(args))
+                    ? null : restart;
         }
         return DevServer.RESTART_REQUESTED.equals(reason) ? new Restart(port, server.restartProfile()) : null;
     }

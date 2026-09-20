@@ -1,3 +1,4 @@
+import {ServerUpdateComponent} from './server-update.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
 import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
@@ -15,7 +16,7 @@ import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-@Component({selector: 'dev-root', standalone: true, imports: [ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -26,6 +27,13 @@ export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('frame') frame?: ElementRef<HTMLIFrameElement>;
   readonly status = signal<Status | undefined>(undefined);
   readonly environments = signal<Environment[]>([]);
+  readonly updateNotice = signal('');
+  private updateNoticeTimer?:ReturnType<typeof setTimeout>;
+  showUpdateNotice(version:string) {
+    clearTimeout(this.updateNoticeTimer);
+    this.updateNotice.set(`Devboard updated to ${version}`);
+    this.updateNoticeTimer=setTimeout(()=>this.updateNotice.set(''),8000);
+  }
   readonly error = signal('');
   readonly actionError = signal('');
   readonly route = signal('application');
@@ -172,7 +180,7 @@ export class AppComponent implements OnInit, OnDestroy {
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
   }
-  ngOnDestroy() { clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
+  ngOnDestroy() { clearTimeout(this.updateNoticeTimer); clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
   @HandleQuery('getEnvironments') getEnvironments(): Promise<{environments: Environment[]}> {
     return firstValueFrom(this.http.get<{environments: Environment[]}>('environments.json', {timeout: 10000}));
@@ -235,6 +243,10 @@ export class AppComponent implements OnInit, OnDestroy {
     } catch (error: any) {
       this.actionError.set(error?.error?.error || (action === 'forget' ? 'Unable to remove the project from the overview.' : 'Unable to open the project folder.'));
     }
+  }
+  @HandleCommand('updateDevServer') async updateDevServer(version:string) {
+    await firstValueFrom(this.http.post('actions/update-devserver', {version},
+      {headers: {'X-Fluxzero-Console': '1'}, timeout:10000}));
   }
   @HandleCommand('maintainEnvironment') async maintainEnvironment(action: string) {
     if (action.startsWith('restart-app:')) {

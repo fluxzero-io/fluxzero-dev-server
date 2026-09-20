@@ -36,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Agent-owned MCP server: local documentation and an optional connection to the project environment. */
 public final class DevMcpStdioMain {
-    static final String INSTRUCTIONS = "Use docs_start, then search/read relevant articles; preserve namespace/version. "
+    static final String INSTRUCTIONS = "Use get_workflow for current dev workflows. Use docs_start, then search/read relevant articles; preserve namespace/version. "
             + "Use select_project to inspect/change the app directory. Call get_status for readiness; call start_dev "
             + "when development is needed; poll get_status while starting. Docs work without it. "
             + "After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Apply problemChanges by id; "
@@ -99,6 +99,7 @@ public final class DevMcpStdioMain {
                 var tools = new ArrayList<>(DevMcpTools.tools(request -> workspace.current().project().call(request)));
                 tools.addAll(MonitoringTools.tools(request -> workspace.current().project().call(request)));
                 tools.addAll(ProgressTools.tools(() -> workspace.current().directory(), mapper));
+                tools.add(AgentWorkflows.tool(mapper, request -> workspace.current().project().workflow(request)));
                 tools.add(new McpServerFeatures.SyncToolSpecification(
                         McpSchema.Tool.builder("start_dev", Map.of("type", "object", "properties", Map.of(),
                                 "additionalProperties", false))
