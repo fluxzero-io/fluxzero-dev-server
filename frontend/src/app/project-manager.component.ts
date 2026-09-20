@@ -13,6 +13,10 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
     @if(mode() === 'list') {
       <div class="toolbar"><button class="secondary-button" [disabled]="isBusy()" (click)="begin('open')">Open other…</button><button class="primary-button" [disabled]="isBusy()" (click)="begin('new')">New project…</button></div>
 
+      @if(stopConfirmation();as project) {<section class="remove-confirm" role="group" aria-label="Confirm full stop">
+        <p>Stop All?</p><p class="hint">This stops {{project.projectName}} and all its services, including this Devboard. This page will disconnect. To start again, use your agent, run fz dev in the project folder, or open the project from another Devboard.</p>
+        <div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="isBusy()" (click)="stopConfirmation.set(null)">Cancel</button><button class="primary-button" [disabled]="isBusy()" (click)="stopProject(project)">Stop All</button></div>
+      </section>}
       @if(removing().length) {<section class="remove-confirm" role="group" aria-label="Confirm removal">
         <p>{{removing().length === 1 ? 'Remove ' + removing()[0].projectName + ' from the list?' : 'Remove missing projects from the list?'}}</p>
         <p class="hint">Your files stay on disk. You can add the project again with Open other.</p>
@@ -36,7 +40,7 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
               <button class="icon-button project-action manager-start-action" disabled aria-label="Starting project" title="Starting…" aria-busy="true"><i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i></button>
             } @else if(project.status === 'running') {
 
-              <button class="icon-button project-action manager-stop-action" [disabled]="isBusy()" title="Stop project" aria-label="Stop project" (click)="stopProject(project)"><i class="bi bi-stop-fill" aria-hidden="true"></i></button>
+              <button class="icon-button project-action manager-stop-action" [disabled]="isBusy()" title="Stop project" aria-label="Stop project" (click)="requestStop(project)"><i class="bi bi-stop-fill" aria-hidden="true"></i></button>
             } @else {<button class="icon-button project-action manager-start-action" [disabled]="isBusy() || !project.directoryExists" [title]="busyProject() === project.id ? 'Starting…' : 'Start project'" [attr.aria-label]="busyProject() === project.id ? 'Starting project' : 'Start project'" (click)="startProject(project)"><i [class]="busyProject() === project.id ? 'bi bi-arrow-repeat starting-icon' : 'bi bi-play-fill'" aria-hidden="true"></i></button>}
             <button class="icon-button project-action manager-remove-action" [title]="project.projectDirectory === currentDirectory() ? 'Switch to another project before removing this one' : project.status === 'stopped' ? 'Remove from list — keeps files' : 'Stop the project before removing it from the list'" aria-label="Remove from list" [disabled]="isBusy() || project.status !== 'stopped' || project.projectDirectory === currentDirectory()" (click)="removing.set([project])"><i class="bi bi-trash3" aria-hidden="true"></i></button>
           </div>
@@ -87,7 +91,7 @@ export class ProjectManagerComponent {
     const rank=(project:Environment)=>project.projectDirectory === current ? 0 : project.status === 'running' ? 1 : 2;
     return this.environments().map(project=>project.projectDirectory===current && this.workspaceStopped() ? {...project,status:'stopped' as const} : project).sort((a,b)=>rank(a)-rank(b) || a.projectName.localeCompare(b.projectName,undefined,{numeric:true,sensitivity:'base'}) || a.id.localeCompare(b.id));
   });
-  expandedPath=signal(false); removing=signal<Environment[]>([]);
+  stopConfirmation=signal<Environment|null>(null); expandedPath=signal(false); removing=signal<Environment[]>([]);
   @ViewChild('dialog') dialog!:ElementRef<HTMLDialogElement>;
   private element=inject<ElementRef<HTMLElement>>(ElementRef); private http=inject(HttpClient);
   private trigger?:HTMLElement;
@@ -97,7 +101,7 @@ export class ProjectManagerComponent {
   stoppingProject=signal(''); busyProject=signal(''); switchingProject=signal('');
   crumbs() {const all=this.folder()?.ancestors || [];return !this.expandedPath() && all.length>4 ? [all[0],{name:'…',path:'…'},...all.slice(-2)] : all;}
   missing() {return this.environments().filter(p=>!p.directoryExists && p.status==='stopped');}
-  show(trigger:HTMLElement) {this.trigger=trigger;this.mode.set('list');this.error.set('');this.editing.set('');this.removing.set([]);this.dialog.nativeElement.showModal();}
+  show(trigger:HTMLElement) {this.trigger=trigger;this.mode.set('list');this.error.set('');this.editing.set('');this.removing.set([]);this.stopConfirmation.set(null);this.dialog.nativeElement.showModal();}
   isBackdrop(event:MouseEvent) {
     const dialog=this.dialog.nativeElement;
     if(event.target!==dialog)return false;
@@ -107,7 +111,7 @@ export class ProjectManagerComponent {
   dismissBackdrop(event:MouseEvent) {
     const dismiss=this.backdropPressed && this.isBackdrop(event);
     this.backdropPressed=false;
-    if(dismiss && !this.isBusy() && !this.removing().length)this.dialog.nativeElement.close();
+    if(dismiss && !this.isBusy() && !this.removing().length && !this.stopConfirmation())this.dialog.nativeElement.close();
   }
   restoreFocus() {this.trigger?.focus();}
   cancel(event:Event) {if(this.isBusy()) event.preventDefault();}
@@ -117,22 +121,28 @@ export class ProjectManagerComponent {
   private async act(action:()=>Promise<unknown>) {if(this.isBusy())return;this.busy.set(true);this.error.set('');try{await action();}catch(e:any){this.error.set(e?.error?.error||e?.message||'Could not complete this action.');}finally{this.busy.set(false);}}
   async rename(project:Environment,name:string) {await this.act(async()=>{await sendCommand(this.element.nativeElement,'renameProject',{id:project.id,name});this.editing.set('');});}
   async confirmRemoval() {await this.act(async()=>{for(const project of this.removing())await this.post(project.id+'/forget',null);this.removing.set([]);await sendCommand(this.element.nativeElement,'refreshProjects');});}
+  requestStop(project:Environment) {
+    if(this.isBusy())return;
+    if(project.projectDirectory===this.currentDirectory()) {this.removing.set([]);this.stopConfirmation.set(project);}
+    else void this.stopProject(project);
+  }
   async stopProject(project:Environment) {
     const current=project.projectDirectory===this.currentDirectory();
+    if(current && this.stopConfirmation()?.id!==project.id)return;
     await this.act(async()=>{
       this.stoppingProject.set(project.id);
-      if(current)await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-workspace');
-      else await this.post(project.id+'/stop',null);
-      await sendCommand(this.element.nativeElement,'refreshProjects');
+      if(current) {
+        await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-devserver');
+        this.stopConfirmation.set(null);
+        this.dialog.nativeElement.close();
+      } else {
+        await this.post(project.id+'/stop',null);
+        await sendCommand(this.element.nativeElement,'refreshProjects');
+      }
     });
-    if(!current || this.error())this.stoppingProject.set('');
+    this.stoppingProject.set('');
   }
   constructor() {
-    effect(()=>{
-      const pending=this.stoppingProject();
-      const current=this.environments().find(project=>project.id===pending)?.projectDirectory===this.currentDirectory();
-      if(pending && current && !this.busy() && (this.workspaceError() || (this.workspaceStopped() && !this.workspaceBusy())))this.stoppingProject.set('');
-    });
     effect(()=>{
       const pending=this.busyProject();
       const current=this.environments().find(project=>project.id===pending)?.projectDirectory===this.currentDirectory();

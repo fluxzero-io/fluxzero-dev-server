@@ -69,23 +69,12 @@ describe('Dev console navigation', () => {
     expect(rows.find(row => row.textContent?.includes('orders'))?.querySelector('[aria-label="Switch to project"]')).not.toBeNull();
   });
 
-  it('stops and resumes the current workspace in project management without shutting down its dashboard', async () => {
+  it('keeps startup feedback available for a workspace stopped from Workspace', async () => {
     const app=fixture.componentInstance, http=TestBed.inject(HttpTestingController);
     const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
     const project=app.environments()[0];
-    const stop=spyOn(manager,'stopProject').and.callThrough();
-    ((fixture.nativeElement as HTMLElement).querySelector('.manager-stop-action') as HTMLButtonElement).click();
-    const stopping=stop.calls.mostRecent().returnValue;fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="Stopping project"]')).not.toBeNull();
-    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="Confirm stop"]')).toBeNull();
-    http.expectOne('actions/stop-workspace').flush(null);
-    await Promise.resolve();await Promise.resolve();
-    http.match('environments.json').forEach(r=>r.flush({environments:app.environments()}));
-    await stopping;fixture.detectChanges();
-    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="Stopping project"]')).not.toBeNull();
     push({status:{...app.status()!,projectDirectory:'/alias/repair-cafe',components:[],state:'idle',maintenance:{busy:false,error:'',workspaceStopped:true}},environments:app.environments().map(p=>p.id===project.id ? {...p,port:Number(location.port)} : p)});fixture.detectChanges();
     const row=(fixture.nativeElement as HTMLElement).querySelector('.project-row')!;
-    expect(row.querySelector('[aria-label="Stopping project"]')).toBeNull();
     expect(row.textContent).toContain('Stopped');
     expect(row.querySelector('[aria-label="Start project"]')).not.toBeNull();
     expect((row.querySelector('[aria-label="Remove from list"]') as HTMLButtonElement).disabled).toBeTrue();
@@ -99,6 +88,21 @@ describe('Dev console navigation', () => {
     expect(row.querySelector('[aria-label="Stop project"]')).not.toBeNull();
     http.expectNone('actions/stop-devserver');
     http.verify();
+  });
+
+  it('confirms full shutdown only for the current project and makes no refresh request after shutdown', async () => {
+    const app=fixture.componentInstance, http=TestBed.inject(HttpTestingController), root=fixture.nativeElement as HTMLElement;
+    const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
+    const clickStop=()=>{(root.querySelector('.manager-stop-action') as HTMLButtonElement).click();fixture.detectChanges();};
+    clickStop();expect(root.querySelector('[aria-label="Confirm full stop"]')?.textContent).toContain('This page will disconnect');
+    http.expectNone('actions/stop-devserver');
+    (root.querySelector('[aria-label="Confirm full stop"] .dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(manager.stopConfirmation()).toBeNull();http.expectNone('actions/stop-devserver');
+    clickStop();const stopping=manager.stopProject(app.environments()[0]);fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Stopping project"]')).not.toBeNull();
+    http.expectOne('actions/stop-devserver').flush(null);await stopping;fixture.detectChanges();
+    expect(app.status()?.state).toBe('shutdown');expect(app.error()).toBe('Disconnected');
+    http.expectNone('environments.json');http.expectNone('actions/stop-workspace');http.verify();
   });
 
   it('confirms removal from project management and allows cancelling without removing files or registration', async () => {
