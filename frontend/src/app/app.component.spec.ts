@@ -74,9 +74,17 @@ describe('Dev console navigation', () => {
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
     request.flush({}); await fixture.whenStable(); fixture.detectChanges();
     expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Updating');
+    connected(false);
     push({status:{...status,versions:{devServer:'1.99.0'},update:{status:'current'}},environments:[]});
+    fixture.detectChanges();
+    expect(root.querySelector('.update-notice')).toBeNull();
+    connected(true);
     fixture.detectChanges(); await fixture.whenStable(); fixture.detectChanges();
     expect(root.querySelector('dev-server-update .update-button')).toBeNull();
+    expect(root.querySelector('.update-notice')?.textContent).toContain('Devboard updated to 1.99.0');
+    (root.querySelector('.update-notice button') as HTMLButtonElement).click();fixture.detectChanges();
+    push({status:{...status,versions:{devServer:'1.99.0'},update:{status:'current'}},environments:[]});fixture.detectChanges();
+    expect(root.querySelector('.update-notice')).toBeNull();
   });
 
   it('allows retrying after an earlier update failure and shows a new failure', async () => {
@@ -88,6 +96,7 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectOne('actions/update-devserver').flush({});
     await fixture.whenStable();fixture.detectChanges();
     expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Updating');
+    expect(root.querySelector('.update-notice')).toBeNull();
     // Intermediate busy/cleared-error snapshots can be coalesced by the browser.
     push({status:{...failed,update:{...failed.update,attemptId:'second'}},environments:[]});fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
     expect(root.querySelector('dev-server-update .update-button')?.textContent).toContain('Update available');

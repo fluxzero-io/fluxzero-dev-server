@@ -21,7 +21,7 @@
         </div>
       </div>
     </nav>
-    <div class="sidebar-footer-group"><dev-server-update [status]="status()" [connected]="connected()"/><div class="sidebar-footer"><span class="connection" role="status" [class.connected]="connected()"><i class="bi" [class.bi-plug-fill]="connected()" [class.bi-plug]="!connected()" aria-hidden="true"></i>{{connected() ? 'Connected' : 'Disconnected'}}</span><dev-theme-menu [theme]="themePreference()"/></div></div>
+    <div class="sidebar-footer-group"><dev-server-update (updated)="showUpdateNotice($event)" [status]="status()" [connected]="connected()"/><div class="sidebar-footer"><span class="connection" role="status" [class.connected]="connected()"><i class="bi" [class.bi-plug-fill]="connected()" [class.bi-plug]="!connected()" aria-hidden="true"></i>{{connected() ? 'Connected' : 'Disconnected'}}</span><dev-theme-menu [theme]="themePreference()"/></div></div>
   </aside>
   @if(!sidebarCollapsed() && !mobileNavigation()) {<button class="sidebar-resizer" type="button" role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="520" [attr.aria-valuenow]="sidebarWidth()" title="Drag to resize; drag left to hide navigation" (pointerdown)="startSidebarResize($event)" (keydown)="resizeNavigationWithKeyboard($event)"></button>}
   <main [attr.inert]="menuOpen() ? '' : null">
@@ -67,4 +67,12 @@
       @if(frameSource) {<iframe #frame name="dev-monitoring" [title]="viewLabel()" [src]="frameSource" (load)="frameLoaded()"></iframe>}
     </section>
   </main>
+</div>
+
+<div class="update-notice-region" role="status" aria-live="polite">
+  @if(updateNotice()) {
+    <div class="update-notice"><i class="bi bi-check-circle" aria-hidden="true"></i><span>{{updateNotice()}}</span>
+      <button type="button" aria-label="Dismiss update notification" (click)="updateNotice.set('')"><i class="bi bi-x-lg" aria-hidden="true"></i></button>
+    </div>
+  }
 </div>

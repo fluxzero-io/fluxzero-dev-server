@@ -1,4 +1,4 @@
-import {Component, ElementRef, ViewChild, inject, input, signal, effect} from '@angular/core';
+import {Component, ElementRef, ViewChild, inject, input, signal, effect, output} from '@angular/core';
 import {Status} from './models';
 import {sendCommand} from './dom-handlers';
 
@@ -39,6 +39,7 @@ import {sendCommand} from './dom-handlers';
   `})
 export class ServerUpdateComponent {
   status=input<Status>(); connected=input(false);
+  updated=output<string>();
   selected=signal(''); pending=signal(false); error=signal('');
   private previousError=signal('');
   private previousAttempt=signal<string|undefined>(undefined);
@@ -48,10 +49,12 @@ export class ServerUpdateComponent {
   constructor() { effect(()=> {
     if(!this.pending()) return;
     const status=this.status();
-    if(status?.versions?.devServer === this.selected()) this.pending.set(false);
     const error=status?.maintenance?.error || status?.update?.error;
-    if(error && (error !== this.previousError() || status?.update?.attemptId !== this.previousAttempt())) {this.error.set(error);this.pending.set(false);}
+    if(error && (error !== this.previousError() || status?.update?.attemptId !== this.previousAttempt())) {this.error.set(error);this.pending.set(false);return;}
     if(!error) this.previousError.set('');
+    if(!error && this.connected() && status?.versions?.devServer === this.selected()) {
+      this.pending.set(false);this.updated.emit(this.selected());
+    }
   }); }
   disabled() {return this.pending() || !this.connected() || !!this.status()?.maintenance?.busy || !!this.status()?.maintenance?.workspaceStopped;}
   open() {

@@ -27,6 +27,13 @@ export class AppComponent implements OnInit, OnDestroy {
   @ViewChild('frame') frame?: ElementRef<HTMLIFrameElement>;
   readonly status = signal<Status | undefined>(undefined);
   readonly environments = signal<Environment[]>([]);
+  readonly updateNotice = signal('');
+  private updateNoticeTimer?:ReturnType<typeof setTimeout>;
+  showUpdateNotice(version:string) {
+    clearTimeout(this.updateNoticeTimer);
+    this.updateNotice.set(`Devboard updated to ${version}`);
+    this.updateNoticeTimer=setTimeout(()=>this.updateNotice.set(''),8000);
+  }
   readonly error = signal('');
   readonly actionError = signal('');
   readonly route = signal('application');
@@ -173,7 +180,7 @@ export class AppComponent implements OnInit, OnDestroy {
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
   }
-  ngOnDestroy() { clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
+  ngOnDestroy() { clearTimeout(this.updateNoticeTimer); clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
   @HandleQuery('getEnvironments') getEnvironments(): Promise<{environments: Environment[]}> {
     return firstValueFrom(this.http.get<{environments: Environment[]}>('environments.json', {timeout: 10000}));
