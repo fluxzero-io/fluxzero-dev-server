@@ -8,54 +8,54 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
 @Component({selector:'dev-project-manager',standalone:true,template:`
   <dialog #dialog aria-labelledby="manage-projects-title" (pointerdown)="backdropPressed = isBackdrop($event)" (click)="dismissBackdrop($event)" (cancel)="cancel($event)" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
     <header><h2 id="manage-projects-title">{{mode() === 'list' ? 'Manage projects' : mode() === 'new' ? 'New project' : 'Open other project'}}</h2>
-      <button class="icon-button" aria-label="Close project manager" [disabled]="busy()" (click)="dialog.close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
-    @if(error()) {<p class="error" role="alert">{{error()}}</p>}
+      <button class="icon-button" aria-label="Close project manager" [disabled]="isBusy()" (click)="dialog.close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
+    @if(error() || workspaceError()) {<p class="error" role="alert">{{error() || workspaceError()}}</p>}
     @if(mode() === 'list') {
-      <div class="toolbar"><button class="secondary-button" [disabled]="busy()" (click)="begin('open')">Open other…</button><button class="primary-button" [disabled]="busy()" (click)="begin('new')">New project…</button></div>
+      <div class="toolbar"><button class="secondary-button" [disabled]="isBusy()" (click)="begin('open')">Open other…</button><button class="primary-button" [disabled]="isBusy()" (click)="begin('new')">New project…</button></div>
 
-      @if(stopping();as target) {<div class="stop-confirm" role="group" aria-label="Confirm stop"><p>Stop {{target.projectName}}?</p><p class="hint">Its app and local services will stop. You can start it again here.</p><div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="busy()" (click)="stopping.set(null)">Cancel</button><button class="primary-button" [disabled]="busy()" (click)="stopProject(target)">{{busy() ? 'Stopping…' : 'Stop project'}}</button></div></div>}
+      @if(stopping();as target) {<div class="stop-confirm" role="group" aria-label="Confirm stop"><p>Stop {{target.projectName}}?</p><p class="hint">Its app and local services will stop. You can start it again here.</p><div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="isBusy()" (click)="stopping.set(null)">Cancel</button><button class="primary-button" [disabled]="isBusy()" (click)="stopProject(target)">{{isBusy() ? 'Stopping…' : 'Stop project'}}</button></div></div>}
       <div class="project-list">
       @for(project of sortedProjects();track project.id) {
         <div class="project-row">
           <div class="project-info">
             @if(editing() === project.id) {
-              <form (submit)="$event.preventDefault(); rename(project, name.value)"><input #name aria-label="Project name" [value]="project.projectName" maxlength="100"><button class="secondary-button" [disabled]="busy()">Save</button><button type="button" class="secondary-button" (click)="editing.set('')">Cancel</button></form>
-            } @else {<div class="manager-project-name"><strong>{{project.projectName}}</strong><button class="icon-button" title="Rename project" aria-label="Rename project" [disabled]="busy()" (click)="editing.set(project.id)"><i class="bi bi-pencil" aria-hidden="true"></i></button></div>}
+              <form (submit)="$event.preventDefault(); rename(project, name.value)"><input #name aria-label="Project name" [value]="project.projectName" maxlength="100"><button class="secondary-button" [disabled]="isBusy()">Save</button><button type="button" class="secondary-button" (click)="editing.set('')">Cancel</button></form>
+            } @else {<div class="manager-project-name"><strong>{{project.projectName}}</strong><button class="icon-button" title="Rename project" aria-label="Rename project" [disabled]="isBusy()" (click)="editing.set(project.id)"><i class="bi bi-pencil" aria-hidden="true"></i></button></div>}
             <span class="path" [title]="project.projectDirectory">{{project.projectDirectory}}</span><span class="project-status" [class.running]="project.status === 'running'"><span class="status-dot" aria-hidden="true"></span>{{!project.directoryExists ? 'Folder not found' : project.status === 'running' ? 'Running' : 'Stopped'}}</span>
           </div>
           <div class="row-actions" role="group" [attr.aria-label]="'Actions for ' + project.projectName">
-            @if(project.projectDirectory !== currentDirectory()) {<button class="icon-button project-action manager-open-action" [title]="switchingProject() === project.id ? 'Starting project…' : 'Switch to project'" aria-label="Switch to project" [disabled]="busy() || !project.directoryExists" (click)="openProject(project)">@if(switchingProject() === project.id) {<i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i>} @else {<svg class="switch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a4 4 0 0 1 4-4h14m-4-4 4 4-4 4M21 14a4 4 0 0 1-4 4H3m4-4-4 4 4 4"/></svg>}</button>}
+            @if(project.projectDirectory !== currentDirectory()) {<button class="icon-button project-action manager-open-action" [title]="switchingProject() === project.id ? 'Starting project…' : 'Switch to project'" aria-label="Switch to project" [disabled]="isBusy() || !project.directoryExists" (click)="openProject(project)">@if(switchingProject() === project.id) {<i class="bi bi-arrow-repeat starting-icon" aria-hidden="true"></i>} @else {<svg class="switch-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10a4 4 0 0 1 4-4h14m-4-4 4 4-4 4M21 14a4 4 0 0 1-4 4H3m4-4-4 4 4 4"/></svg>}</button>}
 
             @if(project.status === 'running') {
 
-              <button class="icon-button project-action manager-stop-action" [disabled]="busy()" [title]="project.projectDirectory === currentDirectory() ? 'Stop via Workspace' : 'Stop project'" [attr.aria-label]="project.projectDirectory === currentDirectory() ? 'Stop via Workspace' : 'Stop project'" (click)="requestStop(project)"><i class="bi bi-stop-fill" aria-hidden="true"></i></button>
-            } @else {<button class="icon-button project-action manager-start-action" [disabled]="busy() || !project.directoryExists" [title]="busyProject() === project.id ? 'Starting…' : 'Start project'" [attr.aria-label]="busyProject() === project.id ? 'Starting project' : 'Start project'" (click)="startProject(project)"><i [class]="busyProject() === project.id ? 'bi bi-arrow-repeat starting-icon' : 'bi bi-play-fill'" aria-hidden="true"></i></button>}
-            <button class="icon-button project-action manager-remove-action" [title]="project.status === 'stopped' ? 'Remove from list — keeps files' : 'Stop the project before removing it from the list'" aria-label="Remove from list" [disabled]="busy() || project.status !== 'stopped'" (click)="remove(project)"><i class="bi bi-trash3" aria-hidden="true"></i></button>
+              <button class="icon-button project-action manager-stop-action" [disabled]="isBusy()" title="Stop project" aria-label="Stop project" (click)="requestStop(project)"><i class="bi bi-stop-fill" aria-hidden="true"></i></button>
+            } @else {<button class="icon-button project-action manager-start-action" [disabled]="isBusy() || !project.directoryExists" [title]="busyProject() === project.id ? 'Starting…' : 'Start project'" [attr.aria-label]="busyProject() === project.id ? 'Starting project' : 'Start project'" (click)="startProject(project)"><i [class]="busyProject() === project.id ? 'bi bi-arrow-repeat starting-icon' : 'bi bi-play-fill'" aria-hidden="true"></i></button>}
+            <button class="icon-button project-action manager-remove-action" [title]="project.projectDirectory === currentDirectory() ? 'Switch to another project before removing this one' : project.status === 'stopped' ? 'Remove from list — keeps files' : 'Stop the project before removing it from the list'" aria-label="Remove from list" [disabled]="isBusy() || project.status !== 'stopped' || project.projectDirectory === currentDirectory()" (click)="remove(project)"><i class="bi bi-trash3" aria-hidden="true"></i></button>
           </div>
         </div>
       } @empty {<p>No projects yet.</p>}
       </div>
       <p class="list-footnote"><i class="bi bi-info-circle" aria-hidden="true"></i> Removing a project from this list keeps its files.</p>
-      @if(missing().length) {<button class="secondary-button cleanup" [disabled]="busy()" (click)="removeMissing()">Remove missing folders from list</button>}
+      @if(missing().length) {<button class="secondary-button cleanup" [disabled]="isBusy()" (click)="removeMissing()">Remove missing folders from list</button>}
     } @else {
-      @if(mode() === 'new') {<label>Project name<input #newName placeholder="my-project" [value]="projectName()" (input)="projectName.set(newName.value)" [disabled]="busy()" maxlength="64" autocomplete="off"></label>}
-      <label>{{mode() === 'new' ? 'Location' : 'Project folder'}}<div class="path-input"><input #path aria-label="Folder path" [value]="folderPath()" (input)="folderPath.set(path.value)" [disabled]="busy()" (keydown.enter)="$event.preventDefault(); browse(folderPath())"><button class="secondary-button" [disabled]="busy() || loading()" (click)="browse(folderPath())">Browse</button></div></label>
+      @if(mode() === 'new') {<label>Project name<input #newName placeholder="my-project" [value]="projectName()" (input)="projectName.set(newName.value)" [disabled]="isBusy()" maxlength="64" autocomplete="off"></label>}
+      <label>{{mode() === 'new' ? 'Location' : 'Project folder'}}<div class="path-input"><input #path aria-label="Folder path" [value]="folderPath()" (input)="folderPath.set(path.value)" [disabled]="isBusy()" (keydown.enter)="$event.preventDefault(); browse(folderPath())"><button class="secondary-button" [disabled]="isBusy() || loading()" (click)="browse(folderPath())">Browse</button></div></label>
       @if(folder();as current) {
         <nav class="folder-heading breadcrumbs" aria-label="Folder path navigation">
           @for(crumb of crumbs();track crumb.path) {
             @if(!$first) {<i class="bi bi-chevron-right" aria-hidden="true"></i>}
             @if(crumb.path === '…') {<button class="crumb" title="Show all parent folders" aria-label="Show all parent folders" (click)="expandedPath.set(true)">…</button>}
-            @else {<button class="crumb" [title]="crumb.path" [attr.aria-current]="$last ? 'location' : null" [disabled]="loading() || busy() || $last" (click)="browse(crumb.path)">{{crumb.name}}</button>}
+            @else {<button class="crumb" [title]="crumb.path" [attr.aria-current]="$last ? 'location' : null" [disabled]="loading() || isBusy() || $last" (click)="browse(crumb.path)">{{crumb.name}}</button>}
           }
         </nav>
         <div class="folders" aria-label="Folders" [attr.aria-busy]="loading()">
-          @for(child of current.folders;track child.path) {<button [disabled]="busy() || loading()" (click)="browse(child.path)"><i class="bi bi-folder" aria-hidden="true"></i>{{child.name}}<i class="bi bi-chevron-right" aria-hidden="true"></i></button>}
+          @for(child of current.folders;track child.path) {<button [disabled]="isBusy() || loading()" (click)="browse(child.path)"><i class="bi bi-folder" aria-hidden="true"></i>{{child.name}}<i class="bi bi-chevron-right" aria-hidden="true"></i></button>}
           @if(!current.folders.length) {<p class="hint">No subfolders</p>}
         </div>
         @if(current.truncated) {<p class="hint">Showing the first 200 folders. Enter a path to open another folder.</p>}
       }
       <p class="hint">{{mode() === 'new' ? 'A new folder will be created here. Existing folders are never overwritten.' : 'Choose the folder containing your project.'}}</p>
-      <div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="busy()" (click)="mode.set('list');error.set('')">Cancel</button><button class="primary-button" [disabled]="busy() || loading() || !folderPath() || (mode() === 'new' && !projectName())" (click)="submit()">{{busy() ? 'Preparing…' : mode() === 'new' ? 'Create & open' : 'Open project'}}</button></div>
+      <div class="dialog-actions"><button class="secondary-button dialog-cancel" [disabled]="isBusy()" (click)="mode.set('list');error.set('')">Cancel</button><button class="primary-button" [disabled]="isBusy() || loading() || !folderPath() || (mode() === 'new' && !projectName())" (click)="submit()">{{isBusy() ? 'Preparing…' : mode() === 'new' ? 'Create & open' : 'Open project'}}</button></div>
     }
   </dialog>
 `,styles:`
@@ -70,11 +70,13 @@ type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; 
   @media(max-width:600px) {dialog {padding:18px;} .project-row {align-items:center;gap:10px;flex-wrap:nowrap;} .project-info {min-width:0;} .row-actions {gap:2px;padding:3px;} .row-actions .project-action {width:30px;height:34px;} }
 `})
 export class ProjectManagerComponent {
+  workspaceStopped=input(false); workspaceBusy=input(false); workspaceError=input('');
+  isBusy() {return this.busy() || this.workspaceBusy();}
   environments=input<Environment[]>([]); currentDirectory=input('');
   sortedProjects=computed(()=>{
     const current=this.currentDirectory();
     const rank=(project:Environment)=>project.projectDirectory === current ? 0 : project.status === 'running' ? 1 : 2;
-    return [...this.environments()].sort((a,b)=>rank(a)-rank(b) || a.projectName.localeCompare(b.projectName,undefined,{numeric:true,sensitivity:'base'}) || a.id.localeCompare(b.id));
+    return this.environments().map(project=>project.projectDirectory===current && this.workspaceStopped() ? {...project,status:'stopped' as const} : project).sort((a,b)=>rank(a)-rank(b) || a.projectName.localeCompare(b.projectName,undefined,{numeric:true,sensitivity:'base'}) || a.id.localeCompare(b.id));
   });
   expandedPath=signal(false); stopping=signal<Environment|null>(null);
   @ViewChild('dialog') dialog!:ElementRef<HTMLDialogElement>;
@@ -96,23 +98,22 @@ export class ProjectManagerComponent {
   dismissBackdrop(event:MouseEvent) {
     const dismiss=this.backdropPressed && this.isBackdrop(event);
     this.backdropPressed=false;
-    if(dismiss && !this.busy() && !this.stopping())this.dialog.nativeElement.close();
+    if(dismiss && !this.isBusy() && !this.stopping())this.dialog.nativeElement.close();
   }
   restoreFocus() {this.trigger?.focus();}
-  cancel(event:Event) {if(this.busy()) event.preventDefault();}
+  cancel(event:Event) {if(this.isBusy()) event.preventDefault();}
   async begin(mode:'open'|'new') {this.mode.set(mode);this.error.set('');await this.browse(this.folderPath());}
   private post<T>(operation:string, data:unknown) {return firstValueFrom(this.http.post<T>('projects/'+operation,data,{headers:{'X-Fluxzero-Console':'1'},timeout:190000}));}
   async browse(path:string) {if(this.loading())return;this.loading.set(true);this.error.set('');try {const f=await this.post<Folder>('folders',{path});this.folder.set(f);this.folderPath.set(f.path);this.expandedPath.set(false);}catch(e:any){this.error.set(e?.error?.error||'Could not read this folder.');}finally{this.loading.set(false);}}
-  private async act(action:()=>Promise<unknown>) {if(this.busy())return;this.busy.set(true);this.error.set('');try{await action();}catch(e:any){this.error.set(e?.error?.error||e?.message||'Could not complete this action.');}finally{this.busy.set(false);}}
+  private async act(action:()=>Promise<unknown>) {if(this.isBusy())return;this.busy.set(true);this.error.set('');try{await action();}catch(e:any){this.error.set(e?.error?.error||e?.message||'Could not complete this action.');}finally{this.busy.set(false);}}
   async rename(project:Environment,name:string) {await this.act(async()=>{await sendCommand(this.element.nativeElement,'renameProject',{id:project.id,name});this.editing.set('');});}
   async remove(project:Environment) {await this.act(async()=>{await this.post(project.id+'/forget',null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
   async removeMissing() {await this.act(async()=>{for(const p of this.missing())await this.post(p.id+'/forget',null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
   requestStop(project:Environment) {
-    if(project.projectDirectory === this.currentDirectory()) {sendCommand(this.element.nativeElement,'showWorkspace');this.dialog.nativeElement.close();}
-    else this.stopping.set(project);
+    this.stopping.set(project);
   }
-  async stopProject(project:Environment) {await this.act(async()=>{await this.post(project.id+'/stop',null);this.stopping.set(null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
-  async startProject(project:Environment) {this.busyProject.set(project.id);await this.act(async()=>{await sendCommand(this.element.nativeElement,'startProjectInBackground',project.id);});this.busyProject.set('');}
-  async openProject(project:Environment) {if(this.busy() || !project.directoryExists)return; if(project.status!=='running')this.switchingProject.set(project.id); await this.act(async()=>{if(project.status==='running')await sendCommand(this.element.nativeElement,'openEnvironment',project);else await sendCommand(this.element.nativeElement,'startEnvironment',project.id);this.dialog.nativeElement.close();});this.switchingProject.set('');}
+  async stopProject(project:Environment) {await this.act(async()=>{if(project.projectDirectory === this.currentDirectory())await sendCommand(this.element.nativeElement,'maintainEnvironment','stop-workspace');else await this.post(project.id+'/stop',null);this.stopping.set(null);await sendCommand(this.element.nativeElement,'refreshProjects');});}
+  async startProject(project:Environment) {this.busyProject.set(project.id);await this.act(async()=>{if(project.projectDirectory === this.currentDirectory())await sendCommand(this.element.nativeElement,'maintainEnvironment','start-workspace');else await sendCommand(this.element.nativeElement,'startProjectInBackground',project.id);});this.busyProject.set('');}
+  async openProject(project:Environment) {if(this.isBusy() || !project.directoryExists)return; if(project.status!=='running')this.switchingProject.set(project.id); await this.act(async()=>{if(project.status==='running')await sendCommand(this.element.nativeElement,'openEnvironment',project);else await sendCommand(this.element.nativeElement,'startEnvironment',project.id);this.dialog.nativeElement.close();});this.switchingProject.set('');}
   async submit() {await this.act(async()=>{const p=await this.post<Environment>(this.mode()==='new'?'create':'open',{path:this.folderPath(),name:this.projectName()});await sendCommand(this.element.nativeElement,'refreshProjects');await sendCommand(this.element.nativeElement,'startEnvironment',p.id);this.dialog.nativeElement.close();});}
 }

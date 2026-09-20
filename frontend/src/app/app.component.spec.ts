@@ -65,8 +65,31 @@ describe('Dev console navigation', () => {
     const rows = Array.from((fixture.nativeElement as HTMLElement).querySelectorAll('.project-row'));
     const current = rows.find(row => row.textContent?.includes('repair-cafe'))!;
     expect(current.querySelector('[aria-label="Switch to project"]')).toBeNull();
-    expect(current.querySelector('[aria-label="Stop via Workspace"]')).not.toBeNull();
+    expect(current.querySelector('[aria-label="Stop project"]')).not.toBeNull();
     expect(rows.find(row => row.textContent?.includes('orders'))?.querySelector('[aria-label="Switch to project"]')).not.toBeNull();
+  });
+
+  it('stops and resumes the current workspace in project management without shutting down its dashboard', async () => {
+    const app=fixture.componentInstance, http=TestBed.inject(HttpTestingController);
+    const manager=fixture.debugElement.query(By.directive(ProjectManagerComponent)).componentInstance as ProjectManagerComponent;
+    const project=app.environments()[0];
+    manager.requestStop(project);fixture.detectChanges();
+    expect(manager.stopping()).toEqual(project);
+    http.expectNone('actions/stop-workspace');
+    const stopping=manager.stopProject(project);
+    http.expectOne('actions/stop-workspace').flush(null);
+    await Promise.resolve();await Promise.resolve();
+    http.match('environments.json').forEach(r=>r.flush({environments:app.environments()}));
+    await stopping;
+    push({status:{...app.status()!,projectDirectory:'/alias/repair-cafe',components:[],state:'idle',maintenance:{busy:false,error:'',workspaceStopped:true}},environments:app.environments().map(p=>p.id===project.id ? {...p,port:Number(location.port)} : p)});fixture.detectChanges();
+    const row=(fixture.nativeElement as HTMLElement).querySelector('.project-row')!;
+    expect(row.textContent).toContain('Stopped');
+    expect(row.querySelector('[aria-label="Start project"]')).not.toBeNull();
+    expect((row.querySelector('[aria-label="Remove from list"]') as HTMLButtonElement).disabled).toBeTrue();
+    const starting=manager.startProject(project);
+    http.expectOne('actions/start-workspace').flush(null);await starting;
+    http.expectNone('actions/stop-devserver');
+    http.verify();
   });
 
   it('confirms an available update before sending its exact version', async () => {

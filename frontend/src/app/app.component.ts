@@ -144,7 +144,8 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly views = monitoringViews.filter(view => view.key !== 'visualize');
   readonly current = computed(() => {
     const status = this.status();
-    const port = status?.components?.find(component => component.id === 'devserver')?.port;
+    const port = status?.components?.find(component => component.id === 'devserver')?.port
+      ?? (location.port ? Number(location.port) : location.protocol === 'https:' ? 443 : 80);
     return this.environments().find(e => e.projectDirectory === status?.projectDirectory)
       ?? this.environments().find(e => e.status === 'running' && port != null && e.port === port);
   });
