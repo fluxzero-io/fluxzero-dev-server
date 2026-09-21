@@ -2,7 +2,7 @@
   @if(menuOpen()) {<button class="nav-backdrop" (click)="closeNavigation()" aria-label="Close navigation" tabindex="-1"></button>}
   <aside id="devboard-navigation" class="dashboard-sidebar" [class.open]="menuOpen()" [attr.inert]="navigationHidden() ? '' : null" aria-label="Primary navigation" [attr.role]="menuOpen() ? 'dialog' : null" [attr.aria-modal]="menuOpen() ? 'true' : null">
     <div class="dashboard-brand">
-      <a class="brand-home" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Devboard home"><img class="brand-mark" src="assets/fluxzero-devserver-logo.png" alt=""></a>
+      <a class="brand-home" href="#application" (click)="link($event, 'application')" aria-label="Fluxzero Devboard home"><img class="brand-mark" [src]="dark() ? 'assets/fluxzero-devserver-logo-dark.svg' : 'assets/fluxzero-devserver-logo-light.svg'" alt=""></a>
       <span class="brand-title">Fluxzero<span>Devboard</span></span>
       <button class="icon-button sidebar-toggle" type="button" (click)="togglePinnedNavigation()" [attr.aria-label]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'" [title]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'"><i class="bi" [class.bi-x-lg]="mobileNavigation()" [class.bi-layout-sidebar-inset]="!mobileNavigation() && !sidebarCollapsed()" [class.bi-layout-sidebar-inset-reverse]="!mobileNavigation() && sidebarCollapsed()" aria-hidden="true"></i></button>
     </div>
