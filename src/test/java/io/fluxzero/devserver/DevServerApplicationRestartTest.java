@@ -35,6 +35,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -64,7 +65,8 @@ class DevServerApplicationRestartTest {
              var readiness = Executors.newSingleThreadScheduledExecutor()) {
             // Fixture processes do not use an SDK. Signal readiness through the same pending-future boundary.
             Map<?, ?> pending = (Map<?, ?>) field(server, "appReadiness");
-            readiness.scheduleWithFixedDelay(() -> pending.values().forEach(p -> {
+            var signalReadiness = new AtomicBoolean(true);
+            readiness.scheduleWithFixedDelay(() -> pending.values().stream().filter(ignored -> signalReadiness.get()).forEach(p -> {
                 try {
                     var accessor = p.getClass().getDeclaredMethod("ready");
                     accessor.setAccessible(true);
@@ -99,6 +101,9 @@ class DevServerApplicationRestartTest {
             var broken = new ApplicationBuild("billing", ".", "missing.Main", List.of(classes), List.of());
             pipeline.activate(new BuildSnapshot(2, Files.createDirectories(project.resolve("build-2")), classes, List.of(),
                     Instant.now(), CompileTiming.unknown(), List.of(apps.getFirst(), broken)));
+            // Let the invalid candidate report its own process failure. Completing readiness first races the JVM's
+            // missing-main-class exit, especially on Windows, and can turn the intended failure into a replacement.
+            signalReadiness.set(false);
             assertEquals(202, restart(http, base, "app-billing"));
             JsonNode failed = awaitStatus(http, base, status -> !status.path("maintenance").path("error").asText().isEmpty());
             assertFalse(failed.path("maintenance").path("error").asText().isEmpty());
