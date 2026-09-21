@@ -34,11 +34,13 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
@@ -53,6 +55,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerLifecycleTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    @Test
+    void serviceExitDuringStartupDoesNotDeadlock(@TempDir Path project) throws Exception {
+        Path control = project.resolve("service-control");
+        Files.createDirectories(control);
+        Path devConfig = project.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(devConfig.getParent());
+        String command = shellQuote(javaExecutable()) + " -cp " + shellQuote(testClassesDirectory().toString())
+                         + " " + DevServiceFixtureServer.class.getName() + " exit-gate "
+                         + shellQuote(control.toString());
+        Files.writeString(devConfig, "version: 1\nidp: external\nservices:\n  gate:\n    command: '"
+                                     + command.replace("'", "''")
+                                     + "'\n    readiness:\n      log: NEVER_READY\n      timeout: PT5S\n");
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", project.toString(), "--no-watch", "--no-compile-on-start", "--no-tests",
+                "--no-frontend", "--idp", "external", "--port", "0"});
+        DevServer server = new DevServer(config);
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread starter = Thread.ofPlatform().name("service-exit-startup-test").start(() -> {
+            try {
+                server.start();
+            } catch (Throwable e) {
+                failure.set(e);
+            }
+        });
+        try {
+            assertTrue(await(() -> Files.isRegularFile(control.resolve("started"))));
+            assertTrue(await(() -> Arrays.stream(starter.getStackTrace())
+                    .anyMatch(frame -> frame.getMethodName().equals("awaitReadiness"))));
+            Files.writeString(control.resolve("exit"), "exit");
+            starter.join(Duration.ofSeconds(5));
+            assertFalse(starter.isAlive(), "service failure left startup deadlocked");
+            assertTrue(failure.get() instanceof DevServerStartupException, () -> "Unexpected failure: " + failure.get());
+        } finally {
+            server.close();
+            if (starter.isAlive()) {
+                starter.interrupt();
+            }
+        }
+    }
 
     @Test
     void exclusiveVerificationPreservesSessionAndReturnsCommandFailure(@TempDir Path project) throws Exception {
@@ -656,6 +698,10 @@ class DevServerLifecycleTest {
 
     private static Path testClassesDirectory() throws Exception {
         return Path.of(DevServerLifecycleTest.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+    }
+
+    private static String shellQuote(String value) {
+        return '"' + value.replace("\"", "\\\"") + '"';
     }
 
     private JsonNode awaitConsoleStatus(HttpClient http, String base, Predicate<JsonNode> condition) throws Exception {

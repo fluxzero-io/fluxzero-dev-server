@@ -90,6 +90,7 @@ public final class DevServerMain {
         Runtime.getRuntime().addShutdownHook(shutdownHook);
         try {
             server.start();
+            completeUpdateTransition();
             server.shutdownRequested().thenAccept(reason -> {
                 if (DevServer.RESTART_REQUESTED.equals(reason) || DevServer.UPDATE_REQUESTED.equals(reason) || DevServer.STOP_REQUESTED.equals(reason)) shutdown.countDown();
                 else System.exit(0);
@@ -101,6 +102,7 @@ public final class DevServerMain {
                 System.err.println("Warning: could not register this Fluxzero dev environment: " + e.getMessage());
             }
         } catch (DevServerStartupException | IllegalArgumentException | LinkageError e) {
+            failUpdateTransition(e);
             removeShutdownHook(shutdownHook);
             server.close();
             reportStartupFailure(e);
@@ -123,6 +125,29 @@ public final class DevServerMain {
                     ? null : restart;
         }
         return DevServer.RESTART_REQUESTED.equals(reason) ? new Restart(port, server.restartProfile()) : null;
+    }
+
+    static void completeUpdateTransition() {
+        String phase = System.getProperty(DevServerUpdates.PHASE_PROPERTY);
+        if ("starting-new".equals(phase)) {
+            System.setProperty(DevServerUpdates.PHASE_PROPERTY, "updated");
+            System.clearProperty(DevServerUpdates.ERROR_PROPERTY);
+        } else if ("restoring".equals(phase)) {
+            String failure = System.getProperty(DevServerUpdates.ERROR_PROPERTY, "The update could not start.");
+            System.setProperty(DevServerUpdates.PHASE_PROPERTY, "restored");
+            System.setProperty(DevServerUpdates.ERROR_PROPERTY, failure + " The previous version was restored.");
+        }
+    }
+
+    static void failUpdateTransition(Throwable failure) {
+        if (!"restoring".equals(System.getProperty(DevServerUpdates.PHASE_PROPERTY))) {
+            return;
+        }
+        String updateFailure = System.getProperty(DevServerUpdates.ERROR_PROPERTY, "The update could not start.");
+        System.setProperty(DevServerUpdates.PHASE_PROPERTY, "restore-failed");
+        System.setProperty(DevServerUpdates.ERROR_PROPERTY,
+                           updateFailure + " Restoring the previous version also failed: "
+                           + startupFailureMessage(failure));
     }
 
     private static void removeShutdownHook(Thread shutdownHook) {

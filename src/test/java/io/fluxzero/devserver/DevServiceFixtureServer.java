@@ -22,6 +22,7 @@ import java.net.ServerSocket;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.CountDownLatch;
 
 /** Child process used to verify managed support-service lifecycle and environment injection. */
 public class DevServiceFixtureServer {
@@ -51,6 +52,56 @@ public class DevServiceFixtureServer {
             System.out.println("Ready! whsec_Stop123");
             System.err.println("Ready! whsec_Stop456");
             Files.writeString(Path.of(args[1]).resolve("ready"), "release late startup output");
+            return;
+        }
+        if ("stop-fail".equals(args[0])) {
+            System.err.println("fixture cleanup failed");
+            System.exit(9);
+        }
+        if ("graceful".equals(args[0])) {
+            Path started = Path.of(args[1]);
+            Path cleaned = Path.of(args[2]);
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    Files.writeString(cleaned, "cleaned");
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }));
+            Files.writeString(started, "started");
+            System.out.println("READY");
+            System.out.flush();
+            new CountDownLatch(1).await();
+            return;
+        }
+        if ("exit-gate".equals(args[0])) {
+            Path control = Path.of(args[1]);
+            Files.writeString(control.resolve("started"), "started");
+            awaitFile(control.resolve("exit"));
+            System.exit(17);
+        }
+        if ("update-output".equals(args[0])) {
+            System.out.print(args[2]);
+            System.err.print(args[3]);
+            System.out.flush();
+            System.err.flush();
+            System.exit(Integer.parseInt(args[1]));
+        }
+        if ("update-large".equals(args[0])) {
+            System.out.print("x".repeat(Integer.parseInt(args[1])));
+            return;
+        }
+        if ("update-sleep".equals(args[0])) {
+            Thread.sleep(Long.parseLong(args[1]));
+            return;
+        }
+        if ("update-context".equals(args[0])) {
+            boolean matches = args[1].equals(System.getProperty(DevServerUpdates.ATTEMPT_PROPERTY))
+                              && "starting-new".equals(System.getProperty(DevServerUpdates.PHASE_PROPERTY));
+            if (!matches) {
+                System.err.println("missing update context");
+                System.exit(21);
+            }
             return;
         }
         int port = Integer.parseInt(args[0]);

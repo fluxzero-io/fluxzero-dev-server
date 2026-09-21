@@ -32,15 +32,38 @@ final class DevServerUpgrade {
     }
 
     static boolean start(Path artifact, Path directory, String[] arguments) {
+        return start(command(artifact, arguments), directory, Duration.ofMinutes(3));
+    }
+
+    static boolean start(List<String> command, Path directory, Duration timeout) {
+        System.setProperty(DevServerUpdates.PHASE_PROPERTY, "starting-new");
         try {
-            DevServerUpdates.run(command(artifact, arguments), directory, Duration.ofMinutes(3));
+            DevServerUpdates.run(withUpdateContext(command), directory, timeout);
             return true;
         } catch (Exception e) {
             if (e instanceof InterruptedException) Thread.currentThread().interrupt();
-            System.setProperty("fluxzero.dev.updateError", "The update could not start. The previous version was restored.");
-            System.err.println("The update could not start. Restoring the previous dev server. "
-                    + "See .fluxzero/dev/bootstrap.log for details.");
+            String failure = e.getMessage() == null || e.getMessage().isBlank()
+                    ? e.getClass().getSimpleName() : e.getMessage().replace('\n', ' ').replace('\r', ' ').strip();
+            System.setProperty(DevServerUpdates.PHASE_PROPERTY, "restoring");
+            System.setProperty(DevServerUpdates.ERROR_PROPERTY,
+                               "The update could not start: " + failure + ". Restoring the previous version.");
+            System.err.println("The update could not start: " + failure);
+            System.err.println("Restoring the previous dev server. See .fluxzero/dev/bootstrap.log for details.");
             return false;
         }
+    }
+
+    private static List<String> withUpdateContext(List<String> original) {
+        var command = new ArrayList<>(original);
+        command.removeIf(argument -> argument.startsWith("-D" + DevServerUpdates.ATTEMPT_PROPERTY + "=")
+                                     || argument.startsWith("-D" + DevServerUpdates.ERROR_PROPERTY + "=")
+                                     || argument.startsWith("-D" + DevServerUpdates.PHASE_PROPERTY + "="));
+        int classpath = command.indexOf("-cp");
+        String attempt = System.getProperty(DevServerUpdates.ATTEMPT_PROPERTY);
+        if (attempt != null) {
+            command.add(classpath++, "-D" + DevServerUpdates.ATTEMPT_PROPERTY + "=" + attempt);
+        }
+        command.add(classpath, "-D" + DevServerUpdates.PHASE_PROPERTY + "=starting-new");
+        return command;
     }
 }
