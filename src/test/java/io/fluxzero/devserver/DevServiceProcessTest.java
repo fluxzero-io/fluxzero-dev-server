@@ -50,7 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServiceProcessTest {
 
     @Test
-    @EnabledOnOs({OS.LINUX, OS.MAC})
+    @EnabledOnOs({OS.WINDOWS, OS.LINUX, OS.MAC})
     void gracefullyStopsManagedServiceWithoutExplicitCleanup(@TempDir Path projectDirectory) throws Exception {
         Path started = projectDirectory.resolve("started.txt");
         Path cleaned = projectDirectory.resolve("cleaned.txt");
