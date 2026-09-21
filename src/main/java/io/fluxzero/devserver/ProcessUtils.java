@@ -199,6 +199,12 @@ final class ProcessUtils {
         List<ProcessHandle> processes = new ArrayList<>(handle.descendants()
                 .filter(ProcessUtils::isNotCurrentProcess).toList().reversed());
         processes.add(handle);
+        if (isWindows() && !timeout.isZero()) {
+            processes.stream().filter(ProcessHandle::isAlive)
+                    .filter(WindowsJavaShutdown::isJava)
+                    .forEach(WindowsJavaShutdown::request);
+            awaitStopped(processes, timeout);
+        }
         processes.stream().filter(ProcessHandle::isAlive).forEach(ProcessHandle::destroy);
         awaitStopped(processes, timeout);
 

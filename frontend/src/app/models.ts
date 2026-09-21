@@ -18,7 +18,7 @@ export interface ProgressFeature {
 export interface ProgressMilestone {id:string; title:string; description:string; features:ProgressFeature[];}
 export interface ProjectProgress {revision:string|null; data:{version:number; milestones:ProgressMilestone[]}|null; error:string|null;}
 export interface Status {
-  update?: {status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; error?:string};
+  update?: {status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; phase?:string; error?:string};
   progress?:ProjectProgress;
   versions?: {devServer?: string; fluxzero?: string};
   workspaceIssue?: string;

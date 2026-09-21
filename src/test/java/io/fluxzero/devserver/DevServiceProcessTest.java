@@ -20,6 +20,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
@@ -46,6 +48,50 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServiceProcessTest {
+
+    @Test
+    @EnabledOnOs({OS.WINDOWS, OS.LINUX, OS.MAC})
+    void gracefullyStopsManagedServiceWithoutExplicitCleanup(@TempDir Path projectDirectory) throws Exception {
+        Path started = projectDirectory.resolve("started.txt");
+        Path cleaned = projectDirectory.resolve("cleaned.txt");
+        String command = javaCommand() + " " + DevServiceFixtureServer.class.getName() + " graceful "
+                         + quote(started.toString()) + " " + quote(cleaned.toString());
+        DevServiceConfig config = new DevServiceConfig(
+                command, null, null, null, Map.of(), Map.of(),
+                new DevServiceConfig.Readiness(null, null, Pattern.compile("^READY$"), Duration.ofSeconds(5)));
+
+        try (DevServiceProcess service = DevServiceProcess.prepare(
+                "graceful", config, projectDirectory, "session", Duration.ofSeconds(2), ignored -> {}, ignored -> {})) {
+            service.start();
+            assertTrue(Files.isRegularFile(started));
+        }
+
+        assertTrue(Files.isRegularFile(cleaned));
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void reportsNonzeroCleanupCommandAndStillStopsTheService(@TempDir Path projectDirectory) throws Exception {
+        Path started = projectDirectory.resolve("started.txt");
+        Path cleaned = projectDirectory.resolve("cleaned.txt");
+        String fixture = javaCommand() + " " + DevServiceFixtureServer.class.getName();
+        DevServiceConfig config = new DevServiceConfig(
+                fixture + " graceful " + quote(started.toString()) + " " + quote(cleaned.toString()),
+                fixture + " stop-fail", null, null, Map.of(), Map.of(),
+                new DevServiceConfig.Readiness(null, null, Pattern.compile("^READY$"), Duration.ofSeconds(5)));
+        List<ProcessUtils.ProcessOutput> output = new CopyOnWriteArrayList<>();
+        List<DevSession.ServiceStatus> statuses = new CopyOnWriteArrayList<>();
+
+        try (DevServiceProcess service = DevServiceProcess.prepare(
+                "cleanup-failure", config, projectDirectory, "session", Duration.ofSeconds(2),
+                statuses::add, output::add)) {
+            service.start();
+        }
+
+        assertTrue(Files.isRegularFile(cleaned));
+        assertTrue(output.stream().anyMatch(line -> line.line().contains("cleanup command exited with code 9")));
+        assertTrue(statuses.getLast().detail().contains("cleanup command exited with code 9"));
+    }
 
     @Test
     void startsManagedServiceOnDynamicPortAndRunsExplicitCleanup(@TempDir Path projectDirectory) throws Exception {

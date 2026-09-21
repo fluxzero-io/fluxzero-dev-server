@@ -16,6 +16,10 @@ package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -24,9 +28,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /** Bounded background checks; artifact resolution remains owned by the CLI. */
 final class DevServerUpdates implements AutoCloseable {
+    static final String ATTEMPT_PROPERTY = "fluxzero.dev.updateAttempt";
+    static final String ERROR_PROPERTY = "fluxzero.dev.updateError";
+    static final String PHASE_PROPERTY = "fluxzero.dev.updatePhase";
+    private static final int MAX_STDOUT = 16_384;
+    private static final int MAX_DIAGNOSTIC = 8_192;
+    private static final Pattern SENSITIVE_VALUE = Pattern.compile(
+            "(?i)\\b(authorization|password|passwd|token|secret|api[-_]?key|client[-_]?secret)\\b"
+            + "(\\s*[:=]\\s*)(\\\"[^\\\"]*\\\"|'[^']*'|\\S+)");
+    private static final Pattern BEARER = Pattern.compile("(?i)\\bBearer\\s+\\S+");
     @FunctionalInterface interface Cli { Map<String, String> run(List<String> arguments) throws Exception; }
     private final Cli cli;
     private final boolean enabled;
@@ -50,10 +64,12 @@ final class DevServerUpdates implements AutoCloseable {
 
     Map<String, String> status() {
         var result = new java.util.LinkedHashMap<>(status);
-        String attempt = System.getProperty("fluxzero.dev.updateAttempt");
-        String failure = System.getProperty("fluxzero.dev.updateError");
+        String attempt = System.getProperty(ATTEMPT_PROPERTY);
+        String failure = System.getProperty(ERROR_PROPERTY);
+        String phase = System.getProperty(PHASE_PROPERTY);
         if (attempt != null) result.put("attemptId", attempt);
         if (failure != null) result.put("error", failure);
+        if (phase != null) result.put("phase", phase);
         return result;
     }
 
@@ -95,25 +111,143 @@ final class DevServerUpdates implements AutoCloseable {
     }
 
     static String run(List<String> command, Path directory, Duration timeout) throws Exception {
-        Path stdout = Files.createTempFile("fluxzero-update-", ".out");
-        Process process = null;
+        Process process = new ProcessBuilder(command).directory(directory.toFile()).start();
+        BoundedOutput stdout = new BoundedOutput(MAX_STDOUT, false);
+        BoundedOutput stderr = new BoundedOutput(MAX_DIAGNOSTIC, true);
+        Thread stdoutReader = stdout.readFrom(process.getInputStream(), "dev-update-stdout");
+        Thread stderrReader = stderr.readFrom(process.getErrorStream(), "dev-update-stderr");
         try {
-            process = new ProcessBuilder(command).directory(directory.toFile())
-                    .redirectOutput(stdout.toFile()).redirectError(ProcessBuilder.Redirect.DISCARD).start();
-            if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS))
-                throw new IllegalStateException("Update preparation timed out. The current app is still running.");
-            if (process.exitValue() != 0) throw new IllegalStateException("Could not prepare the update. Try again later.");
-            if (Files.size(stdout) > 16384) throw new IllegalStateException("Unexpected update response.");
-            return Files.readString(stdout);
+            if (!process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+                ProcessUtils.stopTree(process, Duration.ofSeconds(3));
+                awaitReaders(stdoutReader, stderrReader);
+                throw commandFailure("Update command timed out after " + timeout, stderr, stdout);
+            }
+            awaitReaders(stdoutReader, stderrReader);
+            if (process.exitValue() != 0) {
+                throw commandFailure("Update command failed with exit code " + process.exitValue(), stderr, stdout);
+            }
+            if (stdout.truncated()) {
+                throw new IllegalStateException("Unexpected update response: output exceeded " + MAX_STDOUT + " characters.");
+            }
+            return stdout.value();
         } finally {
-            if (process != null && process.isAlive()) {
-                process.toHandle().descendants().forEach(p -> p.destroy());
-                process.destroy();
-                if (!process.waitFor(3, TimeUnit.SECONDS)) {
-                    process.toHandle().descendants().forEach(p -> p.destroyForcibly()); process.destroyForcibly();
+            if (process.isAlive()) {
+                ProcessUtils.forceStopTree(process);
+            }
+            closeQuietly(process.getInputStream());
+            closeQuietly(process.getErrorStream());
+            awaitReadersUninterruptibly(stdoutReader, stderrReader);
+        }
+    }
+
+    private static IllegalStateException commandFailure(
+            String summary, BoundedOutput stderr, BoundedOutput stdout
+    ) {
+        String detail = stderr.value().isBlank() ? stdout.value() : stderr.value();
+        detail = redact(oneLine(detail));
+        if (detail.isBlank()) {
+            return new IllegalStateException(summary + ".");
+        }
+        return new IllegalStateException(summary + ": " + detail);
+    }
+
+    private static String redact(String value) {
+        String redacted = BEARER.matcher(value).replaceAll("Bearer [REDACTED]");
+        return SENSITIVE_VALUE.matcher(redacted).replaceAll("$1$2[REDACTED]");
+    }
+
+    private static String oneLine(String value) {
+        return value.replace('\n', ' ').replace('\r', ' ').strip();
+    }
+
+    private static void awaitReaders(Thread... readers) throws InterruptedException {
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        for (Thread reader : readers) {
+            Duration remaining = Duration.ofNanos(Math.max(0, deadline - System.nanoTime()));
+            if (!remaining.isZero()) {
+                reader.join(remaining);
+            }
+        }
+        if (java.util.Arrays.stream(readers).anyMatch(Thread::isAlive)) {
+            throw new IllegalStateException("Update command output did not close.");
+        }
+    }
+
+    private static void awaitReadersUninterruptibly(Thread... readers) {
+        boolean interrupted = Thread.interrupted();
+        long deadline = System.nanoTime() + Duration.ofSeconds(2).toNanos();
+        for (Thread reader : readers) {
+            while (reader.isAlive() && System.nanoTime() < deadline) {
+                try {
+                    reader.join(Duration.ofNanos(Math.max(1, deadline - System.nanoTime())));
+                } catch (InterruptedException e) {
+                    interrupted = true;
                 }
             }
-            Files.deleteIfExists(stdout);
+            if (reader.isAlive()) {
+                reader.interrupt();
+            }
+        }
+        if (interrupted) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
+    private static void closeQuietly(InputStream input) {
+        try {
+            input.close();
+        } catch (IOException ignored) {
+            // The process may already have closed the pipe.
+        }
+    }
+
+    private static final class BoundedOutput {
+        private final int limit;
+        private final boolean retainTail;
+        private final StringBuilder value = new StringBuilder();
+        private boolean truncated;
+
+        private BoundedOutput(int limit, boolean retainTail) {
+            this.limit = limit;
+            this.retainTail = retainTail;
+        }
+
+        private Thread readFrom(InputStream input, String name) {
+            return Thread.ofVirtual().name(name).start(() -> {
+                try (var reader = new InputStreamReader(input, StandardCharsets.UTF_8)) {
+                    char[] buffer = new char[2048];
+                    int read;
+                    while ((read = reader.read(buffer)) >= 0) {
+                        append(buffer, read);
+                    }
+                } catch (IOException ignored) {
+                    // Process termination may close the pipe while a reader is draining it.
+                }
+            });
+        }
+
+        private synchronized void append(char[] buffer, int length) {
+            if (retainTail) {
+                value.append(buffer, 0, length);
+                if (value.length() > limit) {
+                    value.delete(0, value.length() - limit);
+                    truncated = true;
+                }
+                return;
+            }
+            int remaining = limit - value.length();
+            if (remaining > 0) {
+                value.append(buffer, 0, Math.min(remaining, length));
+            }
+            truncated |= length > remaining;
+        }
+
+        private synchronized String value() {
+            return value.toString();
+        }
+
+        private synchronized boolean truncated() {
+            return truncated;
         }
     }
 

@@ -90,6 +90,8 @@ public final class DevProjectConfigMain {
             #         namespace: fluxzero_mp_prod-logs
 
             # Support services start before applications and frontends. Omit command for an external service.
+            # Managed services receive a graceful stop within gracefulShutdownTimeout before remaining processes
+            # are forced. stopCommand, when configured, runs first and shares that same shutdown deadline.
             # Named ports may be fixed numbers or dynamic. Service values can be used in app env and frontend fields.
             # services:
             #   victoriaLogs:

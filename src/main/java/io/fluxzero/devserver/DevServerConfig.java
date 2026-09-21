@@ -34,7 +34,7 @@ import java.util.Objects;
  * @param compileOnStart          whether to compile and launch the app on startup
  * @param testsEnabled            whether background tests are enabled
  * @param startupTimeout          timeout for app readiness
- * @param gracefulShutdownTimeout timeout for old app shutdown
+ * @param gracefulShutdownTimeout timeout for application and managed support-service shutdown
  * @param debounce                debounce duration for source/test changes
  * @param frontend                optional frontend adapter configuration
  * @param appArgs                 application arguments

@@ -55,6 +55,7 @@ public class DevServer implements AutoCloseable {
     private final IntPredicate dynamicPortConfirmation;
     private final TerminalProgress terminalProgress;
     private final DevSessionStore sessionStore;
+    private final Object sessionLifecycle = new Object();
     private final ScheduledExecutorService scheduler = new ScheduledThreadPoolExecutor(2);
     private final FrontendUpdateCoordinator frontendUpdates;
     private final AtomicBoolean closed = new AtomicBoolean();
@@ -131,7 +132,7 @@ public class DevServer implements AutoCloseable {
                 this::markFrontendUpdatesPending, this::refreshFrontends);
     }
 
-    public synchronized DevServer start() {
+    public DevServer start() {
         if (!started.compareAndSet(false, true)) {
             return this;
         }
@@ -424,6 +425,7 @@ public class DevServer implements AutoCloseable {
         config.services().forEach((id, serviceConfig) -> {
             DevServiceProcess process = DevServiceProcess.prepare(
                     id, serviceConfig, config.projectDirectory(), session.sessionId(),
+                    config.gracefulShutdownTimeout(),
                     status -> updateServiceStatus(id, status),
                     output -> printServiceOutput(id, output));
             serviceProcesses.put(id, process);
@@ -852,8 +854,9 @@ public class DevServer implements AutoCloseable {
         if (action.startsWith("update-devserver:")) {
             if (!restartSupported || updates == null) throw new IllegalStateException("Updating is not supported by this launcher.");
             if (!maintenanceBusy.compareAndSet(false, true)) throw new IllegalStateException("Maintenance is already running.");
-            System.setProperty("fluxzero.dev.updateAttempt", java.util.UUID.randomUUID().toString());
-            System.clearProperty("fluxzero.dev.updateError");
+            System.setProperty(DevServerUpdates.ATTEMPT_PROPERTY, java.util.UUID.randomUUID().toString());
+            System.setProperty(DevServerUpdates.PHASE_PROPERTY, "preparing");
+            System.clearProperty(DevServerUpdates.ERROR_PROPERTY);
             maintenanceError = "";
             return () -> maintenanceThread = Thread.ofVirtual().name("dev-server-update").start(() -> {
                 try {
@@ -1801,19 +1804,23 @@ public class DevServer implements AutoCloseable {
         devLogStore.observeStatus(source, serviceType, serviceId, instanceId, status.state(), status.detail());
     }
 
-    private synchronized void updateSession(UnaryOperator<DevSession> update) {
-        if (closed.get()) {
-            return;
+    private void updateSession(UnaryOperator<DevSession> update) {
+        synchronized (sessionLifecycle) {
+            if (closed.get()) {
+                return;
+            }
+            DevSession next = update.apply(session);
+            session = next;
+            sessionStore.writeSession(next);
         }
-        DevSession next = update.apply(session);
-        session = next;
-        sessionStore.writeSession(next);
     }
 
-    private synchronized void stopSession(String detail) {
-        DevSession next = session.withStoppedServices(detail);
-        session = next;
-        sessionStore.writeSession(next);
+    private void stopSession(String detail) {
+        synchronized (sessionLifecycle) {
+            DevSession next = session.withStoppedServices(detail);
+            session = next;
+            sessionStore.writeSession(next);
+        }
     }
 
     private void startHeartbeat() {
@@ -2055,7 +2062,7 @@ public class DevServer implements AutoCloseable {
             stoppedWorkspaceStatus = Map.copyOf(snapshot);
             updateSession(current -> current.withStatus("stopping"));
             closeResources(true);
-            synchronized (this) {
+            synchronized (sessionLifecycle) {
                 session = session.withStoppedServices("Workspace stopped; dashboard remains available")
                         .withStatus("idle").withGateway(gateway).withHeartbeat();
                 sessionStore.writeSession(session);
@@ -2072,7 +2079,7 @@ public class DevServer implements AutoCloseable {
             dashboardHeartbeat = Executors.newSingleThreadScheduledExecutor(
                     Thread.ofPlatform().daemon().name("dev-dashboard-heartbeat").factory());
             dashboardHeartbeat.scheduleAtFixedRate(() -> {
-                synchronized (DevServer.this) {
+                synchronized (sessionLifecycle) {
                     if (dashboardHeartbeat == null) return;
                     try {
                         session = session.withHeartbeat();
@@ -2088,7 +2095,7 @@ public class DevServer implements AutoCloseable {
         if (updates != null) updates.close();
         synchronized (shutdownLock) {
             closeResources(false);
-            synchronized (this) {
+            synchronized (sessionLifecycle) {
                 if (dashboardHeartbeat != null) {
                     dashboardHeartbeat.shutdownNow();
                     dashboardHeartbeat = null;
