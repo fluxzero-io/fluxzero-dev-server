@@ -74,6 +74,27 @@ public class DevServiceFixtureServer {
             new CountDownLatch(1).await();
             return;
         }
+        if ("graceful-port".equals(args[0])) {
+            int port = Integer.parseInt(args[1]);
+            Path resource = Path.of(args[2]);
+            Path cleaned = Path.of(args[3]);
+            Files.createFile(resource);
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                try {
+                    Files.deleteIfExists(resource);
+                    Files.writeString(cleaned, "cleaned");
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }));
+            try (ServerSocket server = new ServerSocket()) {
+                server.bind(new InetSocketAddress(InetAddress.getLoopbackAddress(), port));
+                System.out.println("READY");
+                System.out.flush();
+                new CountDownLatch(1).await();
+            }
+            return;
+        }
         if ("exit-gate".equals(args[0])) {
             Path control = Path.of(args[1]);
             Files.writeString(control.resolve("started"), "started");
