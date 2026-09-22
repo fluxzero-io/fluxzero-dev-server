@@ -77,7 +77,7 @@ final class DevServerBootstrap implements AutoCloseable {
                 if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Bootstrap cancelled");
                 synchronized (owned) {
                     if (closed) throw new InterruptedException("Bootstrap cancelled");
-                    pid = startDetached(root, javaCommand(DevServerMain.class.getName(), args));
+                    pid = startDetached(root, javaCommand(DevServerDetachedMain.class.getName(), args));
                     long startedAt = ProcessHandle.of(pid).flatMap(p -> p.info().startInstant())
                             .map(java.time.Instant::toEpochMilli).orElse(System.currentTimeMillis());
                     owned.set(new OwnedProcess(pid, startedAt, root));

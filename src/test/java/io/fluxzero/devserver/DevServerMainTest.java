@@ -92,7 +92,7 @@ class DevServerMainTest {
     void stopsWorkspaceAndStartsAgainThroughItsRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         ObjectMapper mapper = new ObjectMapper();
-        try (var http = java.net.http.HttpClient.newHttpClient()) {
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
             var before = mapper.readTree(sessionFile(projectDirectory).toFile());
             String base = before.path("gateway").path("url").asText();
@@ -105,7 +105,7 @@ class DevServerMainTest {
             assertFalse(stopped.path("maintenance").path("busy").asBoolean());
             assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
             assertTrue(process.isAlive(), "dashboard controller should remain alive");
-            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT)).build(),
+            assertEquals(200, http.send(request(java.net.URI.create(base + DevConsole.ROOT)).build(),
                                        java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
             assertEquals("idle", mapper.readTree(sessionFile(projectDirectory).toFile()).path("status").asText());
             assertEquals(409, dashboardAction(http, base, "stop-workspace"));
@@ -136,7 +136,7 @@ class DevServerMainTest {
     @Test
     void cliStopClosesTheRetainedDashboard(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
-        try (var http = java.net.http.HttpClient.newHttpClient()) {
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
             String base = new ObjectMapper().readTree(sessionFile(projectDirectory).toFile()).path("gateway").path("url").asText();
             assertEquals(202, dashboardAction(http, base, "stop-workspace"));
@@ -147,7 +147,7 @@ class DevServerMainTest {
     }
 
     private static int dashboardAction(java.net.http.HttpClient http, String base, String action) throws Exception {
-        return http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+        return http.send(request(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
                 .header("Origin", base).header("X-Fluxzero-Console", "1")
                 .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(), java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode();
     }
@@ -156,7 +156,7 @@ class DevServerMainTest {
         long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (System.nanoTime() < deadline) {
             try {
-                var response = http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json"))
+                var response = http.send(request(java.net.URI.create(base + DevConsole.ROOT + "status.json"))
                         .timeout(Duration.ofSeconds(2)).build(), java.net.http.HttpResponse.BodyHandlers.ofString());
                 var status = new ObjectMapper().readTree(response.body());
                 if (state.equals(status.path("state").asText()) && !status.path("maintenance").path("busy").asBoolean()) return status;
@@ -170,13 +170,13 @@ class DevServerMainTest {
     void restartsManagedEnvironmentOnTheSamePublicPortAndClearsMonitoringHistory(@TempDir Path projectDirectory) throws Exception {
         Process process = startServer(projectDirectory);
         ObjectMapper mapper = new ObjectMapper();
-        try (var http = java.net.http.HttpClient.newHttpClient()) {
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
             var before = mapper.readTree(sessionFile(projectDirectory).toFile());
             String base = before.path("gateway").path("url").asText();
             long runtimePid = before.path("runtime").path("pid").asLong();
             Path history = seedMonitoringHistory(projectDirectory);
-            var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/restart-devserver"))
+            var request = request(java.net.URI.create(base + DevConsole.ROOT + "actions/restart-devserver"))
                     .header("Origin", base).header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build();
             assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
             long deadline = System.nanoTime() + Duration.ofSeconds(30).toNanos();
@@ -194,7 +194,7 @@ class DevServerMainTest {
             assertFalse(ProcessHandle.of(runtimePid).map(ProcessHandle::isAlive).orElse(false));
             assertTrue(after.path("runtime").path("pid").asLong() != runtimePid);
             assertFalse(Files.exists(history), "Restart All must delete persisted VictoriaLogs history");
-            assertEquals(200, http.send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "status.json")).build(),
+            assertEquals(200, http.send(request(java.net.URI.create(base + DevConsole.ROOT + "status.json")).build(),
                                         java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
         } finally {
             runControl(projectDirectory, "stop");
@@ -209,7 +209,7 @@ class DevServerMainTest {
         Files.writeString(projectDirectory.resolve(DevProjectConfig.FILE), "version: 1\nmonitoring: {enabled: false}\n");
         Process process = startServer(projectDirectory);
         ObjectMapper mapper = new ObjectMapper();
-        try (var http = java.net.http.HttpClient.newHttpClient()) {
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             assertTrue(awaitRunningSession(sessionFile(projectDirectory)));
             var before = mapper.readTree(sessionFile(projectDirectory).toFile());
             String base = before.path("gateway").path("url").asText();
@@ -252,33 +252,33 @@ class DevServerMainTest {
                 """);
         Process process = startServer(directory);
         ObjectMapper mapper = new ObjectMapper();
-        try (var http = java.net.http.HttpClient.newHttpClient()) {
+        try (var http = java.net.http.HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build()) {
             assertTrue(awaitRunningSession(sessionFile(directory)));
             var before = mapper.readTree(sessionFile(directory).toFile());
             String base = before.path("gateway").path("url").asText();
             var statusUrl = java.net.URI.create(base + DevConsole.ROOT + "status.json");
-            var status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+            var status = mapper.readTree(http.send(request(statusUrl).build(),
                                                    java.net.http.HttpResponse.BodyHandlers.ofString()).body());
             assertEquals("local", status.path("profiles").path("active").asText());
             assertEquals(2, status.path("profiles").path("available").size());
             assertTrue(status.path("profiles").path("switchSupported").asBoolean());
             var switchUrl = java.net.URI.create(base + DevConsole.ROOT + "actions/switch-profile");
             for (String body : List.of("{}", "{", "{\"profile\":null}")) {
-                var request = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+                var request = request(switchUrl).header("Origin", base)
                         .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString(body)).build();
                 assertEquals(400, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
             }
-            var foreign = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", "https://example.com")
+            var foreign = request(switchUrl).header("Origin", "https://example.com")
                     .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
             assertEquals(403, http.send(foreign, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
-            var unknown = java.net.http.HttpRequest.newBuilder(switchUrl).header("Origin", base)
+            var unknown = request(switchUrl).header("Origin", base)
                     .header("X-Fluxzero-Console", "1").POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"missing\"}")).build();
             assertEquals(409, http.send(unknown, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
             assertEquals(before.path("sessionId"), mapper.readTree(sessionFile(directory).toFile()).path("sessionId"));
             Path history = seedMonitoringHistory(directory);
             for (String action : List.of("switch-profile", "restart-devserver")) {
                 long previousRuntime = before.path("runtime").path("pid").asLong();
-                var request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
+                var request = request(java.net.URI.create(base + DevConsole.ROOT + "actions/" + action))
                         .header("Origin", base).header("X-Fluxzero-Console", "1")
                         .POST(java.net.http.HttpRequest.BodyPublishers.ofString("{\"profile\":\"alternate\"}")).build();
                 assertEquals(202, http.send(request, java.net.http.HttpResponse.BodyHandlers.ofString()).statusCode());
@@ -296,7 +296,7 @@ class DevServerMainTest {
                 assertEquals(base, after.path("gateway").path("url").asText());
                 assertEquals(process.pid(), after.path("pid").asLong());
                 assertFalse(ProcessHandle.of(previousRuntime).map(ProcessHandle::isAlive).orElse(false));
-                status = mapper.readTree(http.send(java.net.http.HttpRequest.newBuilder(statusUrl).build(),
+                status = mapper.readTree(http.send(request(statusUrl).build(),
                                                   java.net.http.HttpResponse.BodyHandlers.ofString()).body());
                 assertEquals("alternate", status.path("profiles").path("active").asText());
                 before = after;
@@ -494,11 +494,20 @@ class DevServerMainTest {
 
     private static ProcessResult runControl(Path projectDirectory, Path registryDirectory, String action,
                                             String... options) throws Exception {
+        Path outputFile = Files.createTempFile(projectDirectory, "control-" + action + "-", ".out");
         Process process = startControl(projectDirectory, registryDirectory, action, options)
-                .redirectErrorStream(true).start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        assertTrue(process.waitFor(8, TimeUnit.SECONDS), "control process did not exit");
-        return new ProcessResult(process.exitValue(), output);
+                .redirectErrorStream(true).redirectOutput(outputFile.toFile()).start();
+        try {
+            assertTrue(process.waitFor(15, TimeUnit.SECONDS),
+                       () -> "control process did not exit: " + action + " (output: " + outputFile + ")");
+            return new ProcessResult(process.exitValue(), Files.readString(outputFile, StandardCharsets.UTF_8));
+        } finally {
+            if (process.isAlive()) ProcessUtils.forceStopTree(process);
+        }
+    }
+
+    private static java.net.http.HttpRequest.Builder request(java.net.URI uri) {
+        return java.net.http.HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10));
     }
 
     private static ProcessBuilder startControl(Path projectDirectory, String action, String... options) {

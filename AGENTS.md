@@ -28,8 +28,8 @@ integration boundary.
 
 - Use the Maven wrapper: `./mvnw` on Unix and `mvnw.cmd` on Windows.
 - Use JDK 25 for builds, tests, and the running dev server. Java 21 compatibility is not required.
-- The project currently compiles its own sources with `maven.compiler.release=21`; this bytecode target does not
-  imply Java 21 runtime support for the standalone distribution and its dependencies.
+- The server sources target Java 25, including the standard Foreign Function & Memory API for process
+  isolation. The separately compiled test listener retains its Java 8 target.
 - Full verification is `./mvnw -B clean install`.
 - Run focused tests with `./mvnw -B -Dtest=ClassName test`.
 - Run whole-application development workflow tests with `./mvnw -B verify -Pdev-server-e2e`.

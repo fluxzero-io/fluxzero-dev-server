@@ -36,7 +36,7 @@
     <properties>
         <project.build.outputTimestamp>${env.RELEASE_TIMESTAMP}</project.build.outputTimestamp>
         <updateBuildOutputTimestampPolicy>never</updateBuildOutputTimestampPolicy>
-        <maven.compiler.release>21</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <fluxzero.version>1.274.0</fluxzero.version>
@@ -349,6 +349,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.6</version>
                 <configuration>
+                    <argLine>--enable-native-access=ALL-UNNAMED</argLine>
                     <systemPropertyVariables>
                         <fluxzero.dev.registryDirectory>${project.build.directory}/dev-test-environments</fluxzero.dev.registryDirectory>
                         <fluxzero.dev.monitoringDefaults>${project.basedir}/src/test/resources/monitoring-disabled.yaml</fluxzero.dev.monitoringDefaults>
