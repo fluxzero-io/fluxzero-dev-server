@@ -32,8 +32,9 @@ Restart those environments with a dashboard-enabled Dev Server build to switch t
 
 The Total memory breakdown shows known versions after each service name, including the Dev Server,
 selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
-or update failures add a short notice and a navigation indicator. Tests and Startup show green success
-counts in navigation, replaced by red failure counts when errors exist.
+or update failures add a short notice and a navigation indicator. Tests shows its green success count
+beside the red failure count in one split navigation badge when errors exist. Startup replaces its green success
+count with the red failure count.
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
 Detailed diagnostics remain available through MCP.
 

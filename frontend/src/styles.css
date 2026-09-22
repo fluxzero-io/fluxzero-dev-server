@@ -319,6 +319,10 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .dashboard-nav-link .nav-issue-badge {flex:0 0 auto;margin-left:auto;min-width:18px;height:18px;padding:0 5px;display:inline-flex;align-items:center;justify-content:center;border-radius:9px;background:var(--dashboard-danger-text);color:var(--dashboard-surface, white);font-size:11px;font-weight:600;line-height:1;}
 .dashboard-nav-link .nav-result-badge {flex:0 0 auto;margin-left:auto;min-width:22px;height:20px;padding:0 6px;display:inline-flex;align-items:center;justify-content:center;border-radius:6px;background:var(--dashboard-success-bg);color:var(--dashboard-success-text);font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1;}
 .dashboard-nav-link .nav-result-badge.failed {background:var(--dashboard-danger-bg);color:var(--dashboard-danger-text);}
+.dashboard-nav-link .nav-result-badge.split-result {padding:0;overflow:hidden;background:transparent;}
+.dashboard-nav-link .nav-result-badge.split-result .nav-result-segment {display:inline-flex;flex:0 0 auto;align-items:center;justify-content:center;height:100%;padding:0 6px;}
+.dashboard-nav-link .nav-result-badge.split-result .nav-result-passed {background:var(--dashboard-success-bg);color:var(--dashboard-success-text);}
+.dashboard-nav-link .nav-result-badge.split-result .nav-result-failed {background:var(--dashboard-danger-bg);color:var(--dashboard-danger-text);}
 
 .resource-version {display:inline-block;max-width:calc(100% - 6px);margin-left:6px;color:var(--dashboard-muted);font-size:11px;line-height:1.3;}
 .workspace-heading .project-path {display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;}
