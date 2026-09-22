@@ -16,6 +16,8 @@ import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
+type ResultBadge = {value:string; failed:boolean; label:string; passedValue?:string};
+
 @Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
@@ -154,7 +156,10 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly testBadge = computed(() => {
     if (!this.badgesAvailable()) return null;
     const results=this.status()?.testResults;
-    return this.resultBadge(results?.passed || 0, results?.failed || 0, 'passed tests', 'failed tests');
+    const passed=results?.passed || 0,failed=results?.failed || 0;
+    return failed > 0
+      ? {value:String(failed),passedValue:String(passed),failed:true,label:passed+' passed tests, '+failed+' failed tests'}
+      : this.resultBadge(passed, 0, 'passed tests', 'failed tests');
   });
   readonly startupBadge = computed(() => {
     if (!this.badgesAvailable()) return null;
@@ -164,7 +169,7 @@ export class AppComponent implements OnInit, OnDestroy {
     return this.resultBadge(startup?.actions.filter(a => a.state === 'succeeded').length || 0, failed, 'completed startup actions', 'failed startup actions');
   });
   private badgesAvailable() {return this.connected() && !this.status()?.maintenance?.workspaceStopped && this.status()?.state !== 'shutdown';}
-  private resultBadge(passed:number, failed:number, successLabel:string, failureLabel:string) {
+  private resultBadge(passed:number, failed:number, successLabel:string, failureLabel:string):ResultBadge|null {
     return failed > 0 ? {value:String(failed),failed:true,label:failed+' '+failureLabel}
       : passed > 0 ? {value:String(passed),failed:false,label:passed+' '+successLabel} : null;
   }
