@@ -735,12 +735,17 @@ public class DevServer implements AutoCloseable {
                 .filter(p -> p.config.testsEnabled()).map(p -> p.testPipeline.inventory()).toList();
         boolean inventoryKnown = !inventories.isEmpty() && inventories.stream().allMatch(TestInventory.Snapshot::known);
         testResults.put("totalKnown", inventoryKnown);
-        if (inventoryKnown) {
+        // An undiscovered dynamic template makes the final total uncertain, not the existing results invalid.
+        // Keep the summary aligned with the catalog instead of falling back to only the current selection.
+        if (inventoryKnown || inventories.stream().anyMatch(i -> i.total() > 0)) {
             testResults.put("total", inventories.stream().mapToInt(TestInventory.Snapshot::total).sum());
             testResults.put("passed", inventories.stream().mapToInt(i -> i.counts().passed()).sum());
             testResults.put("failed", inventories.stream().mapToInt(i -> i.counts().failed()).sum());
             testResults.put("skipped", inventories.stream().mapToInt(i -> i.counts().skipped()).sum());
             testResults.put("available", true);
+            testResults.put("expectedTotal", testResults.get("total"));
+            testResults.put("state", testsRunning ? "running" : testsIncomplete ? "incomplete"
+                    : (int) testResults.get("failed") > 0 ? "failed" : "passed");
         }
         testResults.put("live",liveEvents);
         testResults.put("paused", automaticTestsPaused);

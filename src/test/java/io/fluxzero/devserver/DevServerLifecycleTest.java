@@ -163,6 +163,40 @@ class DevServerLifecycleTest {
     }
 
     @Test
+    void uncertainDynamicInventoryKeepsCatalogCountsDuringSelectiveRun(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external",
+                "--no-watch", "--no-compile-on-start"});
+        var inventory = new TestInventory(new DevSessionStore(project).directory());
+        inventory.discover("module", java.util.Set.of("demo.A#passed", "demo.A#failed"),
+                java.util.Set.of("[engine:junit-jupiter]/[class:demo.B]/[test-template:newCase(int)]"));
+        inventory.event("module", "passed", "demo.A#passed");
+        inventory.event("module", "failed", "demo.A#failed");
+        inventory.save();
+        assertFalse(inventory.snapshot().known());
+        try (DevServer server = new DevServer(config).start(); HttpClient http = HttpClient.newHttpClient()) {
+            var update = DevServer.class.getDeclaredMethod("updateTestStatus", String.class, TestStatus.class);
+            update.setAccessible(true);
+            update.invoke(server, config.projects().getFirst().id(), TestStatus.running(List.of("demo.B"), "selective run"));
+            String base = server.session().gateway().url();
+            var results = awaitConsoleStatus(http, base, status -> status.path("testResults").path("running").asBoolean())
+                    .path("testResults");
+            assertFalse(results.path("totalKnown").asBoolean());
+            assertEquals(2, results.path("total").asInt());
+            assertEquals(2, results.path("expectedTotal").asInt());
+            assertEquals(1, results.path("passed").asInt());
+            assertEquals(1, results.path("failed").asInt());
+            update.invoke(server, config.projects().getFirst().id(),
+                    TestStatus.completed(List.of("demo.B"), "selective run", 0, "done").withCounts(new TestCounts(1, 0, 0)));
+            results = awaitConsoleStatus(http, base, status -> !status.path("testResults").path("running").asBoolean())
+                    .path("testResults");
+            assertEquals(1, results.path("passed").asInt());
+            assertEquals(1, results.path("failed").asInt());
+            assertEquals("failed", results.path("state").asText());
+        }
+    }
+
+    @Test
     void restoredIncompleteTestResultIsReplacedByANewCompletedRun(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), "<project/>");
         var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--idp", "external",
