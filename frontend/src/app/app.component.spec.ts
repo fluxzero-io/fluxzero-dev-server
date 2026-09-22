@@ -527,6 +527,30 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectNone('status.json');
     TestBed.inject(HttpTestingController).expectNone('environments.json');
   });
+  it('keeps both result segments through live test runs without a refresh', () => {
+    const component=fixture.componentInstance;
+    const state=component.status()!;
+    const root:HTMLElement=fixture.nativeElement;
+    for(const results of [
+      {passed:160,failed:2,running:false},
+      {passed:0,failed:0,running:true},
+      {passed:2,failed:0,running:true},
+      {passed:160,failed:2,running:true},
+      {passed:160,failed:2,running:false},
+      {passed:160,failed:0,running:false},
+      {passed:160,failed:2,running:true}
+    ]) {
+      push({status:{...state,testResults:{...state.testResults!,...results,total:results.passed+results.failed}},environments:component.environments()});
+      fixture.detectChanges();
+      const badge=root.querySelector('a[href="#tests"] .nav-result-badge');
+      if(results.failed) {
+        expect(badge?.querySelector('.nav-result-passed')?.textContent).toBe(String(results.passed));
+        expect(badge?.querySelector('.nav-result-failed')?.textContent).toBe(String(results.failed));
+      } else {
+        expect(badge?.textContent ?? '').toBe(results.passed ? String(results.passed) : '');
+      }
+    }
+  });
   it('shows pushed test output as text and keeps long lines inside the mobile layout', async () => {
     openTests();openOutput();
     push({status:{...fixture.componentInstance.status()!,testOutput:[{sequence:1,module:'customer',text:'<script>example</script>'+ 'x'.repeat(500)}]},environments:[]});

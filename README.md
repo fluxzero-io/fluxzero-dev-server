@@ -35,6 +35,8 @@ selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Cur
 or update failures add a short notice and a navigation indicator. Tests shows its green success count
 beside the red failure count in one split navigation badge when errors exist. Startup replaces its green success
 count with the red failure count.
+During selective runs, test counters retain all known catalog results even when newly discovered dynamic tests
+make the final total uncertain; they do not fall back to counting only the current selection.
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
 Detailed diagnostics remain available through MCP.
 
