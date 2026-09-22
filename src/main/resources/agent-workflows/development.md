@@ -12,10 +12,10 @@ waiting for project events. Status and documentation calls never start developme
 `start_dev` already selects background ownership; it needs no interactive detach
 action. If the task requires a CLI or local-build launch instead, select background
 mode using that launcher's current help. Bare `fz dev` attaches a terminal whose
-closure stops the environment. For a temporary agent shell, also use the execution
-tool's supported detached process/session facility: shell `&` or `nohup` alone may
-remain in the process group that the tool cleans up on exit. After the launching
-command has finished, check fresh project status and the application URL before
+closure stops the environment. The shared bootstrap isolates background servers
+from the launching terminal/session before reporting startup; no agent-specific
+shell wrapper is needed. After the launching command has finished, check fresh
+project status and the application URL before
 handing it to the user. Preserve the startup logs and session identity if the
 process disappears; do not mistake it for a missing background flag or silently
 start a second environment.

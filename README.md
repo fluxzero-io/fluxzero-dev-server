@@ -205,8 +205,14 @@ fz dev list --json
 ```
 
 An attached environment is owned by its terminal and stops when that terminal closes or receives `Ctrl+C`.
-Use `d`, `detach`, or `fz dev --background` to transfer it explicitly to background ownership. Detached macOS
-jobs do not restart after login. `fz dev stop --all` stops every registered environment and removes stale
+Use `d`, `detach`, or `fz dev --background` to transfer it explicitly to background ownership. The shared
+bootstrap isolates the server before starting managed services: a separate session/process group on Unix,
+and no attached console on Windows. Input comes from the null device and output goes to the bootstrap log.
+After a successful background start, the server and its managed processes survive the CLI and its terminal
+session ending; `attach` is not needed. CLI, build-plugin, and MCP bootstrap launches share this behavior.
+If isolation fails, startup fails before a ready session is published. Background environments do not restart
+after login. Explicit stops, configured idle timeouts, and OS policies that terminate an entire job/container
+still apply. `fz dev stop --all` stops every registered environment and removes stale
 registrations; this is also the migration path for detached jobs created by older CLI releases.
 
 The global index under `~/.fluxzero/dev/environments/` contains only project paths and session/process identity.
