@@ -17,6 +17,7 @@ package io.fluxzero.devserver;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.net.URI;
@@ -24,6 +25,7 @@ import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.net.http.WebSocketHandshakeException;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletionStage;
@@ -34,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
 class DevConsoleUpdatesTest {
     private static final ObjectMapper JSON = new ObjectMapper();
 
@@ -152,17 +155,22 @@ class DevConsoleUpdatesTest {
         AtomicLong now = new AtomicLong();
         AtomicReference<Map<String,Object>> state = new AtomicReference<>(status(100, 50));
         var sent = new java.util.ArrayList<String>();
+        var connections = new java.util.ArrayList<DevConsoleUpdates.Connection>();
         var session = (org.eclipse.jetty.websocket.api.Session) java.lang.reflect.Proxy.newProxyInstance(
                 getClass().getClassLoader(), new Class<?>[]{org.eclipse.jetty.websocket.api.Session.class},
                 (proxy, method, args) -> {
                     if (method.getName().equals("sendText")) {
                         sent.add((String) args[0]);
                         ((org.eclipse.jetty.websocket.api.Callback) args[1]).succeed();
+                    } else if (method.getName().equals("close")) {
+                        ((org.eclipse.jetty.websocket.api.Callback) args[2]).succeed();
+                        connections.forEach(c -> c.onWebSocketClose(1001, "", org.eclipse.jetty.websocket.api.Callback.NOOP));
                     }
                     return null;
                 });
         try (var updates = new DevConsoleUpdates(state::get, List::of, now::get)) {
-            updates.connection().onWebSocketOpen(session);
+            connections.add(updates.connection());
+            connections.getLast().onWebSocketOpen(session);
             now.set(5000);
             state.set(status(200, 50));
             updates.refresh();
@@ -171,7 +179,8 @@ class DevConsoleUpdatesTest {
             assertFalse(delta.path("status").has("resourceHistory"));
             assertEquals(200, delta.path("sample").path("componentMemory").path("devserver").asLong());
             assertEquals(1L << 30, delta.path("sample").path("monitoringStorageMax").asLong());
-            updates.connection().onWebSocketOpen(session);
+            connections.add(updates.connection());
+            connections.getLast().onWebSocketOpen(session);
             JsonNode history = JSON.readTree(sent.getLast()).path("status").path("resourceHistory");
             assertEquals(2, history.size());
             assertEquals(100, history.get(0).path("componentMemory").path("devserver").asLong());
@@ -223,18 +232,18 @@ class DevConsoleUpdatesTest {
         AtomicReference<Map<String,Object>> state = new AtomicReference<>(status(100,50));
         var console = new DevConsole(state::get, null, new DevEnvironmentRegistry(directory));
         try (var gateway = DevGateway.start(null, List.of(new DevGateway.FrontendRoute("app","/","http://localhost:1",()->false)),
-                ()->false,List.of(),0,()->{},false,console); var client=HttpClient.newHttpClient()) {
+                ()->false,List.of(),0,()->{},false,console); var client = new WebSocketTestClient()) {
             URI endpoint = URI.create(gateway.url().replace("http:","ws:") + DevConsole.UPDATES);
             for (String origin : List.of("http://evil.example", "null", "http://localhost:1")) {
-                var failure=assertThrows(java.util.concurrent.ExecutionException.class, ()->client.newWebSocketBuilder().header("Origin",origin)
-                        .buildAsync(endpoint,new Messages()).get(5,TimeUnit.SECONDS));
+                var failure=assertThrows(java.util.concurrent.ExecutionException.class, ()->client.http.newWebSocketBuilder().header("Origin",origin)
+                        .buildAsync(endpoint,client.messages()).get(5,TimeUnit.SECONDS));
                 assertEquals(403,assertInstanceOf(WebSocketHandshakeException.class,failure.getCause()).getResponse().statusCode());
             }
-            var missingOrigin = assertThrows(java.util.concurrent.ExecutionException.class, ()->client.newWebSocketBuilder()
-                    .buildAsync(endpoint,new Messages()).get(5,TimeUnit.SECONDS));
+            var missingOrigin = assertThrows(java.util.concurrent.ExecutionException.class, ()->client.http.newWebSocketBuilder()
+                    .buildAsync(endpoint,client.messages()).get(5,TimeUnit.SECONDS));
             assertInstanceOf(WebSocketHandshakeException.class,missingOrigin.getCause());
-            Messages messages = new Messages();
-            WebSocket socket=client.newWebSocketBuilder().header("Origin",gateway.url()).buildAsync(endpoint,messages).get(5,TimeUnit.SECONDS);
+            Messages messages = client.messages();
+            WebSocket socket=client.http.newWebSocketBuilder().header("Origin",gateway.url()).buildAsync(endpoint,messages).get(5,TimeUnit.SECONDS);
             JsonNode initial=messages.next();
             assertEquals("snapshot",initial.path("type").asText());
             assertEquals(1,initial.path("status").path("resourceHistory").size());
@@ -249,14 +258,14 @@ class DevConsoleUpdatesTest {
             assertFalse(delta.path("status").has("resourceHistory"));
             assertEquals(200,delta.path("status").path("components").get(0).path("memoryBytes").asLong());
             socket.abort();
-            Messages second=new Messages();
-            WebSocket reconnected=client.newWebSocketBuilder().header("Origin",gateway.url()).buildAsync(endpoint,second).get(5,TimeUnit.SECONDS);
+            Messages second=client.messages();
+            WebSocket reconnected=client.http.newWebSocketBuilder().header("Origin",gateway.url()).buildAsync(endpoint,second).get(5,TimeUnit.SECONDS);
             JsonNode snapshot=second.next();
             assertEquals("snapshot",snapshot.path("type").asText());
             assertEquals(200,snapshot.path("status").path("components").get(0).path("memoryBytes").asLong());
             assertEquals(initial.path("status").path("resourceHistory").get(0),snapshot.path("status").path("resourceHistory").get(0));
             gateway.close();
-            second.closed.get(5,TimeUnit.SECONDS);
+            assertEquals(1001, second.closed.get(5,TimeUnit.SECONDS));
             reconnected.abort();
         }
     }
@@ -267,10 +276,10 @@ class DevConsoleUpdatesTest {
         var console = new DevConsole(() -> Map.of("testOutput", output.snapshot()), null, new DevEnvironmentRegistry(directory))
                 .withMaintenance(action -> {assertEquals("clear-test-output", action); output.clear();});
         try (var gateway = DevGateway.start(null, List.of(new DevGateway.FrontendRoute("app", "/", "http://localhost:1", () -> false)), () -> false, List.of(), 0, () -> {}, false, console);
-             var client = HttpClient.newHttpClient()) {
+             var client = new WebSocketTestClient()) {
             URI endpoint = URI.create(gateway.url().replace("http:", "ws:") + DevConsole.UPDATES);
-            Messages messages = new Messages();
-            WebSocket socket = client.newWebSocketBuilder().header("Origin", gateway.url()).buildAsync(endpoint, messages).get(5, TimeUnit.SECONDS);
+            Messages messages = client.messages();
+            WebSocket socket = client.http.newWebSocketBuilder().header("Origin", gateway.url()).buildAsync(endpoint, messages).get(5, TimeUnit.SECONDS);
             assertEquals("first", messages.next().path("status").path("testOutput").get(0).path("text").asText());
             output.add("app", "second"); console.updates.refresh();
             JsonNode delta;
@@ -281,12 +290,12 @@ class DevConsoleUpdatesTest {
             socket.abort();
             for (int i = 0; i < 210; i++) output.add("app", "line " + i);
             console.updates.refresh();
-            Messages reconnect = new Messages();
-            WebSocket second = client.newWebSocketBuilder().header("Origin", gateway.url()).buildAsync(endpoint, reconnect).get(5, TimeUnit.SECONDS);
+            Messages reconnect = client.messages();
+            WebSocket second = client.http.newWebSocketBuilder().header("Origin", gateway.url()).buildAsync(endpoint, reconnect).get(5, TimeUnit.SECONDS);
             JsonNode tail = reconnect.next().path("status").path("testOutput");
             assertEquals(200, tail.size()); assertEquals(13, tail.get(0).path("sequence").asLong());
             assertEquals("line 209", tail.get(199).path("text").asText());
-            var response=client.send(java.net.http.HttpRequest.newBuilder(URI.create(gateway.url()+DevConsole.ROOT+"actions/clear-test-output"))
+            var response=client.http.send(java.net.http.HttpRequest.newBuilder(URI.create(gateway.url()+DevConsole.ROOT+"actions/clear-test-output"))
                     .header("Origin",gateway.url()).header("X-Fluxzero-Console","1")
                     .POST(java.net.http.HttpRequest.BodyPublishers.noBody()).build(),java.net.http.HttpResponse.BodyHandlers.ofString());
             assertEquals(202,response.statusCode());console.updates.refresh();
@@ -316,18 +325,86 @@ class DevConsoleUpdatesTest {
         }
     }
 
+    @Test void shutdownBoundsUnresponsivePeersAndDoesNotHoldTheProjectionLock() {
+        var disconnects = new java.util.concurrent.atomic.AtomicInteger();
+        var updates = new DevConsoleUpdates(() -> status(100, 50), List::of, () -> 0);
+        var session = (org.eclipse.jetty.websocket.api.Session) java.lang.reflect.Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{org.eclipse.jetty.websocket.api.Session.class},
+                (proxy, method, args) -> {
+                    if (method.getName().equals("sendText")) {
+                        ((org.eclipse.jetty.websocket.api.Callback) args[1]).succeed();
+                    } else if (method.getName().equals("close")) {
+                        assertFalse(Thread.holdsLock(updates), "Close callbacks must be able to acquire the projection lock");
+                        assertEquals(1001, args[0]);
+                        // A peer that never acknowledges the close must be forcibly disconnected.
+                    } else if (method.getName().equals("disconnect")) {
+                        disconnects.incrementAndGet();
+                    }
+                    return null;
+                });
+        for (int i = 0; i < 4; i++) updates.connection().onWebSocketOpen(session);
+        assertTimeoutPreemptively(Duration.ofSeconds(3), updates::close);
+        assertEquals(4, disconnects.get());
+        updates.close();
+        assertEquals(4, disconnects.get(), "Repeated shutdown must be harmless");
+    }
+
+    @Test void clientCleanupPreservesFailureWithAnOpenWebSocket(@TempDir Path directory) {
+        var failure = new IllegalStateException("original test failure");
+        var console = new DevConsole(() -> Map.of(), null, new DevEnvironmentRegistry(directory));
+        assertTimeoutPreemptively(Duration.ofSeconds(10), () -> {
+            assertSame(failure, assertThrows(IllegalStateException.class, () -> {
+                try (var gateway = DevGateway.start(null, List.of(new DevGateway.FrontendRoute(
+                        "app", "/", "http://localhost:1", () -> false)), () -> false, List.of(), 0, () -> {}, false, console);
+                     var client = new WebSocketTestClient()) {
+                    var messages = client.messages();
+                    client.http.newWebSocketBuilder().header("Origin", gateway.url())
+                            .buildAsync(URI.create(gateway.url().replace("http:", "ws:") + DevConsole.UPDATES), messages)
+                            .get(5, TimeUnit.SECONDS);
+                    messages.next();
+                    throw failure;
+                }
+            }));
+        });
+    }
+
+    private static class WebSocketTestClient implements AutoCloseable {
+        final HttpClient http = HttpClient.newHttpClient();
+        final java.util.List<Messages> listeners = new java.util.ArrayList<>();
+        volatile boolean closing;
+
+        Messages messages() {
+            var listener = new Messages(this);
+            listeners.add(listener);
+            return listener;
+        }
+
+        @Override public void close() throws InterruptedException {
+            closing = true;
+            listeners.forEach(listener -> { if (listener.socket != null) listener.socket.abort(); });
+            http.shutdownNow();
+            assertTrue(http.awaitTermination(Duration.ofSeconds(5)), "WebSocket test client did not terminate");
+        }
+    }
+
     private static class Messages implements WebSocket.Listener {
         final LinkedBlockingQueue<JsonNode> received=new LinkedBlockingQueue<>();
-        final java.util.concurrent.CompletableFuture<Void> closed=new java.util.concurrent.CompletableFuture<>();
+        final java.util.concurrent.CompletableFuture<Integer> closed=new java.util.concurrent.CompletableFuture<>();
+        final WebSocketTestClient owner;
+        volatile WebSocket socket;
+        Messages(WebSocketTestClient owner) { this.owner = owner; }
         final StringBuilder text=new StringBuilder();
-        @Override public void onOpen(WebSocket socket) {socket.request(1);}
+        @Override public void onOpen(WebSocket socket) {
+            this.socket = socket;
+            if (owner.closing) socket.abort(); else socket.request(1);
+        }
         @Override public CompletionStage<?> onText(WebSocket socket,CharSequence data,boolean last) {
             text.append(data);
             if(last) {try {received.add(JSON.readTree(text.toString()));text.setLength(0);} catch(Exception e){throw new RuntimeException(e);}}
             socket.request(1);return null;
         }
-        @Override public CompletionStage<?> onClose(WebSocket socket,int code,String reason){closed.complete(null);return null;}
-        @Override public void onError(WebSocket socket,Throwable failure){closed.complete(null);}
+        @Override public CompletionStage<?> onClose(WebSocket socket,int code,String reason){closed.complete(code);return null;}
+        @Override public void onError(WebSocket socket,Throwable failure){closed.completeExceptionally(failure);}
         JsonNode next() throws Exception {JsonNode message=received.poll(5,TimeUnit.SECONDS);assertNotNull(message,"Expected console update");return message;}
     }
 }

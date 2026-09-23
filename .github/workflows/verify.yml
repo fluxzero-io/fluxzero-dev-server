@@ -43,6 +43,7 @@ jobs:
           java-version: "25"
           cache: maven
       - name: Build and test
+        timeout-minutes: 20
         run: ${{ matrix.maven }} -B clean install
       - name: Test Devboard frontend
         run: npm test --prefix frontend
