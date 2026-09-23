@@ -22,6 +22,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.Optional;
@@ -62,11 +63,10 @@ final class DevSessionStore {
 
     synchronized Optional<DevSession> readSession() {
         Path target = directory.resolve(SESSION_FILE);
-        if (!Files.isRegularFile(target)) {
-            return Optional.empty();
-        }
         try {
-            return Optional.of(objectMapper.readValue(target.toFile(), DevSession.class));
+            return Optional.of(objectMapper.readValue(AtomicFileUtils.readAllBytes(target), DevSession.class));
+        } catch (NoSuchFileException e) {
+            return Optional.empty();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read dev session file " + target, e);
         }
@@ -78,11 +78,10 @@ final class DevSessionStore {
 
     synchronized Optional<TestStatus> readTestStatus() {
         Path target = directory.resolve(TEST_STATUS_FILE);
-        if (!Files.isRegularFile(target)) {
-            return Optional.empty();
-        }
         try {
-            return Optional.of(objectMapper.readValue(target.toFile(), TestStatus.class));
+            return Optional.of(objectMapper.readValue(AtomicFileUtils.readAllBytes(target), TestStatus.class));
+        } catch (NoSuchFileException e) {
+            return Optional.empty();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read dev test status file " + target, e);
         }
@@ -94,11 +93,8 @@ final class DevSessionStore {
 
     synchronized Optional<TestInputSnapshot> readTestInputs() {
         Path target = directory.resolve(TEST_INPUTS_FILE);
-        if (!Files.isRegularFile(target)) {
-            return Optional.empty();
-        }
         try {
-            return Optional.of(objectMapper.readValue(target.toFile(), TestInputSnapshot.class));
+            return Optional.of(objectMapper.readValue(AtomicFileUtils.readAllBytes(target), TestInputSnapshot.class));
         } catch (IOException e) {
             return Optional.empty();
         }
@@ -110,11 +106,10 @@ final class DevSessionStore {
 
     synchronized Optional<DevCommandStatus> readCommandStatus() {
         Path target = directory.resolve(COMMAND_STATUS_FILE);
-        if (!Files.isRegularFile(target)) {
-            return Optional.empty();
-        }
         try {
-            return Optional.of(objectMapper.readValue(target.toFile(), DevCommandStatus.class));
+            return Optional.of(objectMapper.readValue(AtomicFileUtils.readAllBytes(target), DevCommandStatus.class));
+        } catch (NoSuchFileException e) {
+            return Optional.empty();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to read dev command status file " + target, e);
         }

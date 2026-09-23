@@ -16,15 +16,26 @@
 
 package io.fluxzero.devserver;
 
+import com.sun.nio.file.ExtendedOpenOption;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.channels.FileChannel;
+import java.nio.file.FileSystemException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServerControlMainTest {
@@ -57,6 +68,31 @@ class DevServerControlMainTest {
         new DevSessionStore(projectDirectory).writeSession(failed);
         assertEquals(1, DevServerControlMain.waitForStartup(
                 projectDirectory, failed.pid(), Duration.ofMillis(100), false, true));
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS)
+    void startupSurvivesWindowsSessionSharingViolation(@TempDir Path directory) throws Exception {
+        Path projectDirectory = Files.createDirectory(directory.resolve("Project with spaces"));
+        DevSession session = DevSession.empty(DevServerConfig.defaults(projectDirectory))
+                .withMcp(DevSession.ServiceStatus.running("mcp", "http://127.0.0.1:12345/mcp", 12345, null, null))
+                .withStatus("running");
+        var store = new DevSessionStore(projectDirectory);
+        store.writeSession(session);
+        Path target = store.directory().resolve(DevSessionStore.SESSION_FILE);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            Future<Integer> startup;
+            try (var locked = FileChannel.open(target, StandardOpenOption.READ, ExtendedOpenOption.NOSHARE_READ)) {
+                assertThrows(FileSystemException.class, () -> Files.readAllBytes(target));
+                startup = executor.submit(() -> DevServerControlMain.waitForStartup(
+                        projectDirectory, session.pid(), Duration.ofSeconds(5), false, true));
+                assertThrows(TimeoutException.class, () -> startup.get(150, TimeUnit.MILLISECONDS),
+                             "A sharing violation should wait for recovery, not abort startup");
+            }
+            assertEquals(0, startup.get(5, TimeUnit.SECONDS));
+        }
+        assertEquals(session.sessionId(), store.readSession().orElseThrow().sessionId());
+        assertEquals("running", store.readSession().orElseThrow().status());
     }
 
     @Test

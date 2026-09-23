@@ -19,10 +19,14 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -59,6 +63,47 @@ class DevSessionStoreTest {
         assertTrue(store.readSession().isPresent());
         assertEquals(session.sessionId(), store.readSession().orElseThrow().sessionId());
         assertEquals(42L, store.readSession().orElseThrow().services().get("logs").pid());
+    }
+
+    @Test
+    void missingSessionIsEmptyButMalformedSnapshotIsReported(@TempDir Path projectDirectory) throws Exception {
+        var store = new DevSessionStore(projectDirectory);
+        assertTrue(store.readSession().isEmpty());
+        Files.createDirectories(store.directory());
+        Files.writeString(store.directory().resolve(DevSessionStore.SESSION_FILE), "{broken");
+
+        var failure = assertThrows(IllegalStateException.class, store::readSession);
+        assertTrue(failure.getMessage().contains("session.json"));
+        assertTrue(failure.getCause() instanceof IOException);
+    }
+
+    @Test
+    void concurrentStoresReadCompleteSnapshotsDuringReplacement(@TempDir Path directory) throws Exception {
+        Path projectDirectory = Files.createDirectory(directory.resolve("Project with spaces"));
+        var writer = new DevSessionStore(projectDirectory);
+        var reader = new DevSessionStore(projectDirectory);
+        DevSession first = DevSession.empty(DevServerConfig.defaults(projectDirectory)).withStatus("running");
+        DevSession second = DevSession.empty(DevServerConfig.defaults(projectDirectory)).withStatus("stopped");
+        writer.writeSession(first);
+        var start = new CyclicBarrier(2);
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var writes = executor.submit(() -> {
+                start.await(5, TimeUnit.SECONDS);
+                for (int i = 0; i < 250; i++) writer.writeSession(i % 2 == 0 ? second : first);
+                return null;
+            });
+            var reads = executor.submit(() -> {
+                start.await(5, TimeUnit.SECONDS);
+                for (int i = 0; i < 250; i++) {
+                    DevSession snapshot = reader.readSession().orElseThrow();
+                    assertTrue(snapshot.equals(first) || snapshot.equals(second), "Snapshot must be one complete version");
+                }
+                return null;
+            });
+            writes.get(15, TimeUnit.SECONDS);
+            reads.get(15, TimeUnit.SECONDS);
+        }
+        assertFalse(hasTemporaryFiles(writer.directory()));
     }
 
     @Test
