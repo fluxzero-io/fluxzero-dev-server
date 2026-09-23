@@ -16,6 +16,7 @@ package io.fluxzero.devserver;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -37,14 +38,21 @@ final class AtomicFileUtils {
         retrySharingViolation(() -> Files.deleteIfExists(target));
     }
 
-    private static void retrySharingViolation(IoOperation operation) throws IOException {
+    static byte[] readAllBytes(Path target) throws IOException {
+        // NIO opens Windows handles with FILE_SHARE_DELETE, allowing the writer to replace the snapshot.
+        return retrySharingViolation(() -> Files.readAllBytes(target));
+    }
+
+    static <T> T retrySharingViolation(IoOperation<T> operation) throws IOException {
         long deadline = System.nanoTime() + SHARING_VIOLATION_TIMEOUT.toNanos();
         while (true) {
             try {
-                operation.run();
-                return;
-            } catch (AccessDeniedException e) {
-                if (System.nanoTime() >= deadline) {
+                return operation.run();
+            } catch (FileSystemException e) {
+                // Windows maps sharing violations to an unclassified FileSystemException with a localized
+                // reason. Do not match English messages or retry typed permanent failures (e.g. missing files).
+                if (!(e instanceof AccessDeniedException || e.getClass() == FileSystemException.class)
+                    || System.nanoTime() >= deadline) {
                     throw e;
                 }
                 try {
@@ -58,7 +66,7 @@ final class AtomicFileUtils {
     }
 
     @FunctionalInterface
-    private interface IoOperation {
-        void run() throws IOException;
+    interface IoOperation<T> {
+        T run() throws IOException;
     }
 }
