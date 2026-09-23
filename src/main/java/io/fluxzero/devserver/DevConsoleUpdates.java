@@ -23,10 +23,14 @@ import org.eclipse.jetty.websocket.api.Session;
 import java.time.Duration;
 import java.util.ArrayDeque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.LongSupplier;
 import java.util.function.Supplier;
@@ -188,14 +192,33 @@ public final class DevConsoleUpdates implements AutoCloseable {
 
     Connection connection() { return new Connection(); }
 
-    @Override public synchronized void close() {
-        closed = true;
-        worker.shutdownNow();
-        for (Connection connection : Set.copyOf(connections)) connection.stop();
-        history.clear();
+    @Override public void close() {
+        List<Connection> closing;
+        synchronized (this) {
+            if (closed) return;
+            closed = true;
+            worker.shutdownNow();
+            closing = List.copyOf(connections);
+            closing.forEach(Connection::stopSending);
+            history.clear();
+        }
+        // Let clients observe a CLOSE frame before the gateway tears down its connectors. Never wait
+        // under the projection lock: Jetty's completion callbacks need that same lock.
+        closing.forEach(Connection::closeGracefully);
+        try {
+            CompletableFuture.allOf(closing.stream().map(c -> c.terminated)
+                                            .toArray(CompletableFuture[]::new)).get(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (ExecutionException | TimeoutException ignored) {
+            // An unresponsive peer must not hold up dev-server shutdown.
+        } finally {
+            closing.stream().filter(c -> !c.terminated.isDone()).forEach(c -> c.session.disconnect());
+        }
     }
 
     public final class Connection extends Session.Listener.AbstractAutoDemanding {
+        private final CompletableFuture<Void> terminated = new CompletableFuture<>();
         private final ArrayDeque<String> outgoing = new ArrayDeque<>();
         private Session session;
         private boolean sending;
@@ -245,12 +268,24 @@ public final class DevConsoleUpdates implements AutoCloseable {
         }
 
         private void checkSlow(long now) { if (sending && now - sendStarted > 10_000) stop(); }
-        private void stop() {
-            if (stopped) return;
+        private void closeGracefully() {
+            try {
+                session.close(1001, "Dev server stopping", Callback.from(() -> {}, failure -> session.disconnect()));
+            } catch (Exception ignored) {
+                session.disconnect();
+            }
+        }
+
+        private void stopSending() {
             stopped = true;
             connections.remove(this);
             outgoing.clear();
             queuedBytes = 0;
+        }
+
+        private void stop() {
+            if (stopped) return;
+            stopSending();
             if (session != null) session.disconnect();
         }
         @Override public void onWebSocketText(String ignored) { synchronized (DevConsoleUpdates.this) { stop(); } }
@@ -260,6 +295,7 @@ public final class DevConsoleUpdates implements AutoCloseable {
         }
         @Override public void onWebSocketClose(int code, String reason, Callback callback) {
             synchronized (DevConsoleUpdates.this) { stop(); }
+            terminated.complete(null);
             callback.succeed();
         }
         @Override public void onWebSocketError(Throwable cause) { synchronized (DevConsoleUpdates.this) { stop(); } }
