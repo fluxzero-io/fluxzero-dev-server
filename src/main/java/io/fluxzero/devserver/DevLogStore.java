@@ -18,6 +18,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
@@ -58,6 +59,14 @@ final class DevLogStore implements AutoCloseable {
     private static final Pattern LEVEL = Pattern.compile(
             "(?i)(?:^|\\s|\\[)(ERROR|WARN|WARNING|INFO|DEBUG|TRACE)(?:]|:|\\s)");
 
+    // Normalize volatile timestamps and identifiers; message text (including status codes) stays distinct.
+    private static final Pattern LOG_TIMESTAMP = Pattern.compile(
+            "\\b(?:\\d{4}-\\d{2}-\\d{2}[T ])?\\d{2}:\\d{2}:\\d{2}(?:[.,]\\d+)?(?:Z|[+-]\\d{2}:?\\d{2})?\\b");
+    private static final Pattern UUID_VALUE = Pattern.compile(
+            "(?i)\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b");
+    private static final Pattern LOG_HEADER = Pattern.compile(
+            "^<time>\\s+(?:\\[[^]\\r\\n]*]\\s+)?(ERROR|WARN|WARNING)\\s+(?:\\[[^]\\r\\n]*]\\s+)?");
+
     private final String sessionId;
     private final String defaultApplicationName;
     private final ObjectMapper objectMapper = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
@@ -74,6 +83,7 @@ final class DevLogStore implements AutoCloseable {
     private final int maxArchives;
     private long combinedLogLines;
     private long lastCombinedLogLine;
+    private final DiagnosticsPublisher diagnosticsPublisher;
     private boolean closed;
 
     DevLogStore(Path projectDirectory, String sessionId, String defaultApplicationName) {
@@ -99,10 +109,12 @@ final class DevLogStore implements AutoCloseable {
             Files.createDirectories(sessionDirectory);
             retainRecentSessions(sessionDirectory.getParent(), sessionDirectory);
             combinedLogLines = countLines(combinedLog);
-            writeDiagnostics();
+            writeDiagnostics(diagnostics());
         } catch (IOException e) {
             throw new IllegalStateException("Failed to initialize Fluxzero dev logging in " + sessionDirectory, e);
         }
+        diagnosticsPublisher = new DiagnosticsPublisher(this::snapshot, this::writeDiagnostics,
+                                                         this::notifyDiagnosticsListeners);
     }
 
     synchronized void accept(String line) {
@@ -324,7 +336,7 @@ final class DevLogStore implements AutoCloseable {
         if (level.atLeast(WARN)) {
             String summary = summary(message);
             String key = String.join("|", "log", nullToEmpty(serviceType), nullToEmpty(serviceId),
-                                     nullToEmpty(instanceId), level.name(), summary);
+                                     nullToEmpty(instanceId), level.name(), problemFingerprint(message));
             upsertProblem(key, level, "log", event, summary, message);
         }
     }
@@ -338,6 +350,7 @@ final class DevLogStore implements AutoCloseable {
         try {
             appendRotating(eventsFile, lineMapper.writeValueAsString(event));
             lastCombinedLogLine = appendCombinedLog(humanLine(event));
+            diagnosticsPublisher.changed();
             notifyAll();
             return event;
         } catch (IOException e) {
@@ -356,7 +369,7 @@ final class DevLogStore implements AutoCloseable {
                 : existing.observedAgain(safeDetail(detail), event.timestamp(), event.sequence());
         activeProblems.put(id, problem);
         writeProblemChange("observed", problem, null);
-        writeDiagnosticsUnchecked();
+        diagnosticsPublisher.changed();
     }
 
     private void resolveProblems(Predicate<DevProblem> predicate, String reason) {
@@ -368,7 +381,7 @@ final class DevLogStore implements AutoCloseable {
             activeProblems.remove(problem.id());
             writeProblemChange("resolved", problem, reason);
         });
-        writeDiagnosticsUnchecked();
+        diagnosticsPublisher.changed();
     }
 
     private void writeProblemChange(String state, DevProblem problem, String reason) {
@@ -385,25 +398,41 @@ final class DevLogStore implements AutoCloseable {
         }
     }
 
-    private void writeDiagnosticsUnchecked() {
-        try {
-            writeDiagnostics();
-            diagnosticsListeners.forEach(listener -> {
-                try {
-                    listener.run();
-                } catch (RuntimeException ignored) {
-                    // Diagnostics persistence must not fail because an optional observer disconnected.
-                }
-            });
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to write Fluxzero dev diagnostics", e);
-        }
+    private synchronized DevDiagnostics snapshot() {
+        // Copy immutable problem records under the ingestion lock; sort and serialize outside it.
+        return new DevDiagnostics(sessionId, activeProblems.size(), 0, 0,
+                                  List.copyOf(activeProblems.values()), sequence.get(), Instant.now().toEpochMilli());
     }
 
-    private void writeDiagnostics() throws IOException {
+    private void notifyDiagnosticsListeners() {
+        List<Runnable> listeners;
+        synchronized (this) {
+            listeners = List.copyOf(diagnosticsListeners);
+        }
+        listeners.forEach(listener -> {
+            try {
+                listener.run();
+            } catch (RuntimeException ignored) {
+                // A disconnected optional observer must not prevent persistence or the next notification.
+            }
+        });
+    }
+
+    private void writeDiagnostics(DevDiagnostics snapshot) throws IOException {
+        List<DevProblem> problems = sortProblems(snapshot.problems());
+        DevDiagnostics sorted = new DevDiagnostics(snapshot.sessionId(), problems.size(), count(problems, ERROR),
+                                                   count(problems, WARN), problems, snapshot.lastEventSequence(),
+                                                   snapshot.updatedAt());
         Files.createDirectories(diagnosticsFile.getParent());
-        Path temporary = diagnosticsFile.resolveSibling(diagnosticsFile.getFileName() + ".tmp");
-        objectMapper.writeValue(temporary.toFile(), diagnostics());
+        Path temporary = sessionDirectory.resolve(DIAGNOSTICS_FILE + ".tmp");
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedIOException("Diagnostics publication interrupted");
+        }
+        objectMapper.writeValue(temporary.toFile(), sorted);
+        if (Thread.currentThread().isInterrupted()) {
+            Files.deleteIfExists(temporary);
+            throw new InterruptedIOException("Diagnostics publication interrupted");
+        }
         try {
             Files.move(temporary, diagnosticsFile, StandardCopyOption.ATOMIC_MOVE,
                        StandardCopyOption.REPLACE_EXISTING);
@@ -603,7 +632,11 @@ final class DevLogStore implements AutoCloseable {
     }
 
     private List<DevProblem> sortedProblems() {
-        return activeProblems.values().stream()
+        return sortProblems(List.copyOf(activeProblems.values()));
+    }
+
+    private static List<DevProblem> sortProblems(List<DevProblem> problems) {
+        return problems.stream()
                 .sorted(Comparator.comparingInt((DevProblem problem) -> problem.severity().ordinal()).reversed()
                                 .thenComparing(Comparator.comparingLong(DevProblem::lastSeenAt).reversed()))
                 .toList();
@@ -633,6 +666,13 @@ final class DevLogStore implements AutoCloseable {
 
     private static String formatDetail(String detail) {
         return detail == null || detail.isBlank() ? "" : ": " + detail;
+    }
+
+    private static String problemFingerprint(String message) {
+        String firstLine = message == null ? "" : message.lines().findFirst().orElse("");
+        String normalized = LOG_TIMESTAMP.matcher(firstLine).replaceAll("<time>");
+        normalized = LOG_HEADER.matcher(normalized).replaceFirst("$1 ");
+        return UUID_VALUE.matcher(normalized).replaceAll("<id>").strip();
     }
 
     private static String summary(String message) {
@@ -696,9 +736,13 @@ final class DevLogStore implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
-        closed = true;
-        notifyAll();
+    public void close() {
+        synchronized (this) {
+            closed = true;
+            notifyAll();
+        }
+        // Never join the publisher while holding the lock it needs to capture the final state.
+        diagnosticsPublisher.close();
     }
 
     private record ParsedLine(String source, String stream, DevLogEvent.Level level, String message) {

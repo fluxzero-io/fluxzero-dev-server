@@ -2149,9 +2149,9 @@ public class DevServer implements AutoCloseable {
         closeQuietly(monitoring);
         closeQuietly(idpService);
         closeQuietly(testServer);
-        if (!keepDashboard) closeQuietly(sessionLock);
         closeQuietly(embeddedLogCapture);
         closeQuietly(devLogStore);
+        if (!keepDashboard) closeQuietly(sessionLock);
         closeQuietly(terminalProgress);
         embeddedLogCapture = null;
     }

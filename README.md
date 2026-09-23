@@ -290,6 +290,15 @@ has a lower log level than the resolved problem.
 Problem transitions are ordered by the shared event cursor. All events and transitions with the same causal sequence
 are returned as one indivisible page group, so retrying a request from the same cursor remains safe.
 
+Log events and problem transitions are recorded in order as output is received. MCP snapshots and cursors reflect
+that current state immediately. The `diagnostics.json` file and resource-change notifications are coalesced by a
+single background writer, with a 250 ms delay between writes; slow storage may delay publication further without
+queuing snapshots or serializing them on child-output readers. Shutdown waits up to five seconds to flush the final accepted state
+and reports timeouts and persistence failures to stderr; failed background writes are retried.
+Repeated log problems ignore timestamps, UUID values and timestamped log-header thread names when grouping.
+Logger, message text, severity, service and instance remain significant. Display summaries retain the first
+occurrence, details show the latest occurrence, and original events remain available in the rotating log history.
+
 Launchers resolve the latest compatible stable `1.x` release from [Fluxzero Packages](https://packages.fluxzero.io/). A specific development or
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.
