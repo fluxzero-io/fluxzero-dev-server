@@ -58,8 +58,86 @@ class DevLogStoreTest {
             assertEquals(1, diagnostics.errors());
             assertEquals(1, diagnostics.warnings());
             assertTrue(Files.readString(store.problemsFile()).contains("observed"));
-            assertEquals(2, objectMapper.readTree(store.diagnosticsFile().toFile()).path("activeCount").asInt());
+
         }
+    }
+
+    @Test
+    void groupsChangingLogMetadataButKeepsDistinctCausesAndFullHistory(@TempDir Path directory) throws Exception {
+        Path diagnostics;
+        try (DevLogStore store = new DevLogStore(directory, "session", "orders")) {
+            diagnostics = store.diagnosticsFile();
+            for (int i = 0; i < 20; i++) {
+                store.process("app", "application", "orders", "orders-1", "stdout",
+                              "2026-09-23T12:00:00.%03dZ [worker-%d] WARN example.Handler - request %s failed: HTTP 409"
+                                      .formatted(i, i, java.util.UUID.randomUUID()));
+            }
+            assertEquals(1, store.diagnostics().activeCount());
+            assertEquals(20, store.diagnostics().problems().getFirst().occurrences());
+            assertTrue(store.diagnostics().problems().getFirst().detail().contains(".019Z [worker-19]"));
+            assertEquals(20, store.readEvents(0, 100, null, null).size());
+            assertEquals(20, store.readProblemChanges(0, 100, problem -> true).size());
+            store.process("app", "application", "orders", "orders-1", "stdout",
+                          "2026-09-23T12:00:01.000Z [worker-1] WARN example.Handler - request "
+                          + java.util.UUID.randomUUID() + " failed: HTTP 503");
+            assertEquals(2, store.diagnostics().activeCount());
+            store.resolveInstance("orders", "orders-1", "replaced");
+            store.accept("INFO final cursor");
+        }
+        JsonNode persisted = objectMapper.readTree(diagnostics.toFile());
+        assertEquals(0, persisted.path("activeCount").asInt());
+        assertEquals(23, persisted.path("lastEventSequence").asLong());
+    }
+
+    @Test
+    void keepsMessagesDistinctBeyondDisplaySummary(@TempDir Path directory) {
+        try (DevLogStore store = new DevLogStore(directory, "session", "orders")) {
+            store.accept("WARN " + "context ".repeat(50) + "unavailable");
+            store.accept("WARN " + "context ".repeat(50) + "unauthorized");
+            assertEquals(2, store.diagnostics().activeCount());
+        }
+    }
+
+    @Test
+    void slowNotificationsDoNotBlockIngestionOrFreshMcpReads(@TempDir Path directory) throws Exception {
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        DevSession session = DevSession.empty(DevServerConfig.defaults(directory));
+        try (DevLogStore store = new DevLogStore(directory, session.sessionId(), "orders")) {
+            try (var ignored = store.onDiagnosticsChanged(() -> {
+                entered.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            })) {
+                java.util.concurrent.CompletableFuture.runAsync(() -> store.accept("WARN first"))
+                        .get(2, java.util.concurrent.TimeUnit.SECONDS);
+                assertTrue(entered.await(2, java.util.concurrent.TimeUnit.SECONDS));
+                var ingestion = java.util.concurrent.CompletableFuture.runAsync(() -> {
+                    store.accept("WARN second");
+                    store.accept("WARN second");
+                });
+                ingestion.get(2, java.util.concurrent.TimeUnit.SECONDS);
+                AgentQueryService service = new AgentQueryService(() -> session, store);
+                AgentProblemPage page = service.getActiveProblems(AgentSelector.all(), 10);
+                assertEquals(3, page.cursor().sequence());
+                assertEquals(2, page.activeProblemCount());
+                AgentChange change = service.waitForChange(new AgentCursor(session.sessionId(), 1),
+                                                          AgentSelector.all(), java.time.Duration.ZERO, 10);
+                assertEquals(3, change.cursor().sequence());
+                assertEquals(2, change.activeProblemCount());
+                assertEquals(List.of(AgentProblemChange.Type.ADDED, AgentProblemChange.Type.CHANGED),
+                             change.problemChanges().stream().map(AgentProblemChange::type).toList());
+            } finally {
+                release.countDown();
+            }
+        }
+        JsonNode persisted = objectMapper.readTree(directory.resolve(DevSessionStore.DEV_DIRECTORY)
+                                                          .resolve(DevLogStore.DIAGNOSTICS_FILE).toFile());
+        assertEquals(2, persisted.path("activeCount").asInt());
+        assertEquals(3, persisted.path("lastEventSequence").asLong());
     }
 
     @Test
