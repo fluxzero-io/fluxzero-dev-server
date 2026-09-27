@@ -65,7 +65,8 @@ Normal waits exclude raw log output, including for callers that omit `types`.
 alongside it. An empty delta does not mean healthy: inspect `activeProblemCount`.
 For concrete diagnosis, use `get_logs` from a saved earlier cursor. To follow
 new diagnostic output, temporarily select `types: ["logs", "problems"]` (or
-`["logs"]` for logs alone). Log selection returns full messages, including
+`["logs"]` for logs alone). Explicit `types` replaces the default selection;
+it does not add to it, so `["logs"]` omits problem transitions. Log selection returns full messages, including
 lifecycle detail. Do not routinely subscribe to logs. Types share a cursor:
 changing types does not replay skipped history; retain the pre-edit cursor for
 retrospective diagnosis. Keep types and selectors stable while draining `hasMore`.

@@ -66,7 +66,8 @@ final class DevMcpTools {
                             logProperties(false), handler),
                 projectTool("get_test_status", "Return background test and startup-command status.", Map.of(), handler),
                 projectTool("wait_for_change", "Wait for selected changes after a cursor. Omitted types defaults to status and problems: "
-                            + "compact lifecycle states and problem transitions, without raw logs. Select logs explicitly "
+                            + "compact lifecycle states and problem transitions, without raw logs. Explicit types replaces the "
+                            + "default selection: [logs] omits problemChanges; use [logs, problems] for both. Select logs explicitly "
                             + "only for diagnosis; logs includes full event messages, including lifecycle detail. "
                             + "Apply problemChanges by id; use get_active_problems for full details or on "
                             + "activeProblemCount mismatch. After edits, pass sessionId and afterSequence from "
@@ -215,7 +216,8 @@ final class DevMcpTools {
             properties.put("types", Map.of("type", "array", "minItems", 1, "uniqueItems", true,
                     "items", Map.of("type", "string", "enum", List.of("status", "problems", "logs")),
                     "default", List.of("status", "problems"),
-                    "description", "Change types to follow. Defaults to compact status and problems. "
+                    "description", "Replaces the default [status, problems] selection; it does not add to it. "
+                            + "[logs] returns full events without problemChanges; [logs, problems] returns both. "
                             + "Select logs only for diagnosis. Types share the cursor; use an earlier cursor or get_logs "
                             + "to inspect previously skipped output."));
         }

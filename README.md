@@ -275,6 +275,8 @@ redaction and unavailable-backend behavior.
 
 `wait_for_change` accepts an optional non-empty `types` array: `status`, `problems`, `logs`.
 Omitting it defaults to `["status", "problems"]`, including for existing clients that do not send types.
+Explicit `types` replaces the default selection; it does not add to it. For example, `["logs"]` returns full events
+without problem transitions; use `["logs", "problems"]` for both.
 The response fields and cursor format are unchanged; ordinary log output is now opt-in.
 
 - `status`: lifecycle events in `events`, with `message` reduced to the state (for example `running`, `passed`,
