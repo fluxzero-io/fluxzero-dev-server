@@ -29,6 +29,14 @@ public record DevLogEvent(
         String stream,
         String message
 ) {
+    /** Status messages are written as state followed by optional ": " detail. Keep detail in get_logs. */
+    DevLogEvent compactStatus() {
+        int detailStart = message.indexOf(": ");
+        String state = detailStart < 0 ? message : message.substring(0, detailStart);
+        return new DevLogEvent(sequence, timestamp, level, source, serviceType, serviceId, instanceId,
+                               operationId, stream, state);
+    }
+
     public enum Level {
         TRACE, DEBUG, INFO, WARN, ERROR;
 

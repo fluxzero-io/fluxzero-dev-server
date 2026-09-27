@@ -48,11 +48,11 @@ final class DevMcpServer implements AutoCloseable {
     static final String ENDPOINT = "/mcp";
     static final String DIAGNOSTICS_RESOURCE = "fluxzero://environment/current/diagnostics";
     static final String TOKEN_FILE = "mcp-token";
-    static final String INSTRUCTIONS = "Read get_workflow for relevant dev-server guidance. Call get_status; retain cursor. After edits use wait_for_change with sessionId/"
-                                       + "afterSequence; drain hasMore until relevant work is terminal. Apply problemChanges "
-                                       + "by id; get_active_problems on activeProblemCount mismatch, sessionChanged or lost "
-                                       + "state. If waiting-for-project, generate in session.projectDirectory without "
-                                       + "replacing MCP.";
+    static final String INSTRUCTIONS = "Read get_workflow for dev guidance. Call get_status; retain cursor. After edits call wait_for_change with "
+            + "sessionId/afterSequence; drain hasMore until relevant work is terminal. Omitted types means status+problems; "
+            + "select logs only for diagnosis. Apply problemChanges by id; get_active_problems on count mismatch, "
+            + "sessionChanged or lost state. If waiting-for-project, generate in session.projectDirectory without replacing "
+            + "MCP.";
 
     private final Server server;
     private final McpSyncServer mcpServer;

@@ -142,6 +142,39 @@ class DevMcpServerTest {
                 Map<String, Object> problemSummary = (Map<String, Object>) problemChange.get("problem");
                 assertFalse(problemSummary.containsKey("detail"));
                 assertEquals("ERROR startup failed", problemSummary.get("summary"));
+                assertTrue(((List<?>) waitContent.get("events")).isEmpty());
+                assertFalse(wait.content().toString().contains("stack detail only"));
+                assertFalse(wait.structuredContent().toString().contains("stack detail only"));
+
+                McpSchema.CallToolResult logs = client.callTool(
+                        McpSchema.CallToolRequest.builder("wait_for_change")
+                                .arguments(Map.of("sessionId", session.sessionId(), "afterSequence", beforeProblem,
+                                                  "timeoutMs", 0, "types", List.of("logs")))
+                                .build());
+                assertFalse(Boolean.TRUE.equals(logs.isError()));
+                Map<?, ?> logContent = (Map<?, ?>) logs.structuredContent();
+                assertEquals(1, ((List<?>) logContent.get("events")).size());
+                assertTrue(((List<?>) logContent.get("problemChanges")).isEmpty());
+                assertEquals(1, logContent.get("activeProblemCount"));
+                assertTrue(logContent.toString().contains("stack detail only"));
+
+                var waitTool = client.listTools().tools().stream()
+                        .filter(tool -> "wait_for_change".equals(tool.name())).findFirst().orElseThrow();
+                Map<?, ?> typesSchema = (Map<?, ?>) ((Map<?, ?>) waitTool.inputSchema().get("properties")).get("types");
+                assertEquals(List.of("status", "problems"), typesSchema.get("default"));
+                assertEquals(List.of("status", "problems", "logs"),
+                             ((Map<?, ?>) typesSchema.get("items")).get("enum"));
+                for (Object invalidTypes : java.util.Arrays.asList(null, List.of(), "logs", 1,
+                        List.of("unknown"), List.of("logs", "unknown"), List.of("logs", "logs"),
+                        List.of("LOGS"), List.of(1), java.util.Arrays.asList("logs", null))) {
+                    Map<String, Object> arguments = new java.util.HashMap<>();
+                    arguments.put("types", invalidTypes);
+                    arguments.put("timeoutMs", 0);
+                    var invalid = client.callTool(new McpSchema.CallToolRequest("wait_for_change", arguments));
+                    assertTrue(Boolean.TRUE.equals(invalid.isError()), String.valueOf(invalidTypes));
+                    assertTrue(invalid.content().toString().contains("types"));
+                }
+
             }
         }
         assertFalse(Files.exists(tokenFile), "shutdown should remove the session bearer token");

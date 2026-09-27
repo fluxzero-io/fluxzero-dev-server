@@ -42,10 +42,11 @@ For each implementation iteration:
 
 1. Call `get_status` and remember its session ID and cursor before editing.
 2. Make one coherent source or test change.
-3. Call `wait_for_change` with that cursor. Inspect the returned structured
-   events, advance to its returned cursor, and wait again while work relevant to
-   the edit is still in progress. Do not stop merely because the first
-   `source-changed` or `compile-started` event arrived.
+3. Call `wait_for_change` with that cursor. Omit `types` for the compact default
+   `["status", "problems"]`. Inspect lifecycle states in `events` and changes in
+   `problemChanges`, advance to its returned cursor, and wait again while work
+   relevant to the edit is still in progress. Do not stop merely because an
+   initial `starting` or `running` compile/test event arrived.
 4. For a backend change, wait through compile/reload. If the Dev Server starts a
    relevant test run, follow its lifecycle event to `passed` or `failed` and
    corroborate it with `get_test_status.tests`. If it selects no tests, a stable
@@ -58,6 +59,17 @@ For each implementation iteration:
 5. On a terminal failure or degraded service, inspect `get_active_problems`,
    then `get_test_status`, then only the bounded log slice needed for diagnosis.
    Fix the reported cause and repeat from a fresh status cursor.
+
+Normal waits exclude raw log output, including for callers that omit `types`.
+`events[].message` contains the lifecycle state; use service identity and source
+alongside it. An empty delta does not mean healthy: inspect `activeProblemCount`.
+For concrete diagnosis, use `get_logs` from a saved earlier cursor. To follow
+new diagnostic output, temporarily select `types: ["logs", "problems"]` (or
+`["logs"]` for logs alone). Explicit `types` replaces the default selection;
+it does not add to it, so `["logs"]` omits problem transitions. Log selection returns full messages, including
+lifecycle detail. Do not routinely subscribe to logs. Types share a cursor:
+changing types does not replay skipped history; retain the pre-edit cursor for
+retrospective diagnosis. Keep types and selectors stable while draining `hasMore`.
 
 ### Empty-target initialization
 

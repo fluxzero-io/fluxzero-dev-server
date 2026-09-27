@@ -238,9 +238,17 @@ final class DevLogStore implements AutoCloseable {
     synchronized AgentChangeSlice readAgentChanges(long afterSequence, int requestedLimit,
                                                     Predicate<DevLogEvent> eventPredicate,
                                                     Predicate<DevProblem> problemPredicate) {
+        return readAgentChanges(afterSequence, requestedLimit, eventPredicate, problemPredicate, true);
+    }
+
+    synchronized AgentChangeSlice readAgentChanges(long afterSequence, int requestedLimit,
+                                                    Predicate<DevLogEvent> eventPredicate,
+                                                    Predicate<DevProblem> problemPredicate,
+                                                    boolean includeProblems) {
         int limit = Math.max(1, Math.min(requestedLimit, 500));
         HistoryBatch<DevLogEvent> eventBatch = readEventBatch(afterSequence, limit, eventPredicate);
-        HistoryBatch<AgentProblemChange> problemBatch = readProblemBatch(afterSequence, limit, problemPredicate);
+        HistoryBatch<AgentProblemChange> problemBatch = includeProblems
+                ? readProblemBatch(afterSequence, limit, problemPredicate) : new HistoryBatch<>(List.of(), false);
         Map<Long, SequenceGroup> groups = new TreeMap<>();
         eventBatch.records().forEach(event -> groups.computeIfAbsent(event.sequence(), ignored -> new SequenceGroup())
                 .events().add(event));
