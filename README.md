@@ -353,9 +353,11 @@ io.fluxzero.tools:fluxzero-dev-server:<version>:standalone
 Every push to `main` that passes the cross-platform build, whole-application tests, frontend framework tests, and
 release packaging validation produces a semantic release. The release publishes first to Fluxzero Packages.
 An independent consumer with an empty Maven cache verifies the downloaded artifacts and starts and stops the
-standalone server before the GitHub release is created. Until 1 October 2026, the workflow also publishes to
-Maven Central and verifies that publication. From that date, new releases are available only from Fluxzero
-Packages; existing Central releases remain available. The first release is `1.0.0`; breaking launcher,
+standalone server before the GitHub release is created. Until 1 October 2026, a separate job also uploads to
+Maven Central for automatic publication. That job returns after upload; neither the pipeline nor the GitHub release
+waits for Central processing or download availability. Upload failures remain visible in the Central job and do not
+block the GitHub release after successful Packages verification. From that date, new releases are available only
+from Fluxzero Packages; existing Central releases remain available. The first release is `1.0.0`; breaking launcher,
 configuration, session, or control protocol changes require a new major version.
 
 Dependabot tracks the Fluxzero SDK BOM independently. Non-major SDK updates are automatically merged only after

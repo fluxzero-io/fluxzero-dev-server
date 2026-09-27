@@ -179,8 +179,6 @@ jobs:
     name: Publish to Maven Central
     needs: [version, packages-smoke]
     runs-on: ubuntu-latest
-    outputs:
-      publish: ${{ steps.central_window.outputs.publish }}
     steps:
       - name: Determine Maven Central publication window
         id: central_window
@@ -230,45 +228,9 @@ jobs:
           MAVEN_GPG_KEY: ${{ secrets.OSSRH_SIGNING_KEY }}
           MAVEN_GPG_PASSPHRASE: ${{ secrets.OSSRH_SIGNING_PASSPHRASE }}
 
-  central-smoke:
-    name: Verify published artifact
-    needs: [version, central]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-        if: needs.central.outputs.publish == 'true'
-      - name: Install Java
-        if: needs.central.outputs.publish == 'true'
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "25"
-      - name: Resolve standalone artifact from Central
-        if: needs.central.outputs.publish == 'true'
-        env:
-          RELEASE_VERSION: ${{ needs.version.outputs.version }}
-          SMOKE_REPOSITORY: ${{ runner.temp }}/central-smoke
-        shell: bash
-        run: |
-          for attempt in $(seq 1 40); do
-            if ./mvnw -q -Dmaven.repo.local="$SMOKE_REPOSITORY" \
-                org.apache.maven.plugins:maven-dependency-plugin:3.11.0:get \
-                -Dartifact="io.fluxzero.tools:fluxzero-dev-server:$RELEASE_VERSION:jar:standalone" \
-                -Dtransitive=false \
-                -DremoteRepositories=central::default::https://repo.maven.apache.org/maven2; then
-              break
-            fi
-            if [ "$attempt" = 40 ]; then
-              echo "Release did not become resolvable from Maven Central" >&2
-              exit 1
-            fi
-            sleep 15
-          done
-          java -jar "$SMOKE_REPOSITORY/io/fluxzero/tools/fluxzero-dev-server/$RELEASE_VERSION/fluxzero-dev-server-$RELEASE_VERSION-standalone.jar" --version
-
   github-release:
     name: Publish GitHub release
-    needs: [version, central-smoke, package]
+    needs: [version, packages-smoke, package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
