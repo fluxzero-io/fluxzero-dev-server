@@ -229,7 +229,16 @@ class AgentDocsMcpTest {
                     }
                     changed.set(new CountDownLatch(1));
                     client.subscribeResource(new McpSchema.SubscribeRequest(DevMcpServer.DIAGNOSTICS_RESOURCE));
+                    long beforeFailure = logs.lastSequence();
                     logs.process("app", "application", "orders", "orders-1", "stderr", "ERROR intentional failure");
+                    var compact = call(client, "wait_for_change", Map.of("sessionId", session.sessionId(),
+                            "afterSequence", beforeFailure, "timeoutMs", 0));
+                    assertTrue(compact.path("events").isEmpty());
+                    assertEquals(1, compact.path("problemChanges").size());
+                    var full = call(client, "wait_for_change", Map.of("sessionId", session.sessionId(),
+                            "afterSequence", beforeFailure, "timeoutMs", 0, "types", List.of("logs")));
+                    assertEquals("ERROR intentional failure", full.at("/events/0/message").asText());
+                    assertTrue(full.path("problemChanges").isEmpty());
                     assertTrue(changed.get().await(3, TimeUnit.SECONDS));
                     assertTrue(call(client, "get_active_problems", Map.of()).toString().contains("intentional failure"));
                     assertEquals(tools, client.listTools().tools());

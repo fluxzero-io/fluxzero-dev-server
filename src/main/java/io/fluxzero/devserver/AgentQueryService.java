@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -68,6 +70,18 @@ public final class AgentQueryService {
 
     public AgentChange waitForChange(AgentCursor cursor, AgentSelector selector, Duration requestedTimeout,
                                      int requestedLimit) {
+        return waitForChange(cursor, selector, requestedTimeout, requestedLimit, AgentChangeType.DEFAULT_TYPES);
+    }
+
+    public AgentChange waitForChange(AgentCursor cursor, AgentSelector selector, Duration requestedTimeout,
+                                     int requestedLimit, Set<AgentChangeType> types) {
+        Set<AgentChangeType> selectedTypes = types == null ? AgentChangeType.DEFAULT_TYPES : Set.copyOf(types);
+        if (selectedTypes.isEmpty()) {
+            throw new IllegalArgumentException("types must contain at least one of: status, problems, logs");
+        }
+        boolean includeLogs = selectedTypes.contains(AgentChangeType.LOGS);
+        boolean includeStatus = selectedTypes.contains(AgentChangeType.STATUS);
+        boolean includeProblems = selectedTypes.contains(AgentChangeType.PROBLEMS);
         AgentCursor current = currentCursor();
         if (cursor != null && !current.sessionId().equals(cursor.sessionId())) {
             AgentProblemPage problems = getActiveProblems(selector, requestedLimit);
@@ -78,26 +92,29 @@ public final class AgentQueryService {
         long deadline = System.nanoTime() + timeout.toNanos();
         long scanSequence = cursor == null ? current.sequence() : cursor.sequence();
         AgentSelector effectiveSelector = selector == null ? AgentSelector.all() : selector;
+        Predicate<DevLogEvent> eventFilter = event -> effectiveSelector.matches(event)
+                && (includeLogs || includeStatus && "lifecycle".equals(event.stream()));
         while (true) {
             DevLogStore.AgentChangeSlice page = logStore.readAgentChanges(
-                    scanSequence, limit(requestedLimit), effectiveSelector::matches, effectiveSelector::matches);
+                    scanSequence, limit(requestedLimit), eventFilter, effectiveSelector::matches, includeProblems);
             if (!page.events().isEmpty() || !page.problemChanges().isEmpty()) {
-                return change(page, false);
+                return change(page, false, includeLogs);
             }
             scanSequence = Math.max(scanSequence, page.cursorSequence());
             long remaining = deadline - System.nanoTime();
             if (remaining <= 0 || !logStore.awaitEventAfter(scanSequence, Duration.ofNanos(remaining))) {
                 DevLogStore.AgentChangeSlice finalPage = logStore.readAgentChanges(
-                        scanSequence, limit(requestedLimit), effectiveSelector::matches,
-                        effectiveSelector::matches);
-                return change(finalPage, finalPage.events().isEmpty() && finalPage.problemChanges().isEmpty());
+                        scanSequence, limit(requestedLimit), eventFilter, effectiveSelector::matches, includeProblems);
+                return change(finalPage, finalPage.events().isEmpty() && finalPage.problemChanges().isEmpty(), includeLogs);
             }
         }
     }
 
-    private AgentChange change(DevLogStore.AgentChangeSlice page, boolean timedOut) {
+    private AgentChange change(DevLogStore.AgentChangeSlice page, boolean timedOut, boolean includeLogs) {
+        List<DevLogEvent> events = includeLogs ? page.events()
+                : page.events().stream().map(DevLogEvent::compactStatus).toList();
         return new AgentChange(new AgentCursor(logStore.sessionId(), page.cursorSequence()), false, timedOut,
-                               page.events(), page.problemChanges(), page.activeProblemCount(), page.hasMore());
+                               events, page.problemChanges(), page.activeProblemCount(), page.hasMore());
     }
 
     private AgentLogPage logPage(long afterSequence, AgentSelector selector, int requestedLimit,

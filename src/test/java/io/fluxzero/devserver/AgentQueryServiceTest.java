@@ -110,7 +110,7 @@ class AgentQueryServiceTest {
             AgentCursor cursor = service.getStatus().cursor();
 
             CompletableFuture<AgentChange> waiting = CompletableFuture.supplyAsync(
-                    () -> service.waitForChange(cursor, orders, Duration.ofSeconds(2), 10));
+                    () -> service.waitForChange(cursor, orders, Duration.ofSeconds(2), 10, Set.of(AgentChangeType.LOGS)));
             store.process("app", "application", "billing", "billing-1", "stdout", "INFO irrelevant");
             Thread.sleep(50);
             assertFalse(waiting.isDone());

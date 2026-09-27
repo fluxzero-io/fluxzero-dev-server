@@ -44,7 +44,7 @@ final class DevMcpTools {
                     case "get_test_status" -> queryService.getTestStatus();
                     case "wait_for_change" -> queryService.waitForChange(cursor(arguments, queryService),
                             selector(arguments), Duration.ofMillis(longValue(arguments, "timeoutMs", 30_000)),
-                            intValue(arguments, "limit", AgentQueryService.DEFAULT_LIMIT));
+                            intValue(arguments, "limit", AgentQueryService.DEFAULT_LIMIT), changeTypes(arguments));
                     default -> throw new IllegalArgumentException("Unknown project tool: " + request.name());
                 };
                 return result(value, objectMapper);
@@ -65,7 +65,9 @@ final class DevMcpTools {
                 projectTool("get_logs", "Return a bounded structured log delta after a session-aware cursor.",
                             logProperties(false), handler),
                 projectTool("get_test_status", "Return background test and startup-command status.", Map.of(), handler),
-                projectTool("wait_for_change", "Wait for matching events or active-problem transitions after a cursor. "
+                projectTool("wait_for_change", "Wait for selected changes after a cursor. Omitted types defaults to status and problems: "
+                            + "compact lifecycle states and problem transitions, without raw logs. Select logs explicitly "
+                            + "only for diagnosis; logs includes full event messages, including lifecycle detail. "
                             + "Apply problemChanges by id; use get_active_problems for full details or on "
                             + "activeProblemCount mismatch. After edits, pass sessionId and afterSequence from "
                             + "the prior cursor. Drain hasMore immediately using the returned cursor.",
@@ -150,6 +152,29 @@ final class DevMcpTools {
         }
     }
 
+    private static Set<AgentChangeType> changeTypes(Map<String, Object> arguments) {
+        if (!arguments.containsKey("types")) {
+            return AgentChangeType.DEFAULT_TYPES;
+        }
+        if (!(arguments.get("types") instanceof List<?> values) || values.isEmpty()) {
+            throw new IllegalArgumentException("types must be a non-empty array of: status, problems, logs");
+        }
+        Set<AgentChangeType> result = new LinkedHashSet<>();
+        for (Object value : values) {
+            AgentChangeType type = switch (value) {
+                case String name when "status".equals(name) -> AgentChangeType.STATUS;
+                case String name when "problems".equals(name) -> AgentChangeType.PROBLEMS;
+                case String name when "logs".equals(name) -> AgentChangeType.LOGS;
+                case null, default -> throw new IllegalArgumentException(
+                        "types must contain only: status, problems, logs");
+            };
+            if (!result.add(type)) {
+                throw new IllegalArgumentException("types must not contain duplicates");
+            }
+        }
+        return Set.copyOf(result);
+    }
+
     private static AgentCursor cursor(Map<String, Object> arguments, AgentQueryService queryService) {
         String sessionId = stringValue(arguments.get("sessionId"));
         Object sequence = arguments.get("afterSequence");
@@ -187,6 +212,12 @@ final class DevMcpTools {
         properties.put("afterSequence", integer("Return events after this sequence."));
         if (includeTimeout) {
             properties.put("timeoutMs", integer("Wait timeout in milliseconds, capped at 30000."));
+            properties.put("types", Map.of("type", "array", "minItems", 1, "uniqueItems", true,
+                    "items", Map.of("type", "string", "enum", List.of("status", "problems", "logs")),
+                    "default", List.of("status", "problems"),
+                    "description", "Change types to follow. Defaults to compact status and problems. "
+                            + "Select logs only for diagnosis. Types share the cursor; use an earlier cursor or get_logs "
+                            + "to inspect previously skipped output."));
         }
         return properties;
     }

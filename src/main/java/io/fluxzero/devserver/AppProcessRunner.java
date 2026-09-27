@@ -117,7 +117,7 @@ final class AppProcessRunner {
         command.addAll(config.appArgs());
 
         Map<String, String> resolvedApplicationEnvironment = placeholderResolver.resolve(application.environment());
-        output.accept(application.applicationName(), clientId, "lifecycle",
+        output.accept(application.applicationName(), clientId, "configuration",
                       "configuration " + application.launchId() + ", module " + application.module()
                       + ", main class " + mainClass
                       + (application.environment().isEmpty() ? ""

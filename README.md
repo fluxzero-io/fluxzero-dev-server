@@ -271,7 +271,27 @@ message payloads and document content are requested separately. See the
 [monitoring MCP reference](docs/monitoring-mcp.md) for tools, examples, limits,
 redaction and unavailable-backend behavior.
 
-### Agent Problem Deltas
+### Agent Change Types and Problem Deltas
+
+`wait_for_change` accepts an optional non-empty `types` array: `status`, `problems`, `logs`.
+Omitting it defaults to `["status", "problems"]`, including for existing clients that do not send types.
+The response fields and cursor format are unchanged; ordinary log output is now opt-in.
+
+- `status`: lifecycle events in `events`, with `message` reduced to the state (for example `running`, `passed`,
+  or `failed`). Service identity and sequence are preserved; lifecycle detail stays available in `get_logs`.
+- `problems`: compact `problemChanges` as described below.
+- `logs`: full event messages in `events`, including lifecycle detail. Combine with `problems` when diagnosing
+  failures, or select only `logs` to follow output. Combining `status` and `logs` returns each event once, in full.
+
+Keep the default types during normal development. Select logs only to investigate a concrete issue, such as a
+stalled process or an unexplained failure. Unknown types, duplicates, empty arrays and non-array values are rejected.
+`activeProblemCount` always reports the selected services' current problem count, even when `problems` is not requested.
+
+All types share the event cursor and existing selectors, timeout and page limits. Only selected records consume
+page space or cause a wait to return with changes. Advancing a cursor skips earlier records for subsequent requests,
+including when changing types. For retrospective diagnosis, use `get_logs` from a saved earlier cursor; reading status
+never consumes log history. History remains subject to the existing log retention limits. Drain `hasMore` using the
+same types and selectors. Resynchronize with `get_status`/`get_active_problems` after a session change.
 
 The MCP `wait_for_change` tool is a cursor delta. Its `problemChanges` field contains only selected problems that were
 `added`, `changed`, or `resolved` after the supplied cursor; it never repeats the complete active problem snapshot.

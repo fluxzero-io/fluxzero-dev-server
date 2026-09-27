@@ -36,11 +36,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Agent-owned MCP server: local documentation and an optional connection to the project environment. */
 public final class DevMcpStdioMain {
-    static final String INSTRUCTIONS = "Use get_workflow for current dev workflows. Use docs_start, then search/read relevant articles; preserve namespace/version. "
-            + "Use select_project to inspect/change the app directory. Call get_status for readiness; call start_dev "
-            + "when development is needed; poll get_status while starting. Docs work without it. "
-            + "After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Apply problemChanges by id; "
-            + "get_active_problems on activeProblemCount mismatch or sessionChanged.";
+    static final String INSTRUCTIONS = "Use get_workflow for dev guidance; docs_start then search/read articles, preserving namespace/version. Use "
+            + "select_project for the app directory. Call get_status; start_dev when needed, then poll status. Docs work "
+            + "without it. After edits use wait_for_change with sessionId/afterSequence; drain hasMore. Omitted types means "
+            + "status+problems; select logs only for diagnosis. Apply problemChanges by id; get_active_problems on "
+            + "activeProblemCount mismatch or sessionChanged.";
 
     private DevMcpStdioMain() {}
 

@@ -326,7 +326,7 @@ class DevServerLifecycleTest {
                     .waitForChange(cursor, AgentSelector.all(), Duration.ZERO, 200);
             assertFalse(activation.sessionChanged());
             assertTrue(activation.events().stream().anyMatch(event ->
-                    event.message().contains("build project detected")));
+                    "project".equals(event.source()) && "starting".equals(event.message())));
         }
     }
 
