@@ -534,6 +534,75 @@ are available to application and frontend configuration as
 while service health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the
 same session.
 
+A service may instead declare `container` to let Dev Server own the container lifecycle:
+
+```yaml
+services:
+  web:
+    container:
+      image: registry.example/team/web@sha256:<64-hex-digest>
+      runtime: docker                 # or podman / a compatible CLI executable
+      pull: always                    # always (alias: verify), if-missing, never
+      ports: {http: 8080}              # container-side TCP ports
+      mounts:
+        - {source: ./local/web.conf, target: /etc/app/web.conf, readOnly: true}
+      hostGateway: host-gateway       # explicit gateway IP may be used where required
+      # network: existing-network     # optional; otherwise Dev Server owns a session network
+      # user: "1000:1000"
+      # readOnly: true
+      # capDrop: [ALL]
+      # securityOpt: [no-new-privileges]
+      # command: [server, --port, "8080"]
+    ports: {http: dynamic}            # host-side ports; names must match container.ports
+    url: http://127.0.0.1:{servicePort.http}
+    readiness: {http: "{url}/health", timeout: 2m}
+    env: {APP_MODE: development}
+    # setupCommand and stopCommand remain available for small project-owned hooks.
+```
+
+`container.image` must include an immutable SHA-256 digest; mutable tags are rejected. `container` and the
+host-shell `command` are mutually exclusive. Preparation (runtime check, image pull and container creation)
+is bounded by `readiness.timeout`, followed by the normal bounded readiness checks. Ports are always published
+on `127.0.0.1`. Bind-mount sources are resolved relative to the service directory and must already exist;
+`setupCommand` may create them before the container starts. Service environment values are passed through the
+runtime process environment, not embedded in command arguments or the ownership journal.
+
+The adapter uses the Docker-compatible `info`, `image inspect`, `pull`, `container create/start/stop/ls/rm`,
+`network create/inspect/ls/rm` and manifest commands. `driver` defaults to `podman` for an executable named
+`podman`, otherwise `docker`; set it explicitly when using a wrapper. Registry verification performs a fresh
+remote manifest lookup independently of the local image cache. Docker uses a temporary local manifest transaction
+(never pushed); Podman refuses to treat an existing local manifest list as registry verification. `registryInsecure`
+is off by default; explicitly setting it allows HTTP/self-signed registry access for manifest checks (and Podman
+pulls). Docker daemon pulls still follow the daemon's own registry policy. Docker and Podman provide this interface; an alternative runtime or
+wrapper must implement the same flags. Registry credentials remain in the runtime's existing credential store
+or helper. Dev Server does not perform login or accept registry passwords in its configuration, and suppresses
+raw registry/creation output from logs and diagnostics. See the [Docker run reference](https://docs.docker.com/reference/cli/docker/container/run/)
+and [Podman run reference](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for runtime-specific network semantics.
+
+With `always`/`verify` (the default), both remote manifest verification and the pull must succeed even with a warm cache. `if-missing` checks the registry
+only when the pinned reference is absent; `never` requires it in the cache. Service metadata separately reports
+`container.cachedBeforePull`, `container.registryAccess` (`not-checked`, `verified`, `failed`), image ID, requested
+digest, phase and failure category. A warm cache alone never means registry access was verified.
+
+Containers in the same session and runtime share an owned network and can resolve each other by service id.
+The neutral host alias `fluxzero.host.internal` maps to `container.hostGateway` (default `host-gateway`); the host
+service must bind to a reachable interface. For an ingress container, `gateway.host: fluxzero.host.internal`
+and an appropriate explicit `gateway.bindAddress` use the same alias. Podman VM/rootless or other network setups
+may require an explicit host gateway IP. An explicitly named existing network is used but never removed.
+
+Attached runtime output feeds the existing service log/readiness handling and `output.redact` rules. Exiting
+containers fail the service; restarting the environment recreates them. Session/project labels and an atomic
+`.fluxzero/dev/containers.json` ownership journal precede resource creation. Normal shutdown first gives containers a bounded graceful stop, then removes owned
+containers and their shared network after the last service; the next Dev Server start reconciles interrupted
+sessions before launching replacements. Cleanup never removes resources without matching ownership labels and
+fails visibly if the runtime is unavailable. Keep the journal when recovering an interrupted session; it contains
+resource names and runtime paths, not credentials or environment values. Existing command-backed and external
+services continue to work without container tooling.
+
+The opt-in `ContainerServicesE2EIT` qualification requires Docker and can be run with
+`./mvnw -B -Dtest=ContainerServicesE2EIT -Dfluxzero.dev.containerE2e=true test`. It exercises a private local registry
+with isolated fixture credentials, cache/pull policies, real readiness and interrupted-session cleanup.
+
 A managed service can own the public application origin. Select it with `publicIngress` (also supported inside
 named profiles); its `url` must resolve to an HTTP(S) origin without a path, query, fragment or credentials:
 

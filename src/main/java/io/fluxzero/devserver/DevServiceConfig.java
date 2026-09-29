@@ -32,7 +32,8 @@ public record DevServiceConfig(
         Map<String, String> environment,
         Readiness readiness,
         List<Pattern> redact,
-        String setupCommand
+        String setupCommand,
+        DevContainerConfig container
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofMinutes(2);
 
@@ -42,6 +43,12 @@ public record DevServiceConfig(
                 : Collections.unmodifiableMap(new LinkedHashMap<>(environment));
         redact = redact == null ? List.of() : List.copyOf(redact);
         readiness = readiness == null ? new Readiness(null, null, DEFAULT_STARTUP_TIMEOUT) : readiness;
+    }
+
+    public DevServiceConfig(String command, String stopCommand, String url, String directory,
+                            Map<String, Integer> ports, Map<String, String> environment, Readiness readiness,
+                            List<Pattern> redact, String setupCommand) {
+        this(command, stopCommand, url, directory, ports, environment, readiness, redact, setupCommand, null);
     }
 
     public DevServiceConfig(String command, String stopCommand, String url, String directory,
@@ -56,7 +63,7 @@ public record DevServiceConfig(
     }
 
     boolean managed() {
-        return command != null;
+        return command != null || container != null;
     }
 
     static Pattern compilePattern(String value, String field) {

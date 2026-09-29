@@ -48,6 +48,7 @@ final class DevServiceProcess implements AutoCloseable {
     private final AtomicBoolean started = new AtomicBoolean();
     private final AtomicBoolean logReady = new AtomicBoolean();
     private final String id;
+    private final DevContainerRuntime container;
     private final DevServiceConfig config;
     private final String ownershipMarker;
     private final Map<String, Integer> ports;
@@ -125,7 +126,7 @@ final class DevServiceProcess implements AutoCloseable {
             return new DevServiceProcess(
                     id, config, projectDirectory, sessionId + "-service-" + id, ports, url,
                     resolver.resolve(config.command()), resolver.resolve(config.setupCommand()), resolver.resolve(config.stopCommand()), workingDirectory,
-                    environment, readiness, shutdownTimeout, statusConsumer, outputConsumer);
+                    environment, readiness, shutdownTimeout, statusConsumer, outputConsumer, resolver, sessionId);
         } catch (PortAllocationException e) {
             throw new DevServerStartupException("Could not allocate a port for service " + id, e.getCause());
         } catch (RuntimeException e) {
@@ -138,7 +139,7 @@ final class DevServiceProcess implements AutoCloseable {
             Map<String, Integer> ports, String url, String command, String setupCommand, String stopCommand, Path workingDirectory,
             Map<String, String> environment, DevServiceConfig.Readiness readiness, Duration shutdownTimeout,
             Consumer<DevSession.ServiceStatus> statusConsumer,
-            Consumer<ProcessUtils.ProcessOutput> outputConsumer
+            Consumer<ProcessUtils.ProcessOutput> outputConsumer, DevPlaceholderResolver resolver, String sessionId
     ) {
         this.id = id;
         this.config = config;
@@ -154,6 +155,12 @@ final class DevServiceProcess implements AutoCloseable {
         this.shutdownTimeout = Objects.requireNonNull(shutdownTimeout, "shutdownTimeout");
         this.statusConsumer = statusConsumer;
         this.outputConsumer = outputConsumer;
+        this.container = config.container() == null ? null : new DevContainerRuntime(config.container(),
+                projectDirectory, workingDirectory, sessionId, id, ports, environment, resolver, ignored -> {
+                    StatusUpdate update;
+                    synchronized (lifecycle) { update = statusUpdateLocked(); }
+                    publishStatus(update);
+                });
     }
 
     void start() {
@@ -176,6 +183,13 @@ final class DevServiceProcess implements AutoCloseable {
 
         if (config.managed()) {
             runSetup();
+            if (container != null) {
+                try { container.prepare(readiness.timeout()); }
+                catch (RuntimeException e) {
+                    fail(e.getMessage());
+                    throw new DevServerStartupException("Could not start container service " + id + ": " + e.getMessage());
+                }
+            }
             logReady.set(false);
             Process launched;
             StatusUpdate launchedStatus;
@@ -186,7 +200,7 @@ final class DevServiceProcess implements AutoCloseable {
                     }
                     // This adapter is single-use. Install its matcher before starting either output reader.
                     launched = ProcessUtils.startWithStreams(
-                            ProcessUtils.shellCommand(command, ownershipMarker), workingDirectory, environment,
+                            container == null ? ProcessUtils.shellCommand(command, ownershipMarker) : container.startCommand(), workingDirectory, environment,
                             this::processOutput);
                     process = launched;
                     launchedStatus = statusUpdateLocked();
@@ -292,6 +306,14 @@ final class DevServiceProcess implements AutoCloseable {
         Process current = process;
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("mode", config.managed() ? "managed" : "external");
+        if (container != null) {
+            metadata.putAll(container.metadata());
+            if (ready.get()) metadata.put("container.phase", "running");
+            else if ("failed".equals(state)) {
+                metadata.put("container.phase", "failed");
+                metadata.putIfAbsent("container.failure", "service-lifecycle");
+            } else if ("degraded".equals(state)) metadata.put("container.phase", "degraded");
+        }
         ports.forEach((name, port) -> metadata.put("port." + name, Integer.toString(port)));
         ProcessUtils.startedAt(current).ifPresent(startedAt -> metadata.put(
                 ProcessUtils.PROCESS_STARTED_AT, Long.toString(startedAt)));
@@ -314,6 +336,10 @@ final class DevServiceProcess implements AutoCloseable {
         String cleanupFailure = null;
         if (config.managed() && stopCommand != null) {
             cleanupFailure = runStopCommand(remaining(deadline));
+        }
+        if (container != null) {
+            String failure = container.close(remaining(deadline));
+            if (failure != null) cleanupFailure = failure;
         }
         if (current != null && current.isAlive()) {
             Duration remaining = remaining(deadline);

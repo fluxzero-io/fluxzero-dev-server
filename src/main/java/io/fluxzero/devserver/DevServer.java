@@ -152,6 +152,7 @@ public class DevServer implements AutoCloseable {
             devLogStore = new DevLogStore(config.projectDirectory(), session.sessionId(), config.applicationName());
             embeddedLogCapture = EmbeddedLogCapture.start(devLogStore);
             cleanupPreviousSessionIfStale();
+            DevContainerRuntime.reconcile(config.projectDirectory());
         } catch (RuntimeException e) {
             closeQuietly(embeddedLogCapture);
             embeddedLogCapture = null;

@@ -575,7 +575,7 @@ public record DevServerConfig(
                             DevServiceConfig.compilePattern(configuredReadiness.log(),
                                                             "services." + id + ".readiness.log"), timeout),
                     service.output().redact().stream().map(pattern -> DevServiceConfig.compilePattern(
-                            pattern, "services." + id + ".output.redact")).toList(), service.setupCommand()));
+                            pattern, "services." + id + ".output.redact")).toList(), service.setupCommand(), service.container()));
         });
         return Collections.unmodifiableMap(result);
     }

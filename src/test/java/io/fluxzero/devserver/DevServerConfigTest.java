@@ -31,6 +31,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerConfigTest {
 
     @Test
+    void supportsPinnedContainerServicesAndRejectsAmbiguousConfiguration(@TempDir Path directory) throws Exception {
+        Path file = directory.resolve(DevProjectConfig.FILE);
+        Files.createDirectories(file.getParent());
+        String image = "registry.example/team/web@sha256:" + "a".repeat(64);
+        Files.writeString(file, """
+                version: 1
+                publicIngress: web
+                services:
+                  web:
+                    container:
+                      image: %s
+                      runtime: podman
+                      pull: verify
+                      ports: {http: 8080}
+                      mounts: [{source: ./config, target: /etc/app, readOnly: true}]
+                      readOnly: true
+                      capDrop: [ALL]
+                      securityOpt: [no-new-privileges]
+                    ports: {http: dynamic}
+                    url: http://localhost:{servicePort.http}
+                """.formatted(image));
+        var service = DevServerConfig.fromArgs(new String[]{"--project-dir", directory.toString()}).services().get("web");
+        assertTrue(service.managed());
+        assertEquals("podman", service.container().runtime());
+        assertEquals("verify", service.container().pull());
+        assertEquals(8080, service.container().ports().get("http"));
+        for (String body : List.of(
+                "command: echo hello\n    container: {image: '" + image + "'}",
+                "container: {image: nginx:latest}",
+                "container: {image: '" + image + "', pull: sometimes}",
+                "container: {image: '" + image + "', ports: {http: 80}}")) {
+            Files.writeString(file, "version: 1\nservices:\n  web:\n    url: http://localhost:8080\n    " + body + "\n");
+            assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(new String[]{"--project-dir", directory.toString()}));
+        }
+    }
+
+    @Test
     void parsesRuntimeIndependentIngressFromSelectedProfile(@TempDir Path project) throws Exception {
         Files.createDirectories(project.resolve(".fluxzero"));
         Files.writeString(project.resolve(".fluxzero/dev.yaml"), """

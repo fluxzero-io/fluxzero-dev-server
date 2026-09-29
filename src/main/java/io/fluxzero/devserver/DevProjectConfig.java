@@ -230,7 +230,8 @@ record DevProjectConfig(
             Map<String, String> env,
             Readiness readiness,
             ServiceOutput output,
-            String setupCommand
+            String setupCommand,
+            DevContainerConfig container
     ) {
         private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
         private static final Pattern PORT_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
@@ -245,15 +246,18 @@ record DevProjectConfig(
             env = env == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
             readiness = readiness == null ? new Readiness(null, null, null, null) : readiness;
             output = output == null ? new ServiceOutput(null) : output;
-            if (command == null && readiness.log() != null) {
-                throw new IllegalArgumentException("service readiness.log requires service.command");
+            if (command != null && container != null) throw new IllegalArgumentException("service.command and service.container are mutually exclusive");
+            if (container != null && !ports.keySet().equals(container.ports().keySet()))
+                throw new IllegalArgumentException("service ports and container ports must declare the same names");
+            if (command == null && container == null && readiness.log() != null) {
+                throw new IllegalArgumentException("service readiness.log requires service.command or service.container");
             }
-            if (command == null && url == null) {
-                throw new IllegalArgumentException("service must configure command or url");
+            if (command == null && container == null && url == null) {
+                throw new IllegalArgumentException("service must configure command, container or url");
             }
-            if (command == null && (setupCommand != null || stopCommand != null || directory != null || !ports.isEmpty() || !env.isEmpty())) {
+            if (command == null && container == null && (setupCommand != null || stopCommand != null || directory != null || !ports.isEmpty() || !env.isEmpty())) {
                 throw new IllegalArgumentException(
-                        "service stopCommand, directory, ports and env require service.command");
+                        "service setupCommand, stopCommand, directory, ports and env require service.command or service.container");
             }
             ports.forEach((name, value) -> {
                 if (name == null || !PORT_NAME.matcher(name).matches()) {
@@ -404,7 +408,7 @@ record DevProjectConfig(
             return;
         }
         Service service = services.get(id);
-        if (service == null || service.command() == null || service.url() == null)
+        if (service == null || (service.command() == null && service.container() == null) || service.url() == null)
             throw new IllegalArgumentException("publicIngress must select a managed service with a url");
         new DevIngressConfig(id, gateway == null ? null : gateway.host(), gateway == null ? null : gateway.bindAddress());
     }
