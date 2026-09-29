@@ -382,10 +382,21 @@ body:has(.preview-expanded) {overflow:hidden;}
 .update-notice button {border:0;background:transparent;color:var(--dashboard-muted);padding:6px;border-radius:5px;}
 .update-notice button:hover {background:var(--dashboard-panel-soft);}
 
-.application-heading.multiple-frontends {grid-template-columns:minmax(90px,180px) 102px minmax(0,1fr) 72px;}
-.preview-frontend {min-width:0;max-width:100%;height:30px;padding:0 6px;border:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-surface);color:var(--dashboard-text);font:inherit;font-size:12px;}
-.preview-frontend:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
-@media(max-width:650px) {
-  .application-heading.multiple-frontends {grid-template-columns:102px minmax(0,1fr) 72px;gap:6px;padding:6px 10px;}
-  .multiple-frontends .preview-frontend {grid-column:1 / -1;width:100%;}
-}
+/* Frontend choices live under App preview, outside the browser toolbar. */
+.preview-nav-heading {display:flex;align-items:center;border-radius:10px;}
+.preview-nav-heading > .dashboard-nav-link {flex:1;width:auto;}
+.preview-nav-heading.active {background:var(--dashboard-active-soft);}
+.preview-nav-heading.active > .dashboard-nav-link {font-weight:700;color:var(--dashboard-text);}
+.preview-nav-heading.active > .dashboard-nav-link i {color:var(--dashboard-active);}
+.preview-nav-toggle {flex:0 0 36px;height:44px;font-size:12px;}
+.preview-nav-toggle i.expanded {transform:rotate(90deg);}
+.preview-nav-items {display:flex;flex-direction:column;gap:2px;margin:4px 0 8px 32px;}
+.preview-frontend-item {min-height:36px;padding:0 12px;font-size:14px;font-weight:400;gap:8px;}
+.preview-frontend-item .frontend-name {flex:1;text-transform:capitalize;}
+.preview-frontend-item.active {box-shadow:inset 2px 0 var(--dashboard-active);}
+.preview-frontend-item:disabled {cursor:default;color:var(--dashboard-muted);}
+.preview-frontend-item:disabled:not(.active):hover {background:transparent;}
+.preview-frontend-item .frontend-state {flex:0 0 14px;width:14px;font-size:11px;color:var(--dashboard-muted);}
+.preview-frontend-item .frontend-state.ready {color:var(--dashboard-success-icon);font-size:7px;}
+.preview-frontend-item .frontend-state.failed {color:var(--dashboard-danger-text);}
+@media(max-width:650px) {.preview-frontend-item {min-height:44px;}}

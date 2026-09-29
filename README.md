@@ -51,9 +51,10 @@ Expand preview temporarily hides Devboard navigation, keeping the preview toolba
 The same toolbar button restores the previous layout without changing the saved sidebar preference.
 Escape remains available to the app; it does not exit expanded preview. Mobile viewports already hide the sidebar.
 
-When several frontends are configured, the preview toolbar includes a keyboard-accessible frontend selector.
-Entries show their configuration id, public mount path and unavailable state. Managed and external frontends
-open through the public gateway; private upstream addresses never appear in the selector. Switching preserves
+When several frontends are configured, App preview expands into keyboard-accessible frontend choices in the
+sidebar (or the navigation drawer on mobile). The active frontend is highlighted, with a small readiness icon;
+the tooltip includes its configuration id, public mount path and state. Managed and external frontends
+open through the public gateway; private upstream addresses never appear in the navigation. Switching preserves
 the same frame and preview history. Starting, failed and stopped frontends cannot be selected; a selected
 frontend that becomes unavailable shows its status until recovery. Single-frontend layouts remain unchanged.
 

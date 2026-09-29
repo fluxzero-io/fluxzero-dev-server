@@ -6,7 +6,7 @@ import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
-import {Environment, environmentConsoleUrl, applicationUrl, applicationOrigin, previewFrontends, matchingFrontend, monitoringPath, monitoringViews, Status} from './models';
+import {Environment, environmentConsoleUrl, applicationUrl, applicationOrigin, previewFrontends, matchingFrontend, PreviewFrontend, monitoringPath, monitoringViews, Status} from './models';
 import {ProfileSelectorComponent} from './profile-selector.component';
 import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
@@ -60,12 +60,21 @@ export class AppComponent implements OnInit, OnDestroy {
     const frontend=this.activeFrontend();
     return !!frontend && (frontend.state !== 'running' || !this.connected() || !!this.status()?.maintenance?.workspaceStopped);
   });
+  readonly previewNavigationExpanded = signal(true);
+  frontendState(frontend:PreviewFrontend):string {
+    if(!this.connected()) return 'disconnected';
+    if(this.status()?.maintenance?.workspaceStopped) return 'stopped';
+    return frontend.state;
+  }
   selectFrontend(id:string) {
     const frontend=this.previewFrontends().find(item=>item.id===id);
-    if(!frontend || frontend.state!=='running' || !this.connected()) return;
+    if(!frontend || this.frontendState(frontend)!=='running') return;
     const url=new URL(frontend.path, applicationOrigin(this.status())).href;
     if(this.applicationFrame) this.preview.navigate(url);
     else this.initialPreviewUrl.set(url);
+    const drawerWasOpen=this.menuOpen();
+    this.navigate('application');
+    if(drawerWasOpen) this.focusNavigationTrigger();
   }
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
   readonly previewExpanded = signal(false);
