@@ -705,6 +705,42 @@ describe('Dev console navigation', () => {
     expect(frame.closest('section')!.hidden).toBeFalse();
     expect(fixture.nativeElement.querySelector('[aria-label="Open application full page"]').getAttribute('target')).toBe('_blank');
   });
+  it('selects public frontend paths, preserves the frame, and shows individual readiness', () => {
+    const app=fixture.componentInstance, root=fixture.nativeElement as HTMLElement;
+    const frontends=[{id:'application',path:'/',state:'running'},{id:'inbox',path:'/inbox',state:'running'},
+      {id:'reports',path:'/reports',state:'starting'}];
+    push({status:{...app.status()!,frontend:'starting',frontends},environments:app.environments()});
+    app.navigate('application');fixture.detectChanges();
+    const frame=root.querySelector<HTMLIFrameElement>('iframe[name="dev-application"]')!;
+    const select=root.querySelector<HTMLSelectElement>('[aria-label="Frontend in preview"]')!;
+    expect(select.options.length).toBe(3);expect(select.options[2].disabled).toBeTrue();
+    expect(select.options[2].textContent).toContain('starting');expect(select.tabIndex).toBe(0);
+    expect(frame.src).toBe(location.origin+'/');
+    app.applicationLoaded();
+    const navigate=spyOn(app.preview,'navigate').and.callFake(url=>app.preview.url.set(url));
+    select.value='inbox';select.dispatchEvent(new Event('change'));fixture.detectChanges();
+    expect(navigate).toHaveBeenCalledWith(location.origin+'/inbox');expect(select.value).toBe('inbox');
+    app.preview.url.set(location.origin+'/inbox/messages/12');fixture.detectChanges();
+    expect(select.value).toBe('inbox');
+    expect(root.querySelector<HTMLAnchorElement>('[aria-label="Open application full page"]')!.href).toBe(location.origin+'/inbox/messages/12');
+    push({status:{...app.status()!,frontends:frontends.map(f=>f.id==='inbox'?{...f,state:'failed'}:f)},environments:app.environments()});fixture.detectChanges();
+    expect(select.options[1].disabled).toBeTrue();expect(root.textContent).toContain('inbox is failed');
+    expect(frame.hidden).toBeTrue();expect(root.querySelector('[aria-label="Open application full page"]')).toBeNull();
+    app.selectFrontend('inbox');expect(navigate).toHaveBeenCalledTimes(1);
+    push({status:{...app.status()!,frontends},environments:app.environments()});fixture.detectChanges();
+    expect(frame.hidden).toBeFalse();expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    app.preview.url.set(location.origin+'/inboxes');fixture.detectChanges();expect(select.value).toBe('application');
+    push({status:{...app.status()!,frontends:frontends.slice(0,1)},environments:app.environments()});fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Frontend in preview"]')).toBeNull();
+  });
+  it('waits for initial readiness and allows another frontend while the root is starting', () => {
+    const app=fixture.componentInstance, root=fixture.nativeElement as HTMLElement;
+    const frontends=[{id:'application',path:'/',state:'starting'},{id:'inbox',path:'/inbox',state:'running'}];
+    push({status:{...app.status()!,frontends},environments:app.environments()});app.navigate('application');fixture.detectChanges();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBeNull();
+    app.selectFrontend('inbox');fixture.detectChanges();
+    expect(root.querySelector<HTMLIFrameElement>('iframe[name="dev-application"]')!.src).toBe(location.origin+'/inbox');
+  });
   it('expands preview without replacing the app, changing navigation preferences or consuming Escape', async () => {
     const app = fixture.componentInstance;
     app.navigate('application'); fixture.detectChanges();

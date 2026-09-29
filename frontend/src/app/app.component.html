@@ -34,11 +34,18 @@
     @if(route() === 'startup') {<dev-startup-page [status]="status()"/>}
     @if(route() === 'environment') {<dev-environment [status]="status()" [displayName]="currentName()"/>}
     <section class="application-page" [hidden]="route() !== 'application'" aria-label="App preview">
-      <header class="application-heading" aria-label="Preview navigation">
+      <header class="application-heading" [class.multiple-frontends]="previewFrontends().length > 1" aria-label="Preview navigation">
+        @if(previewFrontends().length > 1) {
+          <select class="preview-frontend" aria-label="Frontend in preview" [value]="activeFrontend()?.id || ''" (change)="selectFrontend($any($event.target).value)">
+            @for(frontend of previewFrontends(); track frontend.id) {
+              <option [value]="frontend.id" [disabled]="frontend.state !== 'running' || !connected() || status()?.maintenance?.workspaceStopped">{{frontend.id}} · {{frontend.path}}{{frontend.state === 'running' ? '' : ' · ' + frontend.state}}</option>
+            }
+          </select>
+        }
         <div class="application-tools">
           <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
           <button class="icon-button" (click)="preview.go(1)" [disabled]="!preview.canForward()" aria-label="Forward in preview" title="Forward"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
-          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl() || previewUnavailable()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
         </div>
         <div class="preview-address">
           <span class="preview-location" [title]="preview.url() || applicationUrl() || ''">{{previewAddress()}}</span>
@@ -47,14 +54,17 @@
         </div>
         <div class="application-tools preview-display-tools">
           <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-arrows-angle-contract]="previewExpanded()" aria-hidden="true"></i></button>
-        @if(applicationUrl(); as url) {
+        @if(!previewUnavailable() && applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }
         </div>
       </header>
       @if(applicationSource(); as source) {
-        <iframe #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
-      } @else {
+        <iframe [hidden]="previewUnavailable()" #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
+      }
+      @if(previewUnavailable()) {
+        <div class="application-empty" role="status"><h2>{{activeFrontend()?.id}} is {{activeFrontend()?.state}}</h2><p>Check its status on the Workspace page or select another ready frontend.</p></div>
+      } @else if(!applicationSource()) {
         <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
       }
     </section>

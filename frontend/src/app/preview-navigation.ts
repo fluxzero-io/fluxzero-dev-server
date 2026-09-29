@@ -41,6 +41,10 @@ export class PreviewNavigation {
     this.external=false;this.index=next;this.navigating=true;this.url.set(this.entries[next]);this.update();
     this.frame.src=this.entries[next];
   }
+  navigate(url:string) {
+    if(!this.frame) return;
+    this.external=false;this.record(url);this.navigating=true;this.frame.src=url;
+  }
   refresh(root:string) {
     if(!this.frame) return;
     this.navigating=true;this.frame.src=this.url() || root;

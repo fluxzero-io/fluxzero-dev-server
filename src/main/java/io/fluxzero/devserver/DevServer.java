@@ -639,6 +639,7 @@ public class DevServer implements AutoCloseable {
             result.put("update", updates == null ? Map.of() : updates.status());
             result.put("workspaceIssue", "");
             result.put("progress", new ProjectProgress(config.projectDirectory()).view());
+            result.put("frontends", consoleFrontends(true));
             result.put("maintenance", Map.of("busy", maintenanceBusy.get(), "error", maintenanceError,
                     "stopSupported", restartSupported, "workspaceStopped", "idle".equals(stopped.get("state"))));
             return result;
@@ -755,12 +756,21 @@ public class DevServer implements AutoCloseable {
                 ? liveEvents ? "Running" : "Running · waiting for test reports"
                 : "Latest reported run per module");
         result.put("testResults", testResults);
+        result.put("frontends", consoleFrontends(false));
         result.put("progress", new ProjectProgress(config.projectDirectory()).view());
         result.put("testOutput",testOutput.snapshot());
         result.put("testRuns",projects.entrySet().stream().filter(e->e.getValue().testPipeline.liveProgress()!=null)
                 .map(e->Map.of("module",e.getKey(),"state",projectTestStatuses.getOrDefault(e.getKey(),TestStatus.idle()).state(),
                         "progress",e.getValue().testPipeline.liveProgress())).toList());
         return result;
+    }
+
+    private List<Map<String, String>> consoleFrontends(boolean stopped) {
+        return config.frontends().stream().map(frontend -> {
+            DevSession.ServiceStatus status = frontendStatuses.get(frontend.id());
+            return Map.of("id", frontend.id(), "path", frontend.path(),
+                          "state", stopped ? "stopped" : status == null ? "starting" : status.state());
+        }).toList();
     }
 
     private Map<String, Object> component(String id, String name, DevSession.ServiceStatus service, boolean application) {

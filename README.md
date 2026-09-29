@@ -51,6 +51,12 @@ Expand preview temporarily hides Devboard navigation, keeping the preview toolba
 The same toolbar button restores the previous layout without changing the saved sidebar preference.
 Escape remains available to the app; it does not exit expanded preview. Mobile viewports already hide the sidebar.
 
+When several frontends are configured, the preview toolbar includes a keyboard-accessible frontend selector.
+Entries show their configuration id, public mount path and unavailable state. Managed and external frontends
+open through the public gateway; private upstream addresses never appear in the selector. Switching preserves
+the same frame and preview history. Starting, failed and stopped frontends cannot be selected; a selected
+frontend that becomes unavailable shows its status until recovery. Single-frontend layouts remain unchanged.
+
 The current URL is centered with an icon-only Copy control. Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
 preview URL; external pages that cannot expose their location fall back to the application entry point.
 

@@ -17,7 +17,9 @@ export interface ProgressFeature {
 }
 export interface ProgressMilestone {id:string; title:string; description:string; features:ProgressFeature[];}
 export interface ProjectProgress {revision:string|null; data:{version:number; milestones:ProgressMilestone[]}|null; error:string|null;}
+export interface PreviewFrontend {id:string; path:string; state:string;}
 export interface Status {
+  frontends?: PreviewFrontend[];
   update?: {status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; phase?:string; error?:string};
   progress?:ProjectProgress;
   versions?: {devServer?: string; fluxzero?: string};
@@ -68,6 +70,11 @@ export function environmentConsoleUrl(environment: Environment): string | null {
 
 /** Preview the current gateway's application, never another origin or the console itself. */
 export function applicationUrl(status: Status | undefined, origin = location.origin): string | null {
+  if (status?.frontends?.length) {
+    const frontends = previewFrontends(status);
+    const frontend = frontends.find(f => f.path === '/') || frontends[0];
+    return frontend ? new URL(frontend.path, origin).href : null;
+  }
   const components = status?.components || [];
   const frontends = components.filter(component => component.application && component.id.startsWith('frontend-'));
   // The backend can be running before the gateway can serve the UI.
@@ -82,4 +89,25 @@ export function applicationUrl(status: Status | undefined, origin = location.ori
     } catch { /* Invalid or incomplete status cannot become a frame URL. */ }
   }
   return null;
+}
+
+/** Public mount paths are the complete preview contract; upstream URLs never enter this model. */
+export function previewFrontends(status:Status|undefined):PreviewFrontend[] {
+  return (status?.frontends || []).filter(frontend => {
+    const path=frontend.path;
+    if(!path.startsWith('/') || path.startsWith('//') || /[\\?#]/.test(path)) return false;
+    try {
+      const decoded=decodeURIComponent(path);
+      return !decoded.startsWith('/_fluxzero') && !decoded.startsWith('//')
+        && !/[\\?#]/.test(decoded) && !decoded.split('/').some(part=>part==='.' || part==='..');
+    } catch {return false;}
+  });
+}
+
+export function matchingFrontend(frontends:PreviewFrontend[], address:string):PreviewFrontend|undefined {
+  try {
+    const path=new URL(address).pathname;
+    return [...frontends].sort((a,b)=>b.path.length-a.path.length).find(frontend =>
+      frontend.path==='/' || path===frontend.path || path.startsWith(frontend.path.replace(/\/$/,'')+'/'));
+  } catch {return undefined;}
 }

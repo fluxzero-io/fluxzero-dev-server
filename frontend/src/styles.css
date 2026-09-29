@@ -381,3 +381,11 @@ body:has(.preview-expanded) {overflow:hidden;}
 .update-notice > i {color:#198754;}
 .update-notice button {border:0;background:transparent;color:var(--dashboard-muted);padding:6px;border-radius:5px;}
 .update-notice button:hover {background:var(--dashboard-panel-soft);}
+
+.application-heading.multiple-frontends {grid-template-columns:minmax(90px,180px) 102px minmax(0,1fr) 72px;}
+.preview-frontend {min-width:0;max-width:100%;height:30px;padding:0 6px;border:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-surface);color:var(--dashboard-text);font:inherit;font-size:12px;}
+.preview-frontend:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:2px;}
+@media(max-width:650px) {
+  .application-heading.multiple-frontends {grid-template-columns:102px minmax(0,1fr) 72px;gap:6px;padding:6px 10px;}
+  .multiple-frontends .preview-frontend {grid-column:1 / -1;width:100%;}
+}
