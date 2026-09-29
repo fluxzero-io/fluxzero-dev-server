@@ -7,7 +7,9 @@
       <button class="icon-button sidebar-toggle" type="button" (click)="togglePinnedNavigation()" [attr.aria-label]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'" [title]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'"><i class="bi" [class.bi-x-lg]="mobileNavigation()" [class.bi-layout-sidebar-inset]="!mobileNavigation() && !sidebarCollapsed()" [class.bi-layout-sidebar-inset-reverse]="!mobileNavigation() && sidebarCollapsed()" aria-hidden="true"></i></button>
     </div>
     <dev-environment-selector [workspaceStopped]="!!status()?.maintenance?.workspaceStopped" [workspaceBusy]="!!status()?.maintenance?.busy" [workspaceError]="status()?.maintenance?.error || ''" [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
+    @if(status()?.profiles?.available?.length || status()?.profiles?.active || status()?.profiles?.error) {
     <dev-profile-selector [status]="status()" [connected]="connected()"/>
+    }
     <nav aria-label="Devboard navigation">
       @if(previewFrontends().length > 1) {
         <div class="preview-nav-group">
