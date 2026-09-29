@@ -5,7 +5,7 @@
   "scripts": {
     "build": "ng build",
     "package:monitoring": "node ../scripts/prepare-monitoring.mjs",
-    "test": "ng test --watch=false --browsers=ChromeHeadless"
+    "test": "ng test --watch=false --browsers=ChromeHeadlessTests"
   },
   "dependencies": {
     "@angular/common": "22.1.4",
