@@ -41,10 +41,11 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly route = signal('application');
   readonly applicationOpened = signal(false);
   readonly applicationUrl = computed(() => applicationUrl(this.status()));
-  private readonly initialPreviewUrl = signal('');
+  private readonly initialPreviewPath = signal('');
   private readonly previewLoaded = signal(false);
   private readonly applicationSourceUrl = computed(() => {
-    const url = this.initialPreviewUrl() || this.applicationUrl();
+    const path = this.initialPreviewPath();
+    const url = path ? new URL(path, applicationOrigin(this.status())).href : this.applicationUrl();
     const frontend=matchingFrontend(this.previewFrontends(), url || '');
     if (!this.previewLoaded() && frontend && frontend.state !== 'running') return undefined;
     return this.applicationOpened() && url ? url : undefined;
@@ -55,7 +56,7 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   readonly preview = new PreviewNavigation();
   readonly previewFrontends = computed(() => previewFrontends(this.status()));
-  readonly activeFrontend = computed(() => matchingFrontend(this.previewFrontends(), this.preview.url() || this.initialPreviewUrl() || this.applicationUrl() || ''));
+  readonly activeFrontend = computed(() => matchingFrontend(this.previewFrontends(), this.preview.url() || this.applicationSourceUrl() || this.applicationUrl() || ''));
   readonly previewUnavailable = computed(() => {
     const frontend=this.activeFrontend();
     return !!frontend && (frontend.state !== 'running' || !this.connected() || !!this.status()?.maintenance?.workspaceStopped);
@@ -71,7 +72,7 @@ export class AppComponent implements OnInit, OnDestroy {
     if(!frontend || this.frontendState(frontend)!=='running') return;
     const url=new URL(frontend.path, applicationOrigin(this.status())).href;
     if(this.applicationFrame) this.preview.navigate(url);
-    else this.initialPreviewUrl.set(url);
+    else this.initialPreviewPath.set(frontend.path);
     const drawerWasOpen=this.menuOpen();
     this.navigate('application');
     if(drawerWasOpen) this.focusNavigationTrigger();

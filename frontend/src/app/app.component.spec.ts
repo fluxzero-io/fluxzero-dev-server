@@ -56,6 +56,17 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  it('rebases an initially selected frontend when the ingress restarts on a different port', () => {
+    const app=fixture.componentInstance;
+    const status={...app.status()!,publicApplicationUrl:'http://localhost:9990',frontends:[
+      {id:'application',path:'/',state:'running'},{id:'inbox',path:'/inbox',state:'running'}]};
+    app.status.set(status);fixture.detectChanges();
+    app.selectFrontend('inbox');fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('iframe').src).toBe('http://localhost:9990/inbox');
+    app.status.set({...status,publicApplicationUrl:'http://localhost:9991'});fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('iframe').src).toBe('http://localhost:9991/inbox');
+  });
+
   it('recognizes the current project through its dev-server port when directory aliases differ', () => {
     const app = fixture.componentInstance;
     const status = app.status()!;
