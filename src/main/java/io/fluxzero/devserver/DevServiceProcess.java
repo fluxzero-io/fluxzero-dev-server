@@ -23,12 +23,14 @@ import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
@@ -64,6 +66,7 @@ final class DevServiceProcess implements AutoCloseable {
     private final Consumer<ProcessUtils.ProcessOutput> outputConsumer;
     private final AtomicBoolean ready = new AtomicBoolean();
     private final AtomicBoolean closed = new AtomicBoolean();
+    private final Map<ProcessHandle, Instant> descendants = new ConcurrentHashMap<>();
     private volatile Process process;
     private volatile String state = "starting";
     private volatile String detail = "waiting to start";
@@ -214,6 +217,7 @@ final class DevServiceProcess implements AutoCloseable {
             }
         }
         awaitReadiness();
+        rememberDescendants(process);
         StatusUpdate readyStatus;
         DevServerStartupException startupFailure = null;
         boolean monitorReadiness = false;
@@ -232,8 +236,8 @@ final class DevServiceProcess implements AutoCloseable {
                 state = "running";
                 detail = config.managed() ? "managed service ready" : "external service ready";
                 readyStatus = statusUpdateLocked();
-                // A log match proves startup only. onExit remains the lifetime monitor.
-                monitorReadiness = readiness.log() == null;
+                // Log readiness needs no health probes, but still track child ownership after startup.
+                monitorReadiness = true;
             }
         }
         publishStatus(readyStatus);
@@ -330,6 +334,7 @@ final class DevServiceProcess implements AutoCloseable {
             }
             ready.set(false);
             current = process;
+            rememberDescendants(current);
             process = null;
         }
         long deadline = System.nanoTime() + shutdownTimeout.toNanos();
@@ -349,6 +354,12 @@ final class DevServiceProcess implements AutoCloseable {
                 ProcessUtils.stopTree(current, remaining);
             }
         }
+        // A shell launcher may already have exited, reparenting its children. Retain their original identities.
+        for (var child : descendants.entrySet()) {
+            if (child.getKey().isAlive() && child.getKey().info().startInstant().filter(child.getValue()::equals).isPresent())
+                ProcessUtils.stopTree(child.getKey(), remaining(deadline));
+        }
+        descendants.clear();
         StatusUpdate stopped;
         synchronized (lifecycle) {
             state = "stopped";
@@ -362,6 +373,7 @@ final class DevServiceProcess implements AutoCloseable {
         long deadline = System.nanoTime() + readiness.timeout().toNanos();
         while (!closed.get() && System.nanoTime() < deadline) {
             Process current = process;
+            rememberDescendants(current);
             if (config.managed() && current != null && !current.isAlive()) {
                 fail("service process exited before readiness");
                 throw new DevServerStartupException("Service " + id + " process exited before readiness");
@@ -385,9 +397,14 @@ final class DevServiceProcess implements AutoCloseable {
             int failedProbes = 0;
             while (!closed.get()) {
                 Process current = process;
+                rememberDescendants(current);
                 if (config.managed() && (current == null || !current.isAlive())) {
                     fail("service process exited unexpectedly");
                     return;
+                }
+                if (readiness.log() != null) {
+                    sleep(PROBE_INTERVAL_MILLIS);
+                    continue;
                 }
                 boolean observedReady = probe();
                 StatusUpdate update = null;
@@ -412,6 +429,13 @@ final class DevServiceProcess implements AutoCloseable {
                 sleep(PROBE_INTERVAL_MILLIS);
             }
         });
+    }
+
+    private void rememberDescendants(Process current) {
+        if (current == null || container != null) return;
+        descendants.entrySet().removeIf(entry -> !entry.getKey().isAlive()
+                || entry.getKey().info().startInstant().filter(entry.getValue()::equals).isEmpty());
+        current.descendants().forEach(child -> child.info().startInstant().ifPresent(start -> descendants.put(child, start)));
     }
 
     private boolean probe() {

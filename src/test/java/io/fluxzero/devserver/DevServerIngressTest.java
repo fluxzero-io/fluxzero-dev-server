@@ -53,6 +53,7 @@ class DevServerIngressTest {
         int consolePort;
         int ingressPort;
         long ingressPid;
+        List<ProcessHandle> ingressChildren;
         try (var server = new DevServer(config).start()) {
             await(() -> "running".equals(server.session().services().get("edge").state())
                     && "running".equals(server.session().frontend().state()));
@@ -78,12 +79,14 @@ class DevServerIngressTest {
             assertEquals(2, status.path("frontends").size());
             assertEquals("running", status.path("frontends").get(1).path("state").asText());
             assertTrue(status.path("components").toString().contains(publicUrl + "/inbox"));
+            ingressChildren = ProcessHandle.of(ingressPid).orElseThrow().descendants().toList();
             ProcessHandle.of(ingressPid).orElseThrow().destroy();
             await(() -> "failed".equals(server.session().services().get("edge").state()));
             status = awaitFrontendState(console, "failed");
             assertEquals("failed", status.path("frontends").get(0).path("state").asText());
         }
         assertFalse(ProcessUtils.isAlive(ingressPid));
+        ingressChildren.forEach(child -> assertFalse(child.isAlive(), "Ingress child survived launcher exit: " + child.pid()));
         for (int port : List.of(internalPort, consolePort, ingressPort)) {
             // Use the real gateway's reuse policy: Linux can retain closed HTTP connections in TIME_WAIT.
             try (var endpoint = DevGateway.reserve(port, "127.0.0.1")) { assertEquals(port, endpoint.port()); }
