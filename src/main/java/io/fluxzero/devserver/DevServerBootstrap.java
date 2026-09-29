@@ -109,7 +109,7 @@ final class DevServerBootstrap implements AutoCloseable {
     }
 
     private static void startWorkspace(DevSession session) throws Exception {
-        var base = java.net.URI.create(session.gateway().url());
+        var base = java.net.URI.create(session.consoleOrigin());
         if (!"http".equals(base.getScheme()) || base.getRawUserInfo() != null
             || !java.util.Set.of("localhost", "127.0.0.1", "[::1]").contains(base.getHost()) || base.getPort() < 1) {
             throw new IllegalStateException("The stopped workspace has no local dashboard address.");

@@ -183,6 +183,45 @@ class DevServerFrontendGatewayTest {
     }
 
     @Test
+    void consoleListsManagedExternalAndFailedFrontendsWithoutPrivateOrigins(@TempDir Path project) throws Exception {
+        var external = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        external.createContext("/", exchange -> { exchange.sendResponseHeaders(200, -1); exchange.close(); });
+        external.start();
+        String command = quote(Path.of(System.getProperty("java.home"), "bin", "java").toString())
+                + " -cp " + quote(System.getProperty("java.class.path")) + " "
+                + FrontendFixtureServer.class.getName() + " {frontendPort}";
+        FrontendConfig root = FrontendConfig.command(command).withBackendPaths(List.of());
+        List<RoutedFrontend> frontends = List.of(new RoutedFrontend("application", "/", root),
+                new RoutedFrontend("inbox", "/inbox", FrontendConfig.externalUrl("http://127.0.0.1:" + external.getAddress().getPort())),
+                new RoutedFrontend("failed", "/failed", FrontendConfig.command("exit 7")));
+        var config = new DevServerConfig(project, null, "preview-routes", null, false, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT, DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DevServerConfig.DEFAULT_DEBOUNCE, root, List.of(), false, "local", List.of(), 0,
+                IdpMode.EXTERNAL, Map.of(), DevServerConfig.DEFAULT_IDLE_TIMEOUT, null, frontends, null, Map.of(), false);
+        try (DevServer server = new DevServer(config).start()) {
+            String base = server.session().gateway().url();
+            JsonNode routes;
+            long deadline = System.nanoTime() + Duration.ofSeconds(15).toNanos();
+            do {
+                routes = OBJECT_MAPPER.readTree(get(base + DevConsole.ROOT + "status.json").body()).path("frontends");
+                if (routes.size() == 3 && "running".equals(routes.get(0).path("state").asText())
+                    && "running".equals(routes.get(1).path("state").asText())
+                    && "failed".equals(routes.get(2).path("state").asText())) break;
+                Thread.sleep(25);
+            } while (System.nanoTime() < deadline);
+            assertEquals(OBJECT_MAPPER.readTree("""
+                    [{"id":"application","path":"/","state":"running"},
+                     {"id":"inbox","path":"/inbox","state":"running"},
+                     {"id":"failed","path":"/failed","state":"failed"}]
+                    """), routes);
+            assertEquals(200, get(base + "/").statusCode());
+            assertEquals(200, get(base + "/inbox").statusCode());
+        } finally {
+            external.stop(0);
+        }
+    }
+
+    @Test
     void frontendFailureLeavesFluxzeroEnvironmentAvailable(@TempDir Path projectDirectory) throws Exception {
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, null, "failed-frontend-test", null,

@@ -117,6 +117,45 @@ final class DevCommandPipeline implements AutoCloseable {
         }
     }
 
+    /** Discover configured work without sending anything before an application is ready. */
+    void initializeStatus() {
+        try {
+            List<CommandFile> commands = discover();
+            dashboardCommands = commands;
+            update(commands.isEmpty() ? DevCommandStatus.empty(sessionId) : status("pending", entries(commands)));
+        } catch (Exception e) {
+            discoveryFailed();
+        }
+    }
+
+    /** Serialize explicit requests with automatic runs, retaining the same session/hash ledger. */
+    DevCommandStatus runAndWait(Duration timeout) throws InterruptedException {
+        var run = executor.submit(this::runOnce);
+        try {
+            return run.get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException e) {
+            throw new IllegalStateException("Startup commands did not finish within " + timeout.toSeconds() + " seconds.");
+        } catch (java.util.concurrent.ExecutionException e) {
+            throw new IllegalStateException("Startup commands could not finish. Check Startup status.");
+        } finally {
+            if (!run.isDone()) run.cancel(true);
+        }
+    }
+
+    private List<DevCommandStatus.Entry> entries(List<CommandFile> commands) {
+        Map<String, DevCommandStatus.Entry> previous = previousEntries();
+        List<DevCommandStatus.Entry> entries = new ArrayList<>();
+        for (CommandFile command : commands) {
+            DevCommandStatus.Entry entry = previous.get(command.identity());
+            if (entry == null || !command.hash().equals(entry.hash())) {
+                entry = new DevCommandStatus.Entry(command.path(), command.hash(), command.type(), "pending",
+                                                   "configured; not yet run", 0);
+            }
+            entries.add(entry);
+        }
+        return entries;
+    }
+
     void updateRegisteredTypes(String projectId, Set<String> types) {
         typeRegistry.update(projectId, types);
     }
@@ -134,24 +173,12 @@ final class DevCommandPipeline implements AutoCloseable {
         }
     }
 
-    private void runOnce() {
+    private DevCommandStatus runOnce() {
         try {
             List<CommandFile> commands = discover();
             dashboardCommands = commands;
-            if (commands.isEmpty()) {
-                update(DevCommandStatus.empty(sessionId));
-                return;
-            }
-            Map<String, DevCommandStatus.Entry> previous = previousEntries();
-            List<DevCommandStatus.Entry> entries = new ArrayList<>();
-            for (CommandFile command : commands) {
-                DevCommandStatus.Entry entry = previous.get(command.identity());
-                if (entry == null || !command.hash().equals(entry.hash())) {
-                    entry = new DevCommandStatus.Entry(command.path(), command.hash(), command.type(), "pending",
-                                                       "waiting for app readiness", 0);
-                }
-                entries.add(entry);
-            }
+            if (commands.isEmpty()) return update(DevCommandStatus.empty(sessionId));
+            List<DevCommandStatus.Entry> entries = entries(commands);
             update(status("running", entries));
             List<DevCommandStatus.Entry> updated = new ArrayList<>();
             for (int i = 0; i < commands.size(); i++) {
@@ -172,17 +199,21 @@ final class DevCommandPipeline implements AutoCloseable {
                     if (blockedCount > 0) {
                         output.accept("[commands] blocked " + blockedCount + " command(s) after " + command.path());
                     }
-                    update(status("failed", updated));
-                    return;
+                    return update(status("failed", updated));
                 }
                 update(status("running", updated, entries.subList(i + 1, entries.size())));
             }
-            update(status(finalState(updated), updated));
+            return update(status(finalState(updated), updated));
         } catch (Exception e) {
-            output.accept("[commands] failed: " + e.getMessage());
-            update(new DevCommandStatus("failed", sessionId, 0, 0, 1, 0, 0, List.of(),
-                                        Instant.now().toEpochMilli()));
+            return discoveryFailed();
         }
+    }
+
+    private DevCommandStatus discoveryFailed() {
+        // Parser exceptions may contain command payloads or resolved secrets.
+        output.accept("[commands] Unable to load startup commands. Check command configuration.");
+        return update(new DevCommandStatus("failed", sessionId, 0, 0, 1, 0, 0, List.of(),
+                                          Instant.now().toEpochMilli()));
     }
 
     private DevCommandStatus.Entry execute(CommandFile command, DevCommandStatus.Entry entry) {
@@ -199,8 +230,10 @@ final class DevCommandPipeline implements AutoCloseable {
             }
             return entry.withState("succeeded", "processed by app: " + responseType);
         } catch (Exception e) {
-            output.accept("[commands] failed " + command.path() + ": " + e.getMessage());
-            return entry.withState("failed", e.getMessage());
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            String detail = "No successful command result; check application readiness and logs.";
+            output.accept("[commands] failed " + command.path() + ": " + detail);
+            return entry.withState("failed", detail);
         }
     }
 
@@ -606,9 +639,10 @@ final class DevCommandPipeline implements AutoCloseable {
         }
     }
 
-    private void update(DevCommandStatus status) {
+    private DevCommandStatus update(DevCommandStatus status) {
         sessionStore.writeCommandStatus(status);
         statusConsumer.accept(status);
+        return status;
     }
 
     private DevCommandStatus status(String state, List<DevCommandStatus.Entry> entries) {

@@ -40,6 +40,7 @@ record DevCommandStatus(
     }
 
     String summary() {
+        if (total == 0 && failed > 0) return "startup command configuration failed";
         if (total == 0) {
             return "no dev seed commands";
         }

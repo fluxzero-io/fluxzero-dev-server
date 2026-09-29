@@ -6,7 +6,7 @@ export class PreviewNavigation {
   private entries:string[]=[]; private index=-1; private root=''; private navigating=false;
   private external=false;
   private frame?:HTMLIFrameElement; private detach=()=>{};
-  connect(frame:HTMLIFrameElement, root:string) {
+  connect(frame:HTMLIFrameElement, root:string, publicIngress=false) {
     this.detach();this.frame=frame;
     if(root!==this.root) {this.root=root;this.entries=[];this.index=-1;this.navigating=false;this.url.set(root);}
     try {
@@ -24,6 +24,12 @@ export class PreviewNavigation {
         win.removeEventListener('popstate',changed);win.removeEventListener('hashchange',changed);
       };
     } catch {
+      // A configured ingress has its own origin. Keep the explicit navigation history;
+      // the browser cannot expose subsequent cross-origin links or SPA routes.
+      if(publicIngress && new URL(root).origin!==location.origin && new URL(frame.src).origin===new URL(root).origin) {
+        if(this.index<0) this.record(frame.src);
+        this.external=false;this.navigating=false;this.update();return;
+      }
       // An external login page cannot expose its URL/history to the dashboard.
       this.external=true;this.url.set(this.root);this.canBack.set(this.index>=0);this.canForward.set(false);
     }
@@ -40,6 +46,10 @@ export class PreviewNavigation {
     if(!this.frame || next<0 || next>=this.entries.length) return;
     this.external=false;this.index=next;this.navigating=true;this.url.set(this.entries[next]);this.update();
     this.frame.src=this.entries[next];
+  }
+  navigate(url:string) {
+    if(!this.frame) return;
+    this.external=false;this.record(url);this.navigating=true;this.frame.src=url;
   }
   refresh(root:string) {
     if(!this.frame) return;

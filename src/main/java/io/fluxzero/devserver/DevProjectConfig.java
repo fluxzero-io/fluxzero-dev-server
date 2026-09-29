@@ -51,7 +51,9 @@ record DevProjectConfig(
         @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
         String defaultProfile,
         Map<String, Profile> profiles,
-        DevMonitoringConfig monitoring
+        DevMonitoringConfig monitoring,
+        String publicIngress,
+        Gateway gateway
 ) {
     static final Path FILE = Path.of(".fluxzero", "dev.yaml");
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
@@ -70,6 +72,7 @@ record DevProjectConfig(
         services = services == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(services));
         validateServices(services);
+        validateIngress(publicIngress, gateway, services);
         lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
         commands = commands == null ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(commands));
@@ -95,7 +98,7 @@ record DevProjectConfig(
                 throw new IllegalArgumentException("defaultProfile requires profiles");
             }
         } else {
-            if (monitoring != null || legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
+            if (monitoring != null || publicIngress != null || gateway != null || legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
                                            applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                            backendPaths,
                                            frontend, frontends, services, lifecycle, commandDefaults,
@@ -131,7 +134,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of(), null);
+                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of(), null, null, null);
     }
 
     Selection select(String requestedProfile) {
@@ -226,13 +229,16 @@ record DevProjectConfig(
             Map<String, String> ports,
             Map<String, String> env,
             Readiness readiness,
-            ServiceOutput output
+            ServiceOutput output,
+            String setupCommand,
+            DevContainerConfig container
     ) {
         private static final Pattern ENVIRONMENT_NAME = Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
         private static final Pattern PORT_NAME = Pattern.compile("[A-Za-z][A-Za-z0-9_-]*");
 
         Service {
             command = normalize(command);
+            setupCommand = normalize(setupCommand);
             stopCommand = normalize(stopCommand);
             url = normalize(url);
             directory = normalize(directory);
@@ -240,15 +246,18 @@ record DevProjectConfig(
             env = env == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(env));
             readiness = readiness == null ? new Readiness(null, null, null, null) : readiness;
             output = output == null ? new ServiceOutput(null) : output;
-            if (command == null && readiness.log() != null) {
-                throw new IllegalArgumentException("service readiness.log requires service.command");
+            if (command != null && container != null) throw new IllegalArgumentException("service.command and service.container are mutually exclusive");
+            if (container != null && !ports.keySet().equals(container.ports().keySet()))
+                throw new IllegalArgumentException("service ports and container ports must declare the same names");
+            if (command == null && container == null && readiness.log() != null) {
+                throw new IllegalArgumentException("service readiness.log requires service.command or service.container");
             }
-            if (command == null && url == null) {
-                throw new IllegalArgumentException("service must configure command or url");
+            if (command == null && container == null && url == null) {
+                throw new IllegalArgumentException("service must configure command, container or url");
             }
-            if (command == null && (stopCommand != null || directory != null || !ports.isEmpty() || !env.isEmpty())) {
+            if (command == null && container == null && (setupCommand != null || stopCommand != null || directory != null || !ports.isEmpty() || !env.isEmpty())) {
                 throw new IllegalArgumentException(
-                        "service stopCommand, directory, ports and env require service.command");
+                        "service setupCommand, stopCommand, directory, ports and env require service.command or service.container");
             }
             ports.forEach((name, value) -> {
                 if (name == null || !PORT_NAME.matcher(name).matches()) {
@@ -352,7 +361,9 @@ record DevProjectConfig(
             Lifecycle lifecycle,
             CommandDefaults commandDefaults,
             @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
-            DevMonitoringConfig monitoring
+            DevMonitoringConfig monitoring,
+            String publicIngress,
+            Gateway gateway
     ) {
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
@@ -369,6 +380,7 @@ record DevProjectConfig(
             services = services == null ? Map.of()
                     : Collections.unmodifiableMap(new LinkedHashMap<>(services));
             validateServices(services);
+            validateIngress(publicIngress, gateway, services);
             lifecycle = lifecycle == null ? new Lifecycle(null) : lifecycle;
             commandDefaults = commandDefaults == null ? new CommandDefaults(null, null) : commandDefaults;
             commands = commands == null ? Map.of()
@@ -384,8 +396,21 @@ record DevProjectConfig(
                                         applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                         backendPaths,
                                         frontend, frontends, services, lifecycle, commandDefaults, commands,
-                                        null, Map.of(), monitoring);
+                                        null, Map.of(), monitoring, publicIngress, gateway);
         }
+    }
+
+    record Gateway(String host, String bindAddress) { }
+
+    private static void validateIngress(String id, Gateway gateway, Map<String, Service> services) {
+        if (id == null) {
+            if (gateway != null) throw new IllegalArgumentException("gateway requires publicIngress");
+            return;
+        }
+        Service service = services.get(id);
+        if (service == null || (service.command() == null && service.container() == null) || service.url() == null)
+            throw new IllegalArgumentException("publicIngress must select a managed service with a url");
+        new DevIngressConfig(id, gateway == null ? null : gateway.host(), gateway == null ? null : gateway.bindAddress());
     }
 
     record Selection(String profile, DevProjectConfig config) {

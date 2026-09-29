@@ -7,9 +7,28 @@
       <button class="icon-button sidebar-toggle" type="button" (click)="togglePinnedNavigation()" [attr.aria-label]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'" [title]="mobileNavigation() ? 'Close navigation' : sidebarCollapsed() ? 'Pin navigation' : 'Hide navigation'"><i class="bi" [class.bi-x-lg]="mobileNavigation()" [class.bi-layout-sidebar-inset]="!mobileNavigation() && !sidebarCollapsed()" [class.bi-layout-sidebar-inset-reverse]="!mobileNavigation() && sidebarCollapsed()" aria-hidden="true"></i></button>
     </div>
     <dev-environment-selector [workspaceStopped]="!!status()?.maintenance?.workspaceStopped" [workspaceBusy]="!!status()?.maintenance?.busy" [workspaceError]="status()?.maintenance?.error || ''" [environments]="environments()" [current]="current()" [currentName]="currentName()"/>
+    @if(status()?.profiles?.available?.length || status()?.profiles?.active || status()?.profiles?.error) {
     <dev-profile-selector [status]="status()" [connected]="connected()"/>
+    }
     <nav aria-label="Devboard navigation">
+      @if(previewFrontends().length > 1) {
+        <div class="preview-nav-group">
+          <div class="preview-nav-heading" [class.active]="route() === 'application'">
+            <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')"><i class="bi bi-window"></i><span>App preview</span></a>
+            <button class="icon-button preview-nav-toggle" type="button" (click)="previewNavigationExpanded.set(!previewNavigationExpanded())" [attr.aria-label]="previewNavigationExpanded() ? 'Collapse frontends' : 'Expand frontends'" [attr.aria-expanded]="previewNavigationExpanded()" aria-controls="preview-frontends"><i class="bi bi-chevron-right" [class.expanded]="previewNavigationExpanded()" aria-hidden="true"></i></button>
+          </div>
+          <div id="preview-frontends" class="preview-nav-items" [hidden]="!previewNavigationExpanded()" role="group" aria-label="App frontends">
+            @for(frontend of previewFrontends(); track frontend.id) {
+              @let state = frontendState(frontend);
+              <button class="dashboard-nav-link preview-frontend-item" type="button" (click)="selectFrontend(frontend.id)" [disabled]="state !== 'running'" [class.active]="route() === 'application' && activeFrontend()?.id === frontend.id" [attr.aria-current]="route() === 'application' && activeFrontend()?.id === frontend.id ? 'page' : null" [attr.aria-label]="frontend.id + ', ' + state" [title]="frontend.id + ' · ' + frontend.path + ' · ' + state">
+                <span class="frontend-name">{{frontend.id}}</span><i class="bi frontend-state" [class.ready]="state === 'running'" [class.failed]="state === 'failed' || state === 'degraded' || state === 'exited'" [class.bi-circle-fill]="state === 'running'" [class.bi-exclamation-circle]="state === 'failed' || state === 'degraded' || state === 'exited'" [class.bi-hourglass-split]="state === 'starting'" [class.bi-circle]="!['running','failed','degraded','exited','starting'].includes(state)" aria-hidden="true"></i>
+              </button>
+            }
+          </div>
+        </div>
+      } @else {
       <a class="dashboard-nav-link" href="#application" (click)="link($event, 'application')" [class.active]="route() === 'application'" [attr.aria-current]="route() === 'application' ? 'page' : null"><i class="bi bi-window"></i><span>App preview</span></a>
+      }
       <a class="dashboard-nav-link" href="#projects" (click)="link($event, 'projects')" [class.active]="route() === 'projects'" [attr.aria-current]="route() === 'projects' ? 'page' : null"><i class="bi bi-grid"></i><span>Workspace</span>@if(connected() && status()?.workspaceIssue) {<span class="nav-issue-badge" role="img" aria-label="Workspace needs attention" [title]="status()?.workspaceIssue">!</span>}</a>
       <a class="dashboard-nav-link" href="#progress" (click)="link($event, 'progress')" [class.active]="route() === 'progress'" [attr.aria-current]="route() === 'progress' ? 'page' : null"><i class="bi bi-list-check"></i><span>Progress</span>@if(progressBadge(); as badge) {<span class="nav-result-badge" [class.in-progress]="badge.done < badge.total" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.percent}}%</span>}</a>
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [class.split-result]="badge.passedValue !== undefined" [attr.aria-label]="badge.label" [title]="badge.label">@if(badge.passedValue !== undefined) {<span class="nav-result-segment nav-result-passed" aria-hidden="true">{{badge.passedValue}}</span><span class="nav-result-segment nav-result-failed" aria-hidden="true">{{badge.value}}</span>} @else {{{badge.value}}}</span>}</a>
@@ -38,7 +57,7 @@
         <div class="application-tools">
           <button class="icon-button" (click)="preview.go(-1)" [disabled]="!preview.canBack()" aria-label="Back in preview" title="Back"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
           <button class="icon-button" (click)="preview.go(1)" [disabled]="!preview.canForward()" aria-label="Forward in preview" title="Forward"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
-          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
+          <button class="icon-button" (click)="reloadApplication()" [disabled]="!applicationUrl() || previewUnavailable()" aria-label="Reload application" title="Refresh"><i class="bi bi-arrow-clockwise" aria-hidden="true"></i></button>
         </div>
         <div class="preview-address">
           <span class="preview-location" [title]="preview.url() || applicationUrl() || ''">{{previewAddress()}}</span>
@@ -47,14 +66,17 @@
         </div>
         <div class="application-tools preview-display-tools">
           <button type="button" class="icon-button preview-expand" (click)="setPreviewExpanded(!previewExpanded())" [attr.aria-label]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [title]="previewExpanded() ? 'Restore preview' : 'Expand preview'" [attr.aria-pressed]="previewExpanded()"><i class="bi" [class.bi-arrows-fullscreen]="!previewExpanded()" [class.bi-arrows-angle-contract]="previewExpanded()" aria-hidden="true"></i></button>
-        @if(applicationUrl(); as url) {
+        @if(!previewUnavailable() && applicationUrl(); as url) {
           <a class="icon-button" [href]="preview.url() || url" target="_blank" rel="noopener" aria-label="Open application full page" title="Open in new tab"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>
         }
         </div>
       </header>
       @if(applicationSource(); as source) {
-        <iframe #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
-      } @else {
+        <iframe [hidden]="previewUnavailable()" #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
+      }
+      @if(previewUnavailable()) {
+        <div class="application-empty" role="status"><h2>{{activeFrontend()?.id}} is {{activeFrontend()?.state}}</h2><p>Check its status on the Workspace page or select another ready frontend.</p></div>
+      } @else if(!applicationSource()) {
         <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
       }
     </section>

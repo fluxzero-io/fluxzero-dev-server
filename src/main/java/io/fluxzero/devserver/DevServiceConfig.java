@@ -31,7 +31,9 @@ public record DevServiceConfig(
         Map<String, Integer> ports,
         Map<String, String> environment,
         Readiness readiness,
-        List<Pattern> redact
+        List<Pattern> redact,
+        String setupCommand,
+        DevContainerConfig container
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofMinutes(2);
 
@@ -44,12 +46,24 @@ public record DevServiceConfig(
     }
 
     public DevServiceConfig(String command, String stopCommand, String url, String directory,
+                            Map<String, Integer> ports, Map<String, String> environment, Readiness readiness,
+                            List<Pattern> redact, String setupCommand) {
+        this(command, stopCommand, url, directory, ports, environment, readiness, redact, setupCommand, null);
+    }
+
+    public DevServiceConfig(String command, String stopCommand, String url, String directory,
+                            Map<String, Integer> ports, Map<String, String> environment, Readiness readiness,
+                            List<Pattern> redact) {
+        this(command, stopCommand, url, directory, ports, environment, readiness, redact, null);
+    }
+
+    public DevServiceConfig(String command, String stopCommand, String url, String directory,
                             Map<String, Integer> ports, Map<String, String> environment, Readiness readiness) {
         this(command, stopCommand, url, directory, ports, environment, readiness, List.of());
     }
 
     boolean managed() {
-        return command != null;
+        return command != null || container != null;
     }
 
     static Pattern compilePattern(String value, String field) {

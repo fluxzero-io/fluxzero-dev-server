@@ -51,6 +51,13 @@ Expand preview temporarily hides Devboard navigation, keeping the preview toolba
 The same toolbar button restores the previous layout without changing the saved sidebar preference.
 Escape remains available to the app; it does not exit expanded preview. Mobile viewports already hide the sidebar.
 
+When several frontends are configured, App preview expands into keyboard-accessible frontend choices in the
+sidebar (or the navigation drawer on mobile). The active frontend is highlighted, with a small readiness icon;
+the tooltip includes its configuration id, public mount path and state. Managed and external frontends
+open through the public gateway; private upstream addresses never appear in the navigation. Switching preserves
+the same frame and preview history. Starting, failed and stopped frontends cannot be selected; a selected
+frontend that becomes unavailable shows its status until recovery. Single-frontend layouts remain unchanged.
+
 The current URL is centered with an icon-only Copy control. Back and Forward revisit preview URLs without traversing dashboard history. Refresh and Open use the current
 preview URL; external pages that cannot expose their location fall back to the application entry point.
 
@@ -334,6 +341,15 @@ child JVM, so their protocol generation cannot accidentally come from the SDK ve
 release. Resolved classpaths are cached under `~/.fluxzero/cache/dev-runtime/<sdk-version>/`; normal warm starts do
 not contact either repository again.
 
+For explicitly selected Maven applications (`apps`, named `applicationConfig` selections, or a main class),
+the dev server asks Maven for each selected application's effective runtime dependency tree before starting
+the Test Server. Unselected modules do not contribute SDK versions. Parent properties, imported BOMs,
+transitive dependencies, exclusions and Maven version mediation therefore follow the application's build.
+Explicit test applications include their test dependencies. This inspection invokes the project wrapper and
+may resolve Maven plugins and dependency POMs on a cold cache; it does not compile or run tests. A failure
+reports the selected application/runtime paths or an actionable inspection error instead of scanning the
+whole reactor as a fallback. Generated/custom source layouts can use the explicit runtime version override.
+
 Projects in one environment must use the same Fluxzero SDK major generation. When compatible projects use different
 versions within that generation, the newest version is selected for the shared Test Server. The effective version and
 cache status are published as `sdkVersion`, `mode`, and `artifactCache` in the runtime and proxy entries of
@@ -460,6 +476,30 @@ registered therefore remain visible during a normal cold start. Existing stored 
 the mechanism has no dependency on an application framework or framework lifecycle. Command results use the regular
 one-minute gateway timeout.
 
+For externally started applications (including `--no-compile-on-start --no-watch`), wait until their
+command handlers are connected, then explicitly run the configured startup commands through the local console:
+
+```sh
+# consoleOrigin is gateway.metadata.consoleOrigin, falling back to gateway.url, in .fluxzero/dev/session.json.
+consoleOrigin=$(jq -r '.gateway.metadata.consoleOrigin // .gateway.url' .fluxzero/dev/session.json)
+curl --fail -X POST "$consoleOrigin/_fluxzero/dev/actions/run-startup-commands" \
+  -H "Origin: $consoleOrigin" -H 'X-Fluxzero-Console: 1'
+curl --fail "$consoleOrigin/_fluxzero/dev/status.json"
+```
+
+HTTP 202 means accepted, not completed. Poll `maintenance.busy` until false; require an empty
+`maintenance.error` and `startup.state` equal to `succeeded` (or `idle` when no commands are configured).
+A concurrent maintenance operation returns HTTP 409. A missing handler fails after the normal one-minute
+command-result timeout; the explicit operation has an overall five-minute limit. A timeout cannot undo a
+command already delivered to an application. The operation reloads command definitions and uses the existing
+session/hash ledger: unchanged successes are skipped and changed or failed entries can run again. It does not
+compile, restart, or reset Test Server data, and requires no reset capability from the selected SDK.
+Before any run, configured commands appear as `pending`, distinct from an empty command list. Externally started
+applications should use fully qualified command types because their build type registries are not managed here.
+Use the loopback console origin, including when a separate public ingress serves the application; the endpoint
+requires the same local origin and console header as other control actions. Diagnostics contain command identity
+and outcome, not payloads or handler exception text.
+
 Every startup command receives `$user: "$system"` metadata by default. `commandDefaults.userMetadataKey` changes the
 profile-wide key and `commandDefaults.systemUser` may be either an id or a complete JSON/YAML user object. A command or
 file reference can override the identity with `user`; ids use the SDK's user-id metadata support, while complete user
@@ -493,6 +533,127 @@ are available to application and frontend configuration as
 `{services.<id>.url}` and `{services.<id>.ports.<name>}`. HTTP, TCP or explicit log readiness participates in startup,
 while service health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the
 same session.
+
+A service may instead declare `container` to let Dev Server own the container lifecycle:
+
+```yaml
+services:
+  web:
+    container:
+      image: registry.example/team/web@sha256:<64-hex-digest>
+      runtime: docker                 # or podman / a compatible CLI executable
+      pull: always                    # always (alias: verify), if-missing, never
+      ports: {http: 8080}              # container-side TCP ports
+      mounts:
+        - {source: ./local/web.conf, target: /etc/app/web.conf, readOnly: true}
+      hostGateway: host-gateway       # explicit gateway IP may be used where required
+      # network: existing-network     # optional; otherwise Dev Server owns a session network
+      # user: "1000:1000"
+      # readOnly: true
+      # capDrop: [ALL]
+      # securityOpt: [no-new-privileges]
+      # command: [server, --port, "8080"]
+    ports: {http: dynamic}            # host-side ports; names must match container.ports
+    url: http://127.0.0.1:{servicePort.http}
+    readiness: {http: "{url}/health", timeout: 2m}
+    env: {APP_MODE: development}
+    # setupCommand and stopCommand remain available for small project-owned hooks.
+```
+
+`container.image` must include an immutable SHA-256 digest; mutable tags are rejected. `container` and the
+host-shell `command` are mutually exclusive. Preparation (runtime check, image pull and container creation)
+is bounded by `readiness.timeout`, followed by the normal bounded readiness checks. Ports are always published
+on `127.0.0.1`. Bind-mount sources are resolved relative to the service directory and must already exist;
+`setupCommand` may create them before the container starts. Service environment values are passed through the
+runtime process environment, not embedded in command arguments or the ownership journal.
+
+The adapter uses the Docker-compatible `info`, `image inspect`, `pull`, `container create/start/stop/ls/rm`,
+`network create/inspect/ls/rm` and manifest commands. `driver` defaults to `podman` for an executable named
+`podman`, otherwise `docker`; set it explicitly when using a wrapper. Registry verification performs a fresh
+remote manifest lookup independently of the local image cache. Docker uses a temporary local manifest transaction
+(never pushed); Podman refuses to treat an existing local manifest list as registry verification. `registryInsecure`
+is off by default; explicitly setting it allows HTTP/self-signed registry access for manifest checks (and Podman
+pulls). Docker daemon pulls still follow the daemon's own registry policy. Docker and Podman provide this interface; an alternative runtime or
+wrapper must implement the same flags. Registry credentials remain in the runtime's existing credential store
+or helper. Dev Server does not perform login or accept registry passwords in its configuration, and suppresses
+raw registry/creation output from logs and diagnostics. See the [Docker run reference](https://docs.docker.com/reference/cli/docker/container/run/)
+and [Podman run reference](https://docs.podman.io/en/latest/markdown/podman-run.1.html) for runtime-specific network semantics.
+
+With `always`/`verify` (the default), both remote manifest verification and the pull must succeed even with a warm cache. `if-missing` checks the registry
+only when the pinned reference is absent; `never` requires it in the cache. Service metadata separately reports
+`container.cachedBeforePull`, `container.registryAccess` (`not-checked`, `verified`, `failed`), image ID, requested
+digest, phase and failure category. A warm cache alone never means registry access was verified.
+
+Containers in the same session and runtime share an owned network and can resolve each other by service id.
+The neutral host alias `fluxzero.host.internal` maps to `container.hostGateway` (default `host-gateway`); the host
+service must bind to a reachable interface. For an ingress container, `gateway.host: fluxzero.host.internal`
+and an appropriate explicit `gateway.bindAddress` use the same alias. Podman VM/rootless or other network setups
+may require an explicit host gateway IP. An explicitly named existing network is used but never removed.
+
+Attached runtime output feeds the existing service log/readiness handling and `output.redact` rules. Exiting
+containers fail the service; restarting the environment recreates them. Session/project labels and an atomic
+`.fluxzero/dev/containers.json` ownership journal precede resource creation. Normal shutdown first gives containers a bounded graceful stop, then removes owned
+containers and their shared network after the last service; the next Dev Server start reconciles interrupted
+sessions before launching replacements. Cleanup never removes resources without matching ownership labels and
+fails visibly if the runtime is unavailable. Keep the journal when recovering an interrupted session; it contains
+resource names and runtime paths, not credentials or environment values. Existing command-backed and external
+services continue to work without container tooling.
+
+The opt-in `ContainerServicesE2EIT` qualification requires Docker and can be run with
+`./mvnw -B -Dtest=ContainerServicesE2EIT -Dfluxzero.dev.containerE2e=true test`. It exercises a private local registry
+with isolated fixture credentials, cache/pull policies, real readiness and interrupted-session cleanup.
+
+A managed service can own the public application origin. Select it with `publicIngress` (also supported inside
+named profiles); its `url` must resolve to an HTTP(S) origin without a path, query, fragment or credentials:
+
+```yaml
+publicIngress: edge
+services:
+  edge:
+    setupCommand: ./local/render-ingress-config {gateway.url}
+    command: ./local/run-ingress --port {servicePort.http}
+    stopCommand: ./local/stop-ingress
+    ports:
+      http: dynamic
+    url: "http://localhost:{servicePort.http}"
+    readiness:
+      http: "{url}/health"
+```
+
+The example commands are project-owned adapters for your ingress. `{gateway.host}`, `{gateway.port}` and
+`{gateway.url}` identify the internal application gateway; its socket is reserved before any service starts.
+They are available in service setup/start/stop commands, environment and readiness fields, and application/frontend
+configuration. A service `setupCommand` runs before `command`, with the same working directory, environment,
+redaction and process ownership, bounded by `readiness.timeout`. Setup output does not satisfy log readiness.
+Ingress startup runs concurrently with applications/frontends, so a readiness check may depend on them without
+blocking their startup. Ingress failures appear through ordinary service status, logs and diagnostics.
+
+With ingress enabled, App preview, application links, IDP issuer and callback configuration use the ingress origin.
+Devboard has a separate loopback listener, recorded as `gateway.metadata.consoleOrigin` in the session; `port`
+configures that listener. Devboard routes are unavailable through the internal application gateway. Direct
+application requests on the console origin redirect to the ingress. Workspace restarts retain the console port.
+The preview keeps frontend selection, refresh and its explicit Back/Forward history on the public origin. Browser
+same-origin rules prevent Devboard from inspecting subsequent links or SPA navigation inside a cross-origin
+iframe; Copy/Open therefore use the last explicitly selected URL in that case.
+
+For a container ingress, configure the host address **as seen by that container**, independently of the interface
+on which the internal gateway listens:
+
+```yaml
+gateway:
+  host: host.containers.internal
+  bindAddress: 0.0.0.0
+```
+
+These settings are runtime-independent: commands and network configuration remain in the project profile. For
+example, Docker Desktop supplies `host.docker.internal`; Podman supplies `host.containers.internal` in supported
+network configurations. Neither hostname alone enables access to host loopback on every platform. Choose a
+reachable host interface or configure your runtime's loopback forwarding/host networking. Prefer a specific
+reachable interface where available; `0.0.0.0` listens on every IPv4 interface. Application and frontend processes
+can keep listening on loopback, and Devboard always stays on loopback. No container runtime is detected or
+reconfigured automatically. See [Docker networking](https://docs.docker.com/desktop/features/networking/networking-how-tos/)
+and [Podman networking options](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
+Without `publicIngress`, the existing single loopback origin remains unchanged.
 
 Services without a local HTTP/TCP endpoint can opt into startup readiness from process output:
 
@@ -557,7 +718,7 @@ Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
 
 ## Development console
 
-Open `/_fluxzero/dev/` on the public development URL. App preview opens by default. The **Dev environment** page and **Monitoring** menu show only the
+Open the printed **Dev console** URL (`/_fluxzero/dev/`). Without public ingress this shares the application origin. App preview opens by default. The **Dev environment** page and **Monitoring** menu show only the
 selected dev server. Use the sidebar dropdown to switch servers: results are grouped as **Current**, **Running**
 and **Stopped**. Search by name or folder. Selecting an active server opens its App preview; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
 that project's `.fluxzero/dev.yaml` and the current dev-server distribution, without restoring temporary

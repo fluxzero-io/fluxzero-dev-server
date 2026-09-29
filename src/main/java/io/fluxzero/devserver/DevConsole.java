@@ -182,7 +182,7 @@ final class DevConsole implements AutoCloseable {
         }
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Maintenance requires the local console.");
         String action = path.substring((ROOT + "actions/").length());
-        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "update-devserver", "restart-application", "restart-app", "clear-test-output", "run-tests", "pause-tests", "resume-tests", "stop-workspace", "start-workspace", "stop-devserver", "pause-builds", "resume-builds", "switch-profile").contains(action))
+        if (maintenance == null || !java.util.Set.of("truncate-testserver-data", "clear-monitoring-storage", "truncate-data", "restart-devserver", "update-devserver", "restart-application", "restart-app", "clear-test-output", "run-startup-commands", "run-tests", "pause-tests", "resume-tests", "stop-workspace", "start-workspace", "stop-devserver", "pause-builds", "resume-builds", "switch-profile").contains(action))
             return actionResult(response, callback, 404, "Unknown maintenance action.");
         if ("update-devserver".equals(action)) {
             try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
@@ -220,6 +220,8 @@ final class DevConsole implements AutoCloseable {
         Runnable accepted;
         try { accepted = maintenance.apply(action); }
         catch (IllegalStateException e) { return actionResult(response, callback, 409, e.getMessage()); }
+        // Publish busy before acceptance so scripts cannot mistake an older completed snapshot for this run.
+        if ("run-startup-commands".equals(action)) updates.refresh();
         // A restart may close this gateway. Flush its acceptance before starting the operation.
         return actionResult(response, new Callback() {
             @Override public void succeeded() { try { callback.succeeded(); } finally { accepted.run(); } }

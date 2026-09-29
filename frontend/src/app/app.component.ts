@@ -6,7 +6,7 @@ import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
-import {Environment, environmentConsoleUrl, applicationUrl, monitoringPath, monitoringViews, Status} from './models';
+import {Environment, environmentConsoleUrl, applicationUrl, applicationOrigin, previewFrontends, matchingFrontend, PreviewFrontend, monitoringPath, monitoringViews, Status} from './models';
 import {ProfileSelectorComponent} from './profile-selector.component';
 import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
@@ -41,11 +41,42 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly route = signal('application');
   readonly applicationOpened = signal(false);
   readonly applicationUrl = computed(() => applicationUrl(this.status()));
+  private readonly initialPreviewPath = signal('');
+  private readonly previewLoaded = signal(false);
+  private readonly applicationSourceUrl = computed(() => {
+    const path = this.initialPreviewPath();
+    const url = path ? new URL(path, applicationOrigin(this.status())).href : this.applicationUrl();
+    const frontend=matchingFrontend(this.previewFrontends(), url || '');
+    if (!this.previewLoaded() && frontend && frontend.state !== 'running') return undefined;
+    return this.applicationOpened() && url ? url : undefined;
+  });
   readonly applicationSource = computed(() => {
-    const url = this.applicationUrl();
-    return this.applicationOpened() && url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : undefined;
+    const url=this.applicationSourceUrl();
+    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : undefined;
   });
   readonly preview = new PreviewNavigation();
+  readonly previewFrontends = computed(() => previewFrontends(this.status()));
+  readonly activeFrontend = computed(() => matchingFrontend(this.previewFrontends(), this.preview.url() || this.applicationSourceUrl() || this.applicationUrl() || ''));
+  readonly previewUnavailable = computed(() => {
+    const frontend=this.activeFrontend();
+    return !!frontend && (frontend.state !== 'running' || !this.connected() || !!this.status()?.maintenance?.workspaceStopped);
+  });
+  readonly previewNavigationExpanded = signal(true);
+  frontendState(frontend:PreviewFrontend):string {
+    if(!this.connected()) return 'disconnected';
+    if(this.status()?.maintenance?.workspaceStopped) return 'stopped';
+    return frontend.state;
+  }
+  selectFrontend(id:string) {
+    const frontend=this.previewFrontends().find(item=>item.id===id);
+    if(!frontend || this.frontendState(frontend)!=='running') return;
+    const url=new URL(frontend.path, applicationOrigin(this.status())).href;
+    if(this.applicationFrame) this.preview.navigate(url);
+    else this.initialPreviewPath.set(frontend.path);
+    const drawerWasOpen=this.menuOpen();
+    this.navigate('application');
+    if(drawerWasOpen) this.focusNavigationTrigger();
+  }
   @ViewChild('applicationFrame') applicationFrame?: ElementRef<HTMLIFrameElement>;
   readonly previewExpanded = signal(false);
   setPreviewExpanded(expanded: boolean) {
@@ -71,7 +102,8 @@ export class AppComponent implements OnInit, OnDestroy {
     try {const url=new URL(address);return url.host + url.pathname + url.search + url.hash;} catch {return '';}
   }
   applicationLoaded() {
-    if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!);
+    this.previewLoaded.set(true);
+    if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!,!!this.status()?.publicApplicationUrl);
   }
   reloadApplication() {if(this.applicationUrl()) this.preview.refresh(this.applicationUrl()!);}
   readonly dark = signal(false);

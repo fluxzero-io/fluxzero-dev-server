@@ -31,6 +31,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -86,6 +87,39 @@ class DevServerMainTest {
                 process.destroyForcibly();
             }
         }
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void ingressWorkspaceResumesOnItsConsolePort(@TempDir Path project) throws Exception {
+        String javaCommand = "'" + Path.of(System.getProperty("java.home"), "bin", "java") + "' -cp '" + testClassPath() + "' ";
+        Files.createDirectories(project.resolve(".fluxzero"));
+        var yaml = new ObjectMapper(new com.fasterxml.jackson.dataformat.yaml.YAMLFactory());
+        yaml.writeValue(project.resolve(".fluxzero/dev.yaml").toFile(), java.util.Map.of(
+                "version", 1, "frontendOnly", true, "publicIngress", "edge",
+                "frontend", java.util.Map.of("command", javaCommand + FrontendFixtureServer.class.getName() + " {frontendPort}"),
+                "services", java.util.Map.of("edge", java.util.Map.of(
+                        "setupCommand", javaCommand + IngressFixtureServer.class.getName() + " setup upstream.txt {gateway.url}",
+                        "command", javaCommand + IngressFixtureServer.class.getName() + " {servicePort.http} upstream.txt",
+                        "ports", java.util.Map.of("http", "dynamic"), "url", "http://localhost:{servicePort.http}"))));
+        Process process = startServer(project);
+        try (var http = java.net.http.HttpClient.newHttpClient()) {
+            assertTrue(awaitRunningSession(sessionFile(project)));
+            var store = new DevSessionStore(project);
+            var before = store.readSession().orElseThrow();
+            String console = before.consoleOrigin();
+            assertNotEquals(before.gateway().port(), before.consolePort());
+            assertEquals(202, dashboardAction(http, console, "stop-workspace"));
+            awaitDashboardState(http, console, "idle");
+            assertEquals(202, dashboardAction(http, console, "start-workspace"));
+            awaitDashboardState(http, console, "running");
+            var after = store.readSession().orElseThrow();
+            assertNotEquals(before.sessionId(), after.sessionId());
+            assertEquals(console, after.consoleOrigin());
+            assertNotEquals(after.gateway().port(), after.consolePort());
+            assertEquals(202, dashboardAction(http, console, "stop-devserver"));
+            assertTrue(process.waitFor(10, TimeUnit.SECONDS));
+        } finally { if (process.isAlive()) ProcessUtils.stopTree(process, Duration.ofSeconds(5)); }
     }
 
     @Test

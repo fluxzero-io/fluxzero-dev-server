@@ -65,10 +65,15 @@ final class FluxzeroSdkVersionDetector {
 
         Map<String, String> projectVersions = new LinkedHashMap<>();
         Set<String> fallbackProjects = new LinkedHashSet<>();
+        Map<String, String> contributions = new LinkedHashMap<>();
         for (DevBuildProject project : config.projects()) {
-            Set<String> detected = detect(project.directory());
+            DevServerConfig projectConfig = config.forProject(project);
+            Map<String, String> selected = SelectedMavenSdkVersions.applies(projectConfig)
+                    ? SelectedMavenSdkVersions.detect(projectConfig) : null;
+            if (selected != null) selected.forEach((path, version) -> contributions.put(project.id() + "/" + path, version));
+            Set<String> detected = selected == null ? detect(project.directory()) : new LinkedHashSet<>(selected.values());
             if (detected.isEmpty()) {
-                if (declaresFluxzero(project.directory())) {
+                if (selected == null && declaresFluxzero(project.directory())) {
                     throw new DevServerStartupException(
                             "Could not determine the Fluxzero SDK version for " + project.id()
                             + ". Declare a concrete Fluxzero SDK or BOM version in the Maven or Gradle build, or set "
@@ -78,13 +83,23 @@ final class FluxzeroSdkVersionDetector {
                 projectVersions.put(project.id(), DevServerVersion.sdkVersion());
                 fallbackProjects.add(project.id());
             } else {
-                projectVersions.put(project.id(), compatibleVersion(project.id(), detected));
+                try {
+                    projectVersions.put(project.id(), compatibleVersion(project.id(), detected));
+                } catch (DevServerStartupException e) {
+                    throw new DevServerStartupException(e.getMessage() + " Contributing runtime paths: " + contributions, e);
+                }
             }
         }
         if (projectVersions.isEmpty()) {
             return new Selection(DevServerVersion.sdkVersion(), Map.of(), false, Set.of());
         }
-        String selected = compatibleVersion("development environment", new LinkedHashSet<>(projectVersions.values()));
+        String selected;
+        try {
+            selected = compatibleVersion("development environment", new LinkedHashSet<>(projectVersions.values()));
+        } catch (DevServerStartupException e) {
+            throw new DevServerStartupException(e.getMessage() + " Selected projects: " + projectVersions
+                    + "; runtime paths: " + contributions, e);
+        }
         return new Selection(selected, projectVersions, false, fallbackProjects);
     }
 

@@ -98,7 +98,7 @@ final class DevEnvironmentRegistry {
     /** Persist discovery separately so CLI unregister/cleanup keeps its existing behavior. */
     private void remember(DevSession session) {
         Path project = canonicalProject(Path.of(session.projectDirectory()));
-        write(historyFile(project), new KnownProject(SCHEMA_VERSION, project.toString(), session.gateway().url(), false));
+        write(historyFile(project), new KnownProject(SCHEMA_VERSION, project.toString(), session.consoleOrigin(), false));
     }
 
     private Path historyFile(Path project) {
@@ -195,7 +195,7 @@ final class DevEnvironmentRegistry {
                 && ProcessUtils.isAlive(current.pid(), current.startedAt());
         boolean responsive = running && Instant.now().toEpochMilli() - current.heartbeatAt() <= HEARTBEAT_TIMEOUT.toMillis();
         boolean dashboardSupported = current != null && "1".equals(current.gateway().metadata().get(DevConsole.CAPABILITY));
-        String address = current != null && current.gateway().url() != null ? current.gateway().url() : known.url();
+        String address = current != null && current.consoleOrigin() != null ? current.consoleOrigin() : known.url();
         String consoleUrl = null;
         Integer port = null;
         try {

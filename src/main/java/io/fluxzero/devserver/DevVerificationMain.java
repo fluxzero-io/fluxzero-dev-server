@@ -66,9 +66,9 @@ public final class DevVerificationMain {
     static int run(Path project, List<String> command, Duration timeout) throws Exception {
         DevSession session = new DevSessionStore(project).readSession().orElseThrow(
                 () -> new IllegalStateException("Start the project dev server before exclusive verification"));
-        if (!"running".equals(session.status()) || session.gateway().url() == null)
+        if (!"running".equals(session.status()) || session.consoleOrigin() == null)
             throw new IllegalStateException("A running dev server with a local console is required");
-        URI base = URI.create(session.gateway().url());
+        URI base = URI.create(session.consoleOrigin());
         if (!"http".equals(base.getScheme()) || !List.of("localhost", "127.0.0.1", "[::1]", "::1").contains(base.getHost()))
             throw new IllegalStateException("Verification requires a loopback console URL");
         try (HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build()) {
