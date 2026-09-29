@@ -393,7 +393,6 @@ body:has(.preview-expanded) {overflow:hidden;}
 .preview-nav-items {display:flex;flex-direction:column;gap:2px;margin:4px 0 8px 32px;}
 .preview-frontend-item {min-height:36px;padding:0 12px;font-size:14px;font-weight:400;gap:8px;}
 .preview-frontend-item .frontend-name {flex:1;text-transform:capitalize;}
-.preview-frontend-item.active {box-shadow:inset 2px 0 var(--dashboard-active);}
 .preview-frontend-item:disabled {cursor:default;color:var(--dashboard-muted);}
 .preview-frontend-item:disabled:not(.active):hover {background:transparent;}
 .preview-frontend-item .frontend-state {flex:0 0 14px;width:14px;font-size:11px;color:var(--dashboard-muted);}
