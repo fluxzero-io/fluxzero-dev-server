@@ -46,6 +46,38 @@ class DevCommandPipelineTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Test
+    void explicitRunTimesOutWithoutAnExternalHandlerAndRedactsInvalidPayloads(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Path directory = project.resolve(DevCommandPipeline.COMMAND_DIRECTORY);
+        Files.createDirectories(directory);
+        Path command = directory.resolve("sample.json");
+        writeCreateUserCommand(command, "private-payload-value");
+        Server runtime = TestServer.startServer(0);
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString(), "--no-watch",
+                "--no-compile-on-start", "--no-tests"});
+        var status = new AtomicReference<DevCommandStatus>();
+        List<String> output = new CopyOnWriteArrayList<>();
+        try (var pipeline = new DevCommandPipeline(config, new DevSessionStore(project),
+                "ws://localhost:" + localPort(runtime), status::set, output::add)) {
+            pipeline.initializeStatus();
+            assertEquals("pending", status.get().state());
+            assertEquals(1, status.get().pending());
+            long started = System.nanoTime();
+            org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                    () -> pipeline.runAndWait(Duration.ofMillis(300)));
+            assertTrue(Duration.ofNanos(System.nanoTime() - started).compareTo(Duration.ofSeconds(5)) < 0);
+            assertTrue(awaitStatus(status, "failed"));
+            Files.writeString(command, "{\"payload\":private-payload-value}");
+            assertEquals("failed", pipeline.runAndWait(Duration.ofSeconds(5)).state());
+            assertTrue(status.get().summary().contains("configuration failed"));
+            org.junit.jupiter.api.Assertions.assertFalse(String.join("\n", output).contains("private-payload-value"));
+            org.junit.jupiter.api.Assertions.assertFalse(objectMapper.writeValueAsString(status.get()).contains("private-payload-value"));
+        } finally {
+            runtime.stop();
+        }
+    }
+
+    @Test
     void executesDiscoveredCommandsAndWritesStatus(@TempDir Path projectDirectory) throws Exception {
         Path commandDirectory = projectDirectory.resolve(DevCommandPipeline.COMMAND_DIRECTORY);
         Files.createDirectories(commandDirectory);
@@ -659,7 +691,7 @@ class DevCommandPipelineTest {
             pipeline.requestRun();
 
             assertTrue(awaitStatus(status, "failed"));
-            assertTrue(output.stream().anyMatch(line -> line.contains("glob matched no files")));
+            assertTrue(output.stream().anyMatch(line -> line.contains("Unable to load startup commands")));
             assertTrue(pipeline.references(projectDirectory.resolve("src/test/resources/users/new/create.json")));
         } finally {
             runtime.stop();

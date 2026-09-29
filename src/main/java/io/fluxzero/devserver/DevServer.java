@@ -306,7 +306,7 @@ public class DevServer implements AutoCloseable {
             commandPipeline = new DevCommandPipeline(
                     config, sessionStore, runtimeBaseUrl, this::updateCommandStatus, this::print,
                     session.sessionId());
-            updateCommandStatus(DevCommandStatus.empty(session.sessionId()));
+            commandPipeline.initializeStatus();
             initializeProjects();
         }
     }
@@ -930,6 +930,8 @@ public class DevServer implements AutoCloseable {
                 }
             });
         }
+        if ("run-startup-commands".equals(action) && (commandPipeline == null || !"running".equals(session.runtime().state())))
+            throw new IllegalStateException("Startup commands require a running Test Server.");
         if ("restart-devserver".equals(action) && !restartSupported)
             throw new IllegalStateException("Restart is only available in the standalone dev server.");
         if ("clear-monitoring-storage".equals(action) && (monitoring == null || !"victorialogs".equals(monitoring.storage())))
@@ -959,6 +961,11 @@ public class DevServer implements AutoCloseable {
                             requestShutdown(RESTART_REQUESTED);
                         }
                         case "restart-application" -> restartCustomerApplications();
+                        case "run-startup-commands" -> {
+                            DevCommandStatus result = commandPipeline.runAndWait(Duration.ofMinutes(5));
+                            if ("failed".equals(result.state()))
+                                throw new IllegalStateException("Startup commands failed. Check Startup status and application readiness.");
+                        }
                         case "truncate-data" -> truncateEnvironment();
                         case "truncate-testserver-data" -> testServer.truncateData(Duration.ofSeconds(30));
                         case "clear-monitoring-storage" -> {
@@ -987,6 +994,7 @@ public class DevServer implements AutoCloseable {
                     buildPauseState = "running";
                 }
                 maintenanceBusy.set(false);
+                if (devGateway != null) devGateway.refreshConsole();
             }
         });
     }

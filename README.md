@@ -476,6 +476,30 @@ registered therefore remain visible during a normal cold start. Existing stored 
 the mechanism has no dependency on an application framework or framework lifecycle. Command results use the regular
 one-minute gateway timeout.
 
+For externally started applications (including `--no-compile-on-start --no-watch`), wait until their
+command handlers are connected, then explicitly run the configured startup commands through the local console:
+
+```sh
+# consoleOrigin is gateway.metadata.consoleOrigin, falling back to gateway.url, in .fluxzero/dev/session.json.
+consoleOrigin=$(jq -r '.gateway.metadata.consoleOrigin // .gateway.url' .fluxzero/dev/session.json)
+curl --fail -X POST "$consoleOrigin/_fluxzero/dev/actions/run-startup-commands" \
+  -H "Origin: $consoleOrigin" -H 'X-Fluxzero-Console: 1'
+curl --fail "$consoleOrigin/_fluxzero/dev/status.json"
+```
+
+HTTP 202 means accepted, not completed. Poll `maintenance.busy` until false; require an empty
+`maintenance.error` and `startup.state` equal to `succeeded` (or `idle` when no commands are configured).
+A concurrent maintenance operation returns HTTP 409. A missing handler fails after the normal one-minute
+command-result timeout; the explicit operation has an overall five-minute limit. A timeout cannot undo a
+command already delivered to an application. The operation reloads command definitions and uses the existing
+session/hash ledger: unchanged successes are skipped and changed or failed entries can run again. It does not
+compile, restart, or reset Test Server data, and requires no reset capability from the selected SDK.
+Before any run, configured commands appear as `pending`, distinct from an empty command list. Externally started
+applications should use fully qualified command types because their build type registries are not managed here.
+Use the loopback console origin, including when a separate public ingress serves the application; the endpoint
+requires the same local origin and console header as other control actions. Diagnostics contain command identity
+and outcome, not payloads or handler exception text.
+
 Every startup command receives `$user: "$system"` metadata by default. `commandDefaults.userMetadataKey` changes the
 profile-wide key and `commandDefaults.systemUser` may be either an id or a complete JSON/YAML user object. A command or
 file reference can override the identity with `user`; ids use the SDK's user-id metadata support, while complete user

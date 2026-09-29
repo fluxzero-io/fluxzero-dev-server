@@ -226,7 +226,7 @@ public class DevGatewayTest {
             assertEquals(413, renamePost(update, base, " ".repeat(1025)).statusCode());
             assertEquals(202, renamePost(update, base, "{\"version\":\"1.99.0\"}").statusCode());
             assertEquals("update-devserver:1.99.0", called.get());
-            for (String action : List.of("pause-tests", "resume-tests")) {
+            for (String action : List.of("pause-tests", "resume-tests", "run-startup-commands")) {
                 called.set(null);
                 String testAction = base + DevConsole.ROOT + "actions/" + action;
                 assertEquals(403, projectPost(testAction, "https://example.com", true).statusCode());
