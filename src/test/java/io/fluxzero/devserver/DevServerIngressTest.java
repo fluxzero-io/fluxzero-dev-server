@@ -85,7 +85,8 @@ class DevServerIngressTest {
         }
         assertFalse(ProcessUtils.isAlive(ingressPid));
         for (int port : List.of(internalPort, consolePort, ingressPort)) {
-            try (var socket = new ServerSocket()) { socket.bind(new InetSocketAddress("127.0.0.1", port)); }
+            // Use the real gateway's reuse policy: Linux can retain closed HTTP connections in TIME_WAIT.
+            try (var endpoint = DevGateway.reserve(port, "127.0.0.1")) { assertEquals(port, endpoint.port()); }
         }
     }
 
@@ -130,6 +131,9 @@ class DevServerIngressTest {
         int port;
         try (var reservation = DevGateway.reserve(0, "127.0.0.1")) {
             port = reservation.port();
+            assertThrows(DevServerStartupException.class, () -> {
+                try (var ignored = DevGateway.reserve(port, "127.0.0.1")) { }
+            });
             try (var socket = new ServerSocket()) {
                 assertThrows(java.net.BindException.class, () -> socket.bind(new InetSocketAddress("127.0.0.1", port)));
             }
