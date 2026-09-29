@@ -340,6 +340,15 @@ child JVM, so their protocol generation cannot accidentally come from the SDK ve
 release. Resolved classpaths are cached under `~/.fluxzero/cache/dev-runtime/<sdk-version>/`; normal warm starts do
 not contact either repository again.
 
+For explicitly selected Maven applications (`apps`, named `applicationConfig` selections, or a main class),
+the dev server asks Maven for each selected application's effective runtime dependency tree before starting
+the Test Server. Unselected modules do not contribute SDK versions. Parent properties, imported BOMs,
+transitive dependencies, exclusions and Maven version mediation therefore follow the application's build.
+Explicit test applications include their test dependencies. This inspection invokes the project wrapper and
+may resolve Maven plugins and dependency POMs on a cold cache; it does not compile or run tests. A failure
+reports the selected application/runtime paths or an actionable inspection error instead of scanning the
+whole reactor as a fallback. Generated/custom source layouts can use the explicit runtime version override.
+
 Projects in one environment must use the same Fluxzero SDK major generation. When compatible projects use different
 versions within that generation, the newest version is selected for the shared Test Server. The effective version and
 cache status are published as `sdkVersion`, `mode`, and `artifactCache` in the runtime and proxy entries of
