@@ -19,6 +19,7 @@ export interface ProgressMilestone {id:string; title:string; description:string;
 export interface ProjectProgress {revision:string|null; data:{version:number; milestones:ProgressMilestone[]}|null; error:string|null;}
 export interface PreviewFrontend {id:string; path:string; state:string;}
 export interface Status {
+  publicApplicationUrl?:string;
   frontends?: PreviewFrontend[];
   update?: {status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; phase?:string; error?:string};
   progress?:ProjectProgress;
@@ -68,8 +69,9 @@ export function environmentConsoleUrl(environment: Environment): string | null {
   } catch { return null; }
 }
 
-/** Preview the current gateway's application, never another origin or the console itself. */
+/** Preview the configured public application origin and its validated mount paths. */
 export function applicationUrl(status: Status | undefined, origin = location.origin): string | null {
+  origin = applicationOrigin(status, origin);
   if (status?.frontends?.length) {
     const frontends = previewFrontends(status);
     const frontend = frontends.find(f => f.path === '/') || frontends[0];
@@ -110,4 +112,15 @@ export function matchingFrontend(frontends:PreviewFrontend[], address:string):Pr
     return [...frontends].sort((a,b)=>b.path.length-a.path.length).find(frontend =>
       frontend.path==='/' || path===frontend.path || path.startsWith(frontend.path.replace(/\/$/,'')+'/'));
   } catch {return undefined;}
+}
+
+/** The server supplies a distinct public origin only when the profile selects an ingress service. */
+export function applicationOrigin(status:Status|undefined, fallback=location.origin):string {
+  if(!status?.publicApplicationUrl) return fallback;
+  try {
+    const url=new URL(status.publicApplicationUrl);
+    if(['http:','https:'].includes(url.protocol) && !url.username && !url.password
+      && url.pathname==='/' && !url.search && !url.hash) return url.origin;
+  } catch { /* Invalid status cannot provide a navigation origin. */ }
+  return fallback;
 }

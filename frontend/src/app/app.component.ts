@@ -6,7 +6,7 @@ import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
 import {Handler, HandleCommand, HandleQuery, HandleEvent, publishEvent, sendCommand} from './dom-handlers';
-import {Environment, environmentConsoleUrl, applicationUrl, previewFrontends, matchingFrontend, monitoringPath, monitoringViews, Status} from './models';
+import {Environment, environmentConsoleUrl, applicationUrl, applicationOrigin, previewFrontends, matchingFrontend, monitoringPath, monitoringViews, Status} from './models';
 import {ProfileSelectorComponent} from './profile-selector.component';
 import {ProjectsComponent} from './projects.component';
 import {EnvironmentSelectorComponent} from './environment-selector.component';
@@ -63,7 +63,7 @@ export class AppComponent implements OnInit, OnDestroy {
   selectFrontend(id:string) {
     const frontend=this.previewFrontends().find(item=>item.id===id);
     if(!frontend || frontend.state!=='running' || !this.connected()) return;
-    const url=new URL(frontend.path, location.origin).href;
+    const url=new URL(frontend.path, applicationOrigin(this.status())).href;
     if(this.applicationFrame) this.preview.navigate(url);
     else this.initialPreviewUrl.set(url);
   }
@@ -93,7 +93,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   applicationLoaded() {
     this.previewLoaded.set(true);
-    if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!);
+    if(this.applicationFrame && this.applicationUrl()) this.preview.connect(this.applicationFrame.nativeElement,this.applicationUrl()!,!!this.status()?.publicApplicationUrl);
   }
   reloadApplication() {if(this.applicationUrl()) this.preview.refresh(this.applicationUrl()!);}
   readonly dark = signal(false);

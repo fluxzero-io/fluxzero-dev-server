@@ -111,7 +111,7 @@ public final class DevServerMain {
         shutdown.await();
         String reason = server.shutdownRequested().getNow(null);
         if (!DevServer.RESTART_REQUESTED.equals(reason) && !DevServer.UPDATE_REQUESTED.equals(reason) && !DevServer.STOP_REQUESTED.equals(reason)) return null;
-        Integer port = server.session().gateway().port();
+        Integer port = server.session().consolePort();
         try {
             if (registered.compareAndSet(true, false)) registry.unregister(server.session());
         } finally {

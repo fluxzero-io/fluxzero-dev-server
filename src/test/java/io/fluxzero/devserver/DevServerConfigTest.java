@@ -31,6 +31,46 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerConfigTest {
 
     @Test
+    void parsesRuntimeIndependentIngressFromSelectedProfile(@TempDir Path project) throws Exception {
+        Files.createDirectories(project.resolve(".fluxzero"));
+        Files.writeString(project.resolve(".fluxzero/dev.yaml"), """
+                version: 1
+                defaultProfile: container
+                profiles:
+                  container:
+                    frontendOnly: true
+                    frontend:
+                      url: http://localhost:5173
+                    publicIngress: edge
+                    gateway:
+                      host: host.containers.internal
+                      bindAddress: 0.0.0.0
+                    services:
+                      edge:
+                        setupCommand: render-config {gateway.host} {gateway.port} {gateway.url}
+                        command: ingress --port {servicePort.http}
+                        ports:
+                          http: dynamic
+                        url: http://localhost:{servicePort.http}
+                """);
+        var config = DevServerConfig.fromArgs(new String[]{"--project-dir", project.toString()});
+        assertEquals(new DevIngressConfig("edge", "host.containers.internal", "0.0.0.0"), config.ingress());
+        assertEquals("render-config {gateway.host} {gateway.port} {gateway.url}", config.services().get("edge").setupCommand());
+    }
+
+    @Test
+    void rejectsUnknownExternalOrMissingIngressAndUnusableHost(@TempDir Path project) throws Exception {
+        Files.createDirectories(project.resolve(".fluxzero"));
+        for (String settings : List.of("publicIngress: missing", "gateway: {host: localhost}",
+                "publicIngress: edge\nservices: {edge: {url: 'http://localhost:8000'}}",
+                "publicIngress: edge\ngateway: {host: 'http://localhost'}\nservices: {edge: {command: edge, url: 'http://localhost:8000'}}")) {
+            Files.writeString(project.resolve(".fluxzero/dev.yaml"), "version: 1\n" + settings);
+            assertThrows(DevServerStartupException.class, () -> DevServerConfig.fromArgs(
+                    new String[]{"--project-dir", project.toString()}));
+        }
+    }
+
+    @Test
     void parsesCommandLineOptions(@TempDir Path projectDirectory) {
         DevServerConfig config = DevServerConfig.fromArgs(new String[]{
                 "--project-dir", projectDirectory.toString(),

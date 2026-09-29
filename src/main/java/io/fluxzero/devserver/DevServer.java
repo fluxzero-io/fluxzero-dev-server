@@ -94,6 +94,9 @@ public class DevServer implements AutoCloseable {
     private volatile String runtimeBaseUrl;
     private volatile String proxyUrl;
     private volatile String publicUrl;
+    private DevGateway applicationGateway;
+    private DevGateway.Reservation gatewayEndpoint;
+    private Map<String, String> gatewayValues = Map.of();
     private volatile String publicFluxzeroUrl;
     private final AtomicBoolean browserReadyAnnounced = new AtomicBoolean();
     private final AtomicBoolean startupFailureAnnounced = new AtomicBoolean();
@@ -280,6 +283,13 @@ public class DevServer implements AutoCloseable {
     }
 
     private void startProjectInfrastructure() {
+        DevIngressConfig ingress = config.ingress();
+        gatewayEndpoint = DevGateway.reserve(ingress == null ? effectiveGatewayPort : 0,
+                ingress == null ? "127.0.0.1" : ingress.bindAddress());
+        String gatewayHost = ingress == null ? "localhost" : ingress.host();
+        gatewayValues = Map.of("gateway.host", gatewayHost, "gateway.port", Integer.toString(gatewayEndpoint.port()),
+                "gateway.url", "http://" + gatewayHost + ":" + gatewayEndpoint.port());
+        placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), gatewayValues).with(Map.of(), Set.of("gateway."));
         startServices();
         if (config.backendEnabled()) {
             startRuntimeInfrastructure();
@@ -290,6 +300,7 @@ public class DevServer implements AutoCloseable {
         startFrontend();
         startGateway();
         launchFrontend();
+        launchPublicIngress();
         if (config.backendEnabled()) {
             startIdp();
             commandPipeline = new DevCommandPipeline(
@@ -421,20 +432,21 @@ public class DevServer implements AutoCloseable {
             updateSession(current -> current.withServices(Map.of()));
             return;
         }
-        Map<String, String> placeholders = new LinkedHashMap<>();
+        Map<String, String> placeholders = new LinkedHashMap<>(gatewayValues);
         config.services().forEach((id, serviceConfig) -> {
             DevServiceProcess process = DevServiceProcess.prepare(
                     id, serviceConfig, config.projectDirectory(), session.sessionId(),
                     config.gracefulShutdownTimeout(),
                     status -> updateServiceStatus(id, status),
-                    output -> printServiceOutput(id, output));
+                    output -> printServiceOutput(id, output), gatewayValues);
             serviceProcesses.put(id, process);
             serviceStatuses.put(id, process.status());
             placeholders.putAll(process.placeholders());
         });
-        placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), placeholders);
+        placeholderResolver = DevPlaceholderResolver.services(session.sessionId(), placeholders).with(Map.of(), Set.of("gateway."));
         updateServicesSession();
         for (String id : config.services().keySet()) {
+            if (config.ingress() != null && config.ingress().service().equals(id)) continue;
             DevServiceProcess process = serviceProcesses.get(id);
             terminalProgress.updateTask("service-" + id, "Service " + id, "starting");
             try {
@@ -444,6 +456,22 @@ public class DevServer implements AutoCloseable {
                 throw e;
             }
         }
+    }
+
+    private void launchPublicIngress() {
+        if (config.ingress() == null) return;
+        String id = config.ingress().service();
+        terminalProgress.updateTask("service-" + id, "Service " + id, "starting ingress");
+        DevServiceProcess ingress = serviceProcesses.get(id);
+        Thread.ofVirtual().name("fluxzero-dev-ingress-" + id).start(() -> {
+            try { ingress.start(); }
+            catch (RuntimeException e) { announceStartupFailure("Service " + id, e.getMessage()); }
+        });
+    }
+
+    private String ingressState() {
+        return config.ingress() == null ? "running" : serviceStatuses.getOrDefault(config.ingress().service(),
+                DevSession.ServiceStatus.stopped(config.ingress().service())).state();
     }
 
     void requestCompile(Set<Path> changedFiles) {
@@ -757,6 +785,7 @@ public class DevServer implements AutoCloseable {
                 : "Latest reported run per module");
         result.put("testResults", testResults);
         result.put("frontends", consoleFrontends(false));
+        if (config.ingress() != null) result.put("publicApplicationUrl", publicUrl);
         result.put("progress", new ProjectProgress(config.projectDirectory()).view());
         result.put("testOutput",testOutput.snapshot());
         result.put("testRuns",projects.entrySet().stream().filter(e->e.getValue().testPipeline.liveProgress()!=null)
@@ -769,7 +798,8 @@ public class DevServer implements AutoCloseable {
         return config.frontends().stream().map(frontend -> {
             DevSession.ServiceStatus status = frontendStatuses.get(frontend.id());
             return Map.of("id", frontend.id(), "path", frontend.path(),
-                          "state", stopped ? "stopped" : status == null ? "starting" : status.state());
+                          "state", stopped ? "stopped" : !"running".equals(ingressState()) ? ingressState()
+                                  : status == null ? "starting" : status.state());
         }).toList();
     }
 
@@ -791,8 +821,15 @@ public class DevServer implements AutoCloseable {
         }
         if (application || "auditlog".equals(id) || "devserver".equals(id)) {
             port = session.gateway().port();
-            url = publicUrl == null ? null : publicUrl.replaceAll("/+$", "")
-                    + (application ? "/" : "/_fluxzero/dev/#" + ("auditlog".equals(id) ? "monitoring/messages" : "projects"));
+            if (application) {
+                String path = config.frontends().stream().filter(f -> id.equals("frontend-" + f.id()))
+                        .map(RoutedFrontend::path).findFirst().orElse("/");
+                url = publicUrl == null || !"running".equals(ingressState()) ? null : publicUrl + path;
+            } else {
+                port = devGateway == null ? null : devGateway.port();
+                url = devGateway == null ? null : devGateway.url() + "/_fluxzero/dev/#"
+                        + ("auditlog".equals(id) ? "monitoring/messages" : "projects");
+            }
         } else if ("storage".equals(id) && url != null) {
             url = url.replaceAll("/+$", "") + "/select/vmui/";
         } else {
@@ -814,7 +851,7 @@ public class DevServer implements AutoCloseable {
             if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
             if ("start-workspace".equals(action)) {
                 if (stoppedWorkspaceStatus == null) throw new IllegalStateException("The workspace is not stopped.");
-                try { profileResolver.apply(config.profile(), session.gateway().port()); }
+                try { profileResolver.apply(config.profile(), session.consolePort()); }
                 catch (RuntimeException e) { throw new IllegalStateException("Unable to start the workspace. Check .fluxzero/dev.yaml."); }
             } else if ("stop-workspace".equals(action) && closed.get()) {
                 throw new IllegalStateException("The workspace is already stopped.");
@@ -857,7 +894,7 @@ public class DevServer implements AutoCloseable {
             if (maintenanceBusy.get()) throw new IllegalStateException("Maintenance is already running.");
             try {
                 // Resolve before stopping anything; never expose resolved environment values through the console.
-                profileResolver.apply(profile, session.gateway().port());
+                profileResolver.apply(profile, session.consolePort());
             } catch (RuntimeException e) {
                 throw new IllegalStateException("Unable to load the selected profile. Check .fluxzero/dev.yaml.");
             }
@@ -1062,17 +1099,37 @@ public class DevServer implements AutoCloseable {
                 })
                 .withTestCases(() -> projects.values().stream().filter(p -> p.config.testsEnabled())
                         .flatMap(p -> p.testPipeline.testCases(p.id).stream()).toList());
-        devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
-                                      config.frontend().backendPaths(), effectiveGatewayPort, this::activity,
-                                      config.backendEnabled(), console);
-        publicUrl = devGateway.url();
-        publicFluxzeroUrl = devGateway.backendUrl();
+        if (config.ingress() == null) {
+            devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
+                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), console, null);
+            publicUrl = devGateway.url();
+            publicFluxzeroUrl = devGateway.backendUrl();
+        } else {
+            String ingressUrl = serviceProcesses.get(config.ingress().service()).url();
+            java.net.URI uri = java.net.URI.create(ingressUrl);
+            if (!Set.of("http", "https").contains(uri.getScheme()) || uri.getHost() == null || uri.getRawUserInfo() != null
+                || uri.getRawQuery() != null || uri.getRawFragment() != null
+                || !(uri.getPath().isEmpty() || "/".equals(uri.getPath()))) {
+                throw new DevServerStartupException("publicIngress service url must be an HTTP(S) origin without credentials, path or query");
+            }
+            publicUrl = ingressUrl.replaceAll("/+$", "");
+            publicFluxzeroUrl = config.backendEnabled() ? publicUrl + DevGateway.BACKEND_PREFIX : null;
+            applicationGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
+                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), null, publicUrl);
+            try (var consoleEndpoint = DevGateway.reserve(effectiveGatewayPort, "127.0.0.1")) {
+                devGateway = DevGateway.start(proxyUrl, List.of(new DevGateway.FrontendRoute("ingress", "/", publicUrl,
+                        () -> "running".equals(ingressState()))), () -> !currentApps.isEmpty(), List.of(),
+                        consoleEndpoint, this::activity, config.backendEnabled(), console, publicUrl);
+            }
+        }
         String detail = config.backendEnabled()
                 ? "public dev URL; Fluxzero mounted at " + DevGateway.BACKEND_PREFIX
                   + " and pass-through paths " + config.frontend().backendPaths()
                 : "public dev URL; all application traffic routed to the frontend";
         updateGatewayStatus(DevSession.ServiceStatus.running(
-                "gateway", publicUrl, devGateway.port(), null, detail).withMetadata(Map.of(DevConsole.CAPABILITY, "1")));
+                "gateway", publicUrl, java.net.URI.create(publicUrl).getPort() < 0
+                        ? (publicUrl.startsWith("https:") ? 443 : 80) : java.net.URI.create(publicUrl).getPort(), null, detail).withMetadata(
+                        Map.of(DevConsole.CAPABILITY, "1", "consoleOrigin", devGateway.url())));
     }
 
     private void cleanupPreviousSessionIfStale() {
@@ -1946,7 +2003,7 @@ public class DevServer implements AutoCloseable {
         record(ready);
         record(target);
         terminalProgress.printReady(ready, target);
-        terminalProgress.println("  Dev console   " + publicUrl + DevConsole.ROOT);
+        terminalProgress.println("  Dev console   " + devGateway.url() + DevConsole.ROOT);
     }
 
     private void announceStartupFailure(String source, String detail) {
@@ -2145,6 +2202,8 @@ public class DevServer implements AutoCloseable {
         closeQuietly(commandPipeline);
         // Stop accepting browser traffic before shutting down the processes and embedded services behind it.
         if (!keepDashboard) closeQuietly(devGateway);
+        closeQuietly(applicationGateway);
+        closeQuietly(gatewayEndpoint);
         closeQuietly(mcpServer);
         frontendProcesses.values().forEach(DevServer::closeQuietly);
         frontendProcesses.clear();

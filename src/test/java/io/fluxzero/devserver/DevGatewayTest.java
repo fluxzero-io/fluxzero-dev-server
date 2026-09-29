@@ -309,6 +309,36 @@ public class DevGatewayTest {
     }
 
     @Test
+    void rewritesPrivateLoopbackAliasesToIngressWithoutChangingExternalRedirects() throws Exception {
+        var location = new AtomicReference<String>();
+        var upstream = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        upstream.createContext("/", exchange -> {
+            exchange.getResponseHeaders().set("Location", location.get());
+            exchange.sendResponseHeaders(302, -1);
+            exchange.close();
+        });
+        upstream.start();
+        String target = "http://127.0.0.1:" + upstream.getAddress().getPort();
+        String publicOrigin = "https://application.local:8443";
+        try (var endpoint = DevGateway.reserve(0, "127.0.0.1");
+             var gateway = DevGateway.start(null,
+                     List.of(new DevGateway.FrontendRoute("root", "/", target, () -> true)), () -> false,
+                     List.of(), endpoint, () -> {}, false, null, publicOrigin)) {
+            for (String host : List.of("127.0.0.1", "localhost", "[::1]")) {
+                for (String scheme : List.of("http:", "")) {
+                    location.set(scheme + "//" + host + ":" + upstream.getAddress().getPort() + "/inbox?q=1#message");
+                    assertEquals(publicOrigin + "/inbox?q=1#message",
+                            get(gateway.url()).headers().firstValue("location").orElseThrow());
+                }
+            }
+            for (String external : List.of("https://login.example/", "http://localhost:1/", "/inbox")) {
+                location.set(external);
+                assertEquals(external, get(gateway.url()).headers().firstValue("location").orElseThrow());
+            }
+        } finally { upstream.stop(0); }
+    }
+
+    @Test
     void exposesOneOriginAndRoutesFrontendAndFluxzeroRequests() throws Exception {
         AtomicBoolean frontendReady = new AtomicBoolean();
         try (TestUpstream backend = TestUpstream.start("backend");

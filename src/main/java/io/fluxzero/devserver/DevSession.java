@@ -49,6 +49,17 @@ public record DevSession(
         long heartbeatAt,
         long updatedAt
 ) {
+    /** Port retained when restarting the console, independently of the public ingress. */
+    public Integer consolePort() {
+        String origin = consoleOrigin();
+        return origin == null ? gateway.port() : java.net.URI.create(origin).getPort();
+    }
+
+    /** Loopback-only console origin, distinct from an optional public ingress. */
+    public String consoleOrigin() {
+        return gateway.metadata().getOrDefault("consoleOrigin", gateway.url());
+    }
+
     public DevSession {
         devServerVersion = devServerVersion == null || devServerVersion.isBlank()
                 ? DevServerVersion.current() : devServerVersion;

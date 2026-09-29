@@ -50,6 +50,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServiceProcessTest {
 
     @Test
+    void closingDuringSetupStopsItsProcessAndPreventsMainCommand(@TempDir Path project) throws Exception {
+        Path started = project.resolve("setup-started"), cleaned = project.resolve("setup-cleaned");
+        String setup = javaCommand() + " " + DevServiceFixtureServer.class.getName() + " graceful "
+                + quote(started.toString()) + " " + quote(cleaned.toString());
+        var config = new DevServiceConfig("must-not-run", null, null, null, Map.of(), Map.of(),
+                new DevServiceConfig.Readiness(null, null, Pattern.compile("READY"), Duration.ofSeconds(10)),
+                List.of(), setup);
+        var failures = new CopyOnWriteArrayList<Throwable>();
+        var service = DevServiceProcess.prepare("edge", config, project, "session", Duration.ofSeconds(2),
+                ignored -> {}, ignored -> {});
+        var startup = Thread.ofVirtual().start(() -> { try { service.start(); } catch (Throwable e) { failures.add(e); } });
+        try {
+            await(() -> Files.exists(started));
+            long pid = service.status().pid();
+            assertEquals("starting", service.status().state());
+            service.close();
+            startup.join(5000);
+            assertFalse(startup.isAlive());
+            assertFalse(ProcessUtils.isAlive(pid));
+            assertTrue(Files.exists(cleaned));
+            assertEquals("stopped", service.status().state());
+        } finally { service.close(); startup.interrupt(); startup.join(5000); }
+    }
+
+    @Test
     @EnabledOnOs({OS.WINDOWS, OS.LINUX, OS.MAC})
     void gracefullyStopsManagedServiceWithoutExplicitCleanup(@TempDir Path projectDirectory) throws Exception {
         Path started = projectDirectory.resolve("started.txt");

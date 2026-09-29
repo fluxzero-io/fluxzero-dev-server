@@ -89,10 +89,19 @@ public final class DevProjectConfigMain {
             #         application: auditlog
             #         namespace: fluxzero_mp_prod-logs
 
-            # Support services start before applications and frontends. Omit command for an external service.
+            # Support services start before applications and frontends, except publicIngress (started concurrently).
+            # Omit command for an external service.
             # Managed services receive a graceful stop within gracefulShutdownTimeout before remaining processes
             # are forced. stopCommand, when configured, runs first and shares that same shutdown deadline.
             # Named ports may be fixed numbers or dynamic. Service values can be used in app env and frontend fields.
+            # Optional public ingress: the service URL becomes the browser-facing application origin.
+            # Devboard keeps a separate loopback origin; port configures that console when ingress is enabled.
+            # publicIngress: edge
+            # gateway:
+            #   host: localhost          # Host reachable by the ingress; e.g. host.containers.internal for Podman
+            #   bindAddress: 127.0.0.1    # Interface reachable through the chosen container network
+            # {gateway.host}, {gateway.port}, {gateway.url} are reserved before service setup/start.
+            # A managed service setupCommand runs before command, bounded by readiness.timeout.
             # services:
             #   victoriaLogs:
             #     directory: local/victoria-logs

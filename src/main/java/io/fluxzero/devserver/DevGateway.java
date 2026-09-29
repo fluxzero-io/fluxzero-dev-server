@@ -150,6 +150,50 @@ public final class DevGateway implements AutoCloseable {
     static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
                             BooleanSupplier backendReady, List<String> backendPaths, int port, Runnable activity,
                             boolean backendEnabled, DevConsole console) {
+        try (Reservation endpoint = reserve(port, "127.0.0.1")) {
+            return start(fluxzeroProxyUrl, frontends, backendReady, backendPaths, endpoint, activity,
+                         backendEnabled, console, null);
+        }
+    }
+
+    static Reservation reserve(int port, String bindAddress) {
+        Server server = new Server();
+        server.setStopAtShutdown(false);
+        server.setStopTimeout(0);
+        ServerConnector connector = new ServerConnector(server);
+        connector.setHost(bindAddress);
+        connector.setPort(port);
+        connector.setReuseAddress(true);
+        connector.setReusePort(false);
+        server.addConnector(connector);
+        try {
+            connector.open();
+            return new Reservation(server, connector);
+        } catch (Exception e) {
+            connector.close();
+            if (port != 0 && causedByBindFailure(e)) throw DevServerStartupException.portInUse(port, e);
+            throw new DevServerStartupException("Could not reserve gateway endpoint " + bindAddress + ":" + port, e);
+        }
+    }
+
+    static final class Reservation implements AutoCloseable {
+        final Server server;
+        final ServerConnector connector;
+        boolean claimed;
+        Reservation(Server server, ServerConnector connector) { this.server = server; this.connector = connector; }
+        int port() { return connector.getLocalPort(); }
+        @Override public void close() {
+            if (!claimed) {
+                connector.close();
+                try { server.stop(); } catch (Exception ignored) { }
+            }
+        }
+    }
+
+    static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
+                            BooleanSupplier backendReady, List<String> backendPaths, Reservation endpoint, Runnable activity,
+                            boolean backendEnabled, DevConsole console, String applicationOrigin) {
+        int port = endpoint.port();
         if (backendEnabled) {
             Objects.requireNonNull(fluxzeroProxyUrl, "fluxzeroProxyUrl must not be null");
         }
@@ -167,18 +211,8 @@ public final class DevGateway implements AutoCloseable {
                     .toList();
             List<String> configuredBackendPaths = backendPaths;
             boolean configuredBackendEnabled = backendEnabled;
-            Server server = new Server();
-            server.setStopAtShutdown(false);
-            // This is a local supervisor: on shutdown, active browser and HMR connections must not delay exit.
-            server.setStopTimeout(0);
-            ServerConnector connector = new ServerConnector(server);
-            connector.setHost("127.0.0.1");
-            connector.setPort(port);
-            if (port != 0) {
-                connector.setReuseAddress(true);
-                connector.setReusePort(false);
-            }
-            server.addConnector(connector);
+            Server server = endpoint.server;
+            ServerConnector connector = endpoint.connector;
 
             ProxyHandler.Reverse reverseProxy = new ProxyHandler.Reverse(
                     request -> console != null && console.isApi(request)
@@ -206,7 +240,7 @@ public final class DevGateway implements AutoCloseable {
                         return filtered;
                     }
                     return new HttpField(HttpHeader.LOCATION,
-                                         publicLocation(filtered.getValue(), connector.getLocalPort(),
+                                         publicLocation(filtered.getValue(), applicationOrigin == null ? "http://localhost:" + connector.getLocalPort() : applicationOrigin,
                                                         fluxzeroTarget, configuredFrontends,
                                                         configuredBackendPaths, configuredBackendEnabled));
                 }
@@ -216,7 +250,15 @@ public final class DevGateway implements AutoCloseable {
                 @Override
                 public boolean handle(Request request, Response response, Callback callback) throws Exception {
                     activity.run();
+                    if (console == null && applicationOrigin != null && request.getHttpURI().getDecodedPath().startsWith("/_fluxzero/dev")) {
+                        response.setStatus(404); callback.succeeded(); return true;
+                    }
                     if (console != null && console.handle(request, response, callback)) return true;
+                    if (console != null && applicationOrigin != null && !console.isApi(request)) {
+                        response.setStatus(307);
+                        response.getHeaders().put(HttpHeader.LOCATION, applicationOrigin + request.getHttpURI().getPathQuery());
+                        callback.succeeded(); return true;
+                    }
                     Route route = route(request, configuredBackendPaths, configuredBackendEnabled);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);
@@ -252,6 +294,9 @@ public final class DevGateway implements AutoCloseable {
                 container.setMaxFrameSize(0);
                 container.addMapping("/*", (request, response, callback) -> {
                     activity.run();
+                    if (console == null && applicationOrigin != null && request.getHttpURI().getDecodedPath().startsWith("/_fluxzero/dev")) {
+                        response.setStatus(404); callback.succeeded(); return null;
+                    }
                     if (console != null && request.getHttpURI().getDecodedPath().startsWith(DevConsole.ROOT)
                             && !console.isApi(request)) {
                         if (!DevConsole.UPDATES.equals(request.getHttpURI().getDecodedPath()) || !DevConsole.localConsoleOrigin(request)) {
@@ -260,6 +305,9 @@ public final class DevGateway implements AutoCloseable {
                         return console.updates.connection();
                     }
                     boolean monitoring = console != null && console.isApi(request);
+                    if (console != null && applicationOrigin != null && !monitoring) {
+                        response.setStatus(404); callback.succeeded(); return null;
+                    }
                     Route route = route(request, configuredBackendPaths, configuredBackendEnabled);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
                         unavailable(response, callback, BACKEND_UNAVAILABLE);
@@ -296,8 +344,10 @@ public final class DevGateway implements AutoCloseable {
             server.setHandler(context);
             server.start();
             if (console != null) console.start();
+            endpoint.claimed = true;
             return new DevGateway(server, connector.getLocalPort(), backendEnabled, console);
         } catch (Exception e) {
+            endpoint.close();
             if (console != null) console.close();
             if (port != 0 && causedByBindFailure(e)) {
                 throw DevServerStartupException.portInUse(port, e);
@@ -425,19 +475,18 @@ public final class DevGateway implements AutoCloseable {
         return target.getScheme() + "://" + target.getAuthority();
     }
 
-    private static String publicLocation(String location, int publicPort, URI fluxzeroTarget,
+    private static String publicLocation(String location, String publicUrl, URI fluxzeroTarget,
                                          List<FrontendRoute> frontends,
                                          List<String> backendPaths, boolean backendEnabled) {
-        String publicUrl = "http://localhost:" + publicPort;
-        if (backendEnabled && matchesTarget(location, fluxzeroTarget)) {
-            String targetPath = location.substring(fluxzeroTarget.toString().length());
+        String backendPath = backendEnabled ? targetLocationPath(location, fluxzeroTarget) : null;
+        if (backendPath != null) {
+            String targetPath = backendPath;
             boolean passthrough = backendPaths.stream().anyMatch(path -> matchesPath(targetPath, path));
             return publicUrl + (passthrough ? "" : BACKEND_PREFIX) + targetPath;
         }
         for (FrontendRoute frontend : frontends) {
-            if (matchesTarget(location, frontend.target())) {
-                return publicUrl + location.substring(frontend.target().toString().length());
-            }
+            String path = targetLocationPath(location, frontend.target());
+            if (path != null) return publicUrl + path;
         }
         return location;
     }
@@ -468,9 +517,29 @@ public final class DevGateway implements AutoCloseable {
         }
     }
 
-    private static boolean matchesTarget(String location, URI target) {
-        String base = target.toString();
-        return location.equals(base) || location.startsWith(base + "/") || location.startsWith(base + "?");
+    private static String targetLocationPath(String location, URI target) {
+        try {
+            URI redirect = URI.create(location);
+            String host = redirect.getHost();
+            if (host == null || redirect.getRawUserInfo() != null || target.getHost() == null) return null;
+            boolean sameHost = host.equalsIgnoreCase(target.getHost())
+                    || isLoopbackHost(host) && isLoopbackHost(target.getHost());
+            String scheme = redirect.getScheme() == null ? target.getScheme() : redirect.getScheme();
+            int redirectPort = redirect.getPort() < 0 ? ("https".equalsIgnoreCase(scheme) ? 443 : 80) : redirect.getPort();
+            int targetPort = target.getPort() < 0 ? ("https".equalsIgnoreCase(target.getScheme()) ? 443 : 80) : target.getPort();
+            if (!sameHost || !scheme.equalsIgnoreCase(target.getScheme()) || redirectPort != targetPort) return null;
+            String base = target.getRawPath(), path = redirect.getRawPath();
+            if (!path.equals(base) && !path.startsWith(base + "/")) return null;
+            return path.substring(base.length())
+                    + (redirect.getRawQuery() == null ? "" : "?" + redirect.getRawQuery())
+                    + (redirect.getRawFragment() == null ? "" : "#" + redirect.getRawFragment());
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+    }
+
+    private static boolean isLoopbackHost(String host) {
+        return "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "[::1]".equals(host);
     }
 
     private static boolean matchesPath(String requestedPath, String configuredPath) {

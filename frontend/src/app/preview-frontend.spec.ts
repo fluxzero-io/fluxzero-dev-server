@@ -3,6 +3,10 @@ import {matchingFrontend, previewFrontends, applicationUrl, Status} from './mode
 describe('Public preview routes',()=>{
   const routes=[{id:'root',path:'/',state:'running'},{id:'inbox',path:'/inbox',state:'running'},
     {id:'nested',path:'/inbox/admin',state:'starting'}];
+  it('uses the declared ingress origin instead of the console or private frontend origin',()=>{
+    const status={frontends:routes,publicApplicationUrl:'https://app.local:8443'} as Status;
+    expect(applicationUrl(status,'http://localhost:4242')).toBe('https://app.local:8443/');
+  });
   it('matches the longest whole mount path through deeper navigation',()=>{
     expect(matchingFrontend(routes,'http://localhost/inbox/admin/messages?q=1')?.id).toBe('nested');
     expect(matchingFrontend(routes,'http://localhost/inboxes')?.id).toBe('root');

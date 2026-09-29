@@ -49,6 +49,7 @@ import java.util.Objects;
  * @param frontends               routed frontend configurations, including the root frontend
  * @param projects                independently built projects sharing this environment
  * @param services                managed or external support services shared by the environment
+ * @param ingress                 optional managed public ingress and internal gateway binding
  * @param backendEnabled          whether the local Fluxzero Test Server, proxy and applications are started
  */
 public record DevServerConfig(
@@ -75,7 +76,8 @@ public record DevServerConfig(
         List<RoutedFrontend> frontends,
         List<DevBuildProject> projects,
         Map<String, DevServiceConfig> services,
-        boolean backendEnabled
+        boolean backendEnabled,
+        DevIngressConfig ingress
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -122,6 +124,12 @@ public record DevServerConfig(
                 : List.of();
         services = services == null ? Map.of()
                 : Collections.unmodifiableMap(new java.util.LinkedHashMap<>(services));
+        if (ingress != null) {
+            DevServiceConfig service = services.get(ingress.service());
+            if (service == null || !service.managed() || service.url() == null) {
+                throw new IllegalArgumentException("publicIngress must select a managed service with a url");
+            }
+        }
         applicationConfig.forEach((id, value) -> {
             if (id == null || id.isBlank()) {
                 throw new IllegalArgumentException("applicationConfig keys must not be blank");
@@ -134,6 +142,38 @@ public record DevServerConfig(
         if (!backendEnabled && frontends.isEmpty()) {
             throw new IllegalArgumentException("A frontend-only dev environment requires a frontend");
         }
+    }
+
+    public DevServerConfig(
+        Path projectDirectory,
+        String mainClass,
+        String applicationName,
+        String namespace,
+        boolean watch,
+        boolean compileOnStart,
+        boolean testsEnabled,
+        Duration startupTimeout,
+        Duration gracefulShutdownTimeout,
+        Duration debounce,
+        FrontendConfig frontend,
+        List<String> appArgs,
+        boolean fastCompilerEnabled,
+        String environment,
+        List<String> applications,
+        int gatewayPort,
+        IdpMode idpMode,
+        Map<String, DevApplicationConfig> applicationConfig,
+        Duration idleTimeout,
+        String profile,
+        List<RoutedFrontend> frontends,
+        List<DevBuildProject> projects,
+        Map<String, DevServiceConfig> services,
+        boolean backendEnabled
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled, environment,
+             applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends, projects,
+             services, backendEnabled, null);
     }
 
     public DevServerConfig(
@@ -463,7 +503,9 @@ public record DevServerConfig(
                 frontends,
                 projects,
                 configuredServices(project.services()),
-                backendEnabled);
+                backendEnabled, project.publicIngress() == null ? null : new DevIngressConfig(
+                        project.publicIngress(), project.gateway() == null ? null : project.gateway().host(),
+                        project.gateway() == null ? null : project.gateway().bindAddress()));
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -533,7 +575,7 @@ public record DevServerConfig(
                             DevServiceConfig.compilePattern(configuredReadiness.log(),
                                                             "services." + id + ".readiness.log"), timeout),
                     service.output().redact().stream().map(pattern -> DevServiceConfig.compilePattern(
-                            pattern, "services." + id + ".output.redact")).toList()));
+                            pattern, "services." + id + ".output.redact")).toList(), service.setupCommand()));
         });
         return Collections.unmodifiableMap(result);
     }

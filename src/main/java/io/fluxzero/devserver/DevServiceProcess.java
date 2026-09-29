@@ -53,6 +53,7 @@ final class DevServiceProcess implements AutoCloseable {
     private final Map<String, Integer> ports;
     private final String url;
     private final String command;
+    private final String setupCommand;
     private final String stopCommand;
     private final Path workingDirectory;
     private final Map<String, String> environment;
@@ -83,6 +84,14 @@ final class DevServiceProcess implements AutoCloseable {
             Consumer<DevSession.ServiceStatus> statusConsumer,
             Consumer<ProcessUtils.ProcessOutput> outputConsumer
     ) {
+        return prepare(id, config, projectDirectory, sessionId, shutdownTimeout, statusConsumer, outputConsumer, Map.of());
+    }
+
+    static DevServiceProcess prepare(
+            String id, DevServiceConfig config, Path projectDirectory, String sessionId, Duration shutdownTimeout,
+            Consumer<DevSession.ServiceStatus> statusConsumer,
+            Consumer<ProcessUtils.ProcessOutput> outputConsumer, Map<String, String> gatewayValues
+    ) {
         try {
             Map<String, Integer> ports = new LinkedHashMap<>();
             config.ports().forEach((name, configured) -> {
@@ -92,14 +101,14 @@ final class DevServiceProcess implements AutoCloseable {
                     throw new PortAllocationException(e);
                 }
             });
-            Map<String, String> localValues = new LinkedHashMap<>();
+            Map<String, String> localValues = new LinkedHashMap<>(gatewayValues);
             localValues.put("session.id", sessionId);
             ports.forEach((name, port) -> {
                 localValues.put("servicePort." + name, Integer.toString(port));
                 localValues.put("port." + name, Integer.toString(port));
             });
             DevPlaceholderResolver resolver = new DevPlaceholderResolver(
-                    localValues, Set.of("servicePort.", "port.", "services.", "session.", "url"));
+                    localValues, Set.of("servicePort.", "port.", "services.", "session.", "gateway.", "url"));
             String url = resolver.resolve(config.url());
             resolver = resolver.with(url == null ? Map.of() : Map.of("url", url), Set.of("url"));
             String directory = resolver.resolve(config.directory());
@@ -115,7 +124,7 @@ final class DevServiceProcess implements AutoCloseable {
                     config.readiness().log(), config.readiness().timeout());
             return new DevServiceProcess(
                     id, config, projectDirectory, sessionId + "-service-" + id, ports, url,
-                    resolver.resolve(config.command()), resolver.resolve(config.stopCommand()), workingDirectory,
+                    resolver.resolve(config.command()), resolver.resolve(config.setupCommand()), resolver.resolve(config.stopCommand()), workingDirectory,
                     environment, readiness, shutdownTimeout, statusConsumer, outputConsumer);
         } catch (PortAllocationException e) {
             throw new DevServerStartupException("Could not allocate a port for service " + id, e.getCause());
@@ -126,7 +135,7 @@ final class DevServiceProcess implements AutoCloseable {
 
     private DevServiceProcess(
             String id, DevServiceConfig config, Path projectDirectory, String ownershipMarker,
-            Map<String, Integer> ports, String url, String command, String stopCommand, Path workingDirectory,
+            Map<String, Integer> ports, String url, String command, String setupCommand, String stopCommand, Path workingDirectory,
             Map<String, String> environment, DevServiceConfig.Readiness readiness, Duration shutdownTimeout,
             Consumer<DevSession.ServiceStatus> statusConsumer,
             Consumer<ProcessUtils.ProcessOutput> outputConsumer
@@ -137,6 +146,7 @@ final class DevServiceProcess implements AutoCloseable {
         this.ports = Collections.unmodifiableMap(new LinkedHashMap<>(ports));
         this.url = url;
         this.command = command;
+        this.setupCommand = setupCommand;
         this.stopCommand = stopCommand;
         this.workingDirectory = workingDirectory;
         this.environment = Map.copyOf(environment);
@@ -165,6 +175,8 @@ final class DevServiceProcess implements AutoCloseable {
         }
 
         if (config.managed()) {
+            runSetup();
+            logReady.set(false);
             Process launched;
             StatusUpdate launchedStatus;
             try {
@@ -418,6 +430,34 @@ final class DevServiceProcess implements AutoCloseable {
         } catch (Exception e) {
             probeFailure = oneLine(e.getClass().getSimpleName() + (e.getMessage() == null ? "" : ": " + e.getMessage()));
             return false;
+        }
+    }
+
+    private void runSetup() {
+        if (setupCommand == null) return;
+        Process setup = null;
+        try {
+            synchronized (lifecycle) {
+                if (closed.get()) return;
+                detail = "preparing managed service";
+                setup = ProcessUtils.startWithStreams(ProcessUtils.shellCommand(setupCommand, ownershipMarker),
+                        workingDirectory, environment, this::publishOutput);
+                process = setup;
+            }
+            StatusUpdate update;
+            synchronized (lifecycle) { update = statusUpdateLocked(); }
+            publishStatus(update);
+            if (!setup.waitFor(readiness.timeout().toMillis(), TimeUnit.MILLISECONDS)) {
+                ProcessUtils.stopTree(setup, shutdownTimeout);
+                throw new IllegalStateException("setup command timed out");
+            }
+            if (setup.exitValue() != 0) throw new IllegalStateException("setup command exited " + setup.exitValue());
+            synchronized (lifecycle) { if (process == setup) process = null; }
+        } catch (Exception e) {
+            if (setup != null) ProcessUtils.stopTree(setup, shutdownTimeout);
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            fail("service setup failed: " + redact(oneLine(e.getMessage())));
+            throw new DevServerStartupException("Could not prepare service " + id + ": " + redact(oneLine(e.getMessage())), e);
         }
     }
 

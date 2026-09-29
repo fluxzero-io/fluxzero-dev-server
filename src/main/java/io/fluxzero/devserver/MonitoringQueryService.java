@@ -230,7 +230,7 @@ final class MonitoringQueryService {
     }
 
     private JsonNode getWorkspace(DevSession session) {
-        URI base = localUri(session.gateway().url());
+        URI base = localUri(session.consoleOrigin());
         return send(HttpRequest.newBuilder(base.resolve(DevConsole.ROOT + "status.json")).timeout(Duration.ofSeconds(10)).GET().build());
     }
 

@@ -509,6 +509,58 @@ are available to application and frontend configuration as
 while service health, process identity, logs, diagnostics, stale cleanup, and bounded shutdown remain part of the
 same session.
 
+A managed service can own the public application origin. Select it with `publicIngress` (also supported inside
+named profiles); its `url` must resolve to an HTTP(S) origin without a path, query, fragment or credentials:
+
+```yaml
+publicIngress: edge
+services:
+  edge:
+    setupCommand: ./local/render-ingress-config {gateway.url}
+    command: ./local/run-ingress --port {servicePort.http}
+    stopCommand: ./local/stop-ingress
+    ports:
+      http: dynamic
+    url: "http://localhost:{servicePort.http}"
+    readiness:
+      http: "{url}/health"
+```
+
+The example commands are project-owned adapters for your ingress. `{gateway.host}`, `{gateway.port}` and
+`{gateway.url}` identify the internal application gateway; its socket is reserved before any service starts.
+They are available in service setup/start/stop commands, environment and readiness fields, and application/frontend
+configuration. A service `setupCommand` runs before `command`, with the same working directory, environment,
+redaction and process ownership, bounded by `readiness.timeout`. Setup output does not satisfy log readiness.
+Ingress startup runs concurrently with applications/frontends, so a readiness check may depend on them without
+blocking their startup. Ingress failures appear through ordinary service status, logs and diagnostics.
+
+With ingress enabled, App preview, application links, IDP issuer and callback configuration use the ingress origin.
+Devboard has a separate loopback listener, recorded as `gateway.metadata.consoleOrigin` in the session; `port`
+configures that listener. Devboard routes are unavailable through the internal application gateway. Direct
+application requests on the console origin redirect to the ingress. Workspace restarts retain the console port.
+The preview keeps frontend selection, refresh and its explicit Back/Forward history on the public origin. Browser
+same-origin rules prevent Devboard from inspecting subsequent links or SPA navigation inside a cross-origin
+iframe; Copy/Open therefore use the last explicitly selected URL in that case.
+
+For a container ingress, configure the host address **as seen by that container**, independently of the interface
+on which the internal gateway listens:
+
+```yaml
+gateway:
+  host: host.containers.internal
+  bindAddress: 0.0.0.0
+```
+
+These settings are runtime-independent: commands and network configuration remain in the project profile. For
+example, Docker Desktop supplies `host.docker.internal`; Podman supplies `host.containers.internal` in supported
+network configurations. Neither hostname alone enables access to host loopback on every platform. Choose a
+reachable host interface or configure your runtime's loopback forwarding/host networking. Prefer a specific
+reachable interface where available; `0.0.0.0` listens on every IPv4 interface. Application and frontend processes
+can keep listening on loopback, and Devboard always stays on loopback. No container runtime is detected or
+reconfigured automatically. See [Docker networking](https://docs.docker.com/desktop/features/networking/networking-how-tos/)
+and [Podman networking options](https://docs.podman.io/en/latest/markdown/podman-run.1.html).
+Without `publicIngress`, the existing single loopback origin remains unchanged.
+
 Services without a local HTTP/TCP endpoint can opt into startup readiness from process output:
 
 ```yaml
@@ -572,7 +624,7 @@ Fluxzero Dev Server is available under the [Apache License 2.0](LICENSE).
 
 ## Development console
 
-Open `/_fluxzero/dev/` on the public development URL. App preview opens by default. The **Dev environment** page and **Monitoring** menu show only the
+Open the printed **Dev console** URL (`/_fluxzero/dev/`). Without public ingress this shares the application origin. App preview opens by default. The **Dev environment** page and **Monitoring** menu show only the
 selected dev server. Use the sidebar dropdown to switch servers: results are grouped as **Current**, **Running**
 and **Stopped**. Search by name or folder. Selecting an active server opens its App preview; selecting an inactive server with an existing folder offers to start it in the background. Startup uses
 that project's `.fluxzero/dev.yaml` and the current dev-server distribution, without restoring temporary
