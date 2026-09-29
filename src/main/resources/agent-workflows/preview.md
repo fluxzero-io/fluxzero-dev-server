@@ -31,7 +31,9 @@ default workflow, not a restriction on choosing the right testing surface.
 3. Get the live URL from the returned environment. Prefer an explicitly returned
    `consoleUrl`. Otherwise, a session gateway advertising
    `metadata.devConsoleVersion: "1"` serves Devboard at
-   `<session.gateway.url>/_fluxzero/dev/`. If neither is available, explain that
+   `<session.gateway.metadata.consoleOrigin>/_fluxzero/dev/`, falling back to
+   `<session.gateway.url>/_fluxzero/dev/` only when `consoleOrigin` is absent.
+   A configured public ingress serves the application, not Devboard. If neither is available, explain that
    this server does not expose a supported Devboard instead of guessing.
 4. Open the requested page: `#application` for App preview (the default),
    `#projects` for Workspace, `#progress`, `#tests`, or `#startup`.

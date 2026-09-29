@@ -69,7 +69,7 @@ final class DevContainerRuntime {
         this.updates = updates;
         String prefix = "fz-" + session.replaceAll("[^a-zA-Z0-9-]", "");
         String network = config.network() == null ? prefix + "-" + hash(config.runtime()).substring(0, 8) : null;
-        owned = new Owned(config.runtime(), prefix + "-service-" + id, network, session, hash(project.toAbsolutePath().normalize().toString()));
+        owned = new Owned(config.runtime(), prefix + "-service-" + id, network, session, hash(project.toAbsolutePath().normalize().toString()), false);
         metadata.putAll(Map.of("container.image", config.image(), "container.runtime", config.runtime(),
                 "container.name", owned.name(), "container.network", network == null ? config.network() : network,
                 "container.pullPolicy", config.pull(), "container.registryAccess", "not-checked", "container.phase", "pending"));
@@ -111,6 +111,7 @@ final class DevContainerRuntime {
             Result image = run(List.of("image", "inspect", "--format", "{{.Id}}", config.image()), deadline);
             require(image, "Pinned image is unavailable after pull.");
             String imageId = image.output().strip();
+            if (imageId.matches("[a-f0-9]{64}")) imageId = "sha256:" + imageId;
             if (!imageId.matches("sha256:[a-f0-9]{64}")) throw new IllegalStateException("Runtime returned an invalid image identity.");
             metadata.put("container.imageId", imageId);
             metadata.put("container.digest", config.image().substring(config.image().indexOf('@') + 1));
@@ -210,7 +211,8 @@ final class DevContainerRuntime {
                 metadata.put("container.failure", "cleanup");
                 return "container cleanup deferred; preparation has not stopped";
             }
-            cleanup(owned, project, deadline, false, true);
+            boolean networkRemoved = cleanup(owned, project, deadline, false, true);
+            retire(project, owned, networkRemoved);
             metadata.put("container.phase", "stopped");
             return null;
         } catch (Exception e) {
@@ -253,7 +255,7 @@ final class DevContainerRuntime {
         cleanup(owned, directory, deadline, strictNetwork, false);
     }
 
-    private static void cleanup(Owned owned, Path directory, long deadline, boolean strictNetwork, boolean graceful) {
+    private static boolean cleanup(Owned owned, Path directory, long deadline, boolean strictNetwork, boolean graceful) {
         List<String> filters = List.of("--filter", "label=" + SESSION_LABEL + "=" + owned.session(),
                 "--filter", "label=" + PROJECT_LABEL + "=" + owned.project(), "--format", "{{.Names}}");
         List<String> containers = new ArrayList<>(List.of("container", "ls", "--all")); containers.addAll(filters);
@@ -279,15 +281,31 @@ final class DevContainerRuntime {
                 Result result = execute(owned.runtime(), List.of("network", "rm", owned.network()), directory, Map.of(), remaining(deadline), ignored -> {});
                 // Other services still use this session network during sequential shutdown. The final one removes it.
                 if (strictNetwork) require(result, "Could not remove session container network.");
+                return result.code() == 0;
             }
         }
+        return true;
+    }
+
+    private static synchronized void retire(Path project, Owned owned, boolean networkRemoved) {
+        List<Owned> entries = new ArrayList<>(readJournal(project));
+        entries.removeIf(entry -> entry.runtime().equals(owned.runtime()) && entry.name().equals(owned.name()));
+        if (!networkRemoved) entries.add(new Owned(owned.runtime(), owned.name(), owned.network(), owned.session(), owned.project(), true));
+        else entries.removeIf(entry -> entry.containerRemoved() && entry.runtime().equals(owned.runtime())
+                && entry.session().equals(owned.session()) && java.util.Objects.equals(entry.network(), owned.network()));
+        writeJournal(project, entries);
     }
 
     private static synchronized void journal(Path project, Owned owned) {
         List<Owned> entries = new ArrayList<>(readJournal(project));
         if (!entries.contains(owned)) entries.add(owned);
+        writeJournal(project, entries);
+    }
+
+    private static void writeJournal(Path project, List<Owned> entries) {
         Path file = project.resolve(JOURNAL), temporary = file.resolveSibling("containers.json.tmp");
         try {
+            if (entries.isEmpty()) { Files.deleteIfExists(file); return; }
             Files.createDirectories(file.getParent());
             JSON.writeValue(temporary.toFile(), entries);
             Files.move(temporary, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
@@ -335,6 +353,6 @@ final class DevContainerRuntime {
         catch (Exception e) { throw new IllegalStateException(e); }
     }
 
-    record Owned(String runtime, String name, String network, String session, String project) {}
+    record Owned(String runtime, String name, String network, String session, String project, boolean containerRemoved) {}
     private record Result(int code, String output) {}
 }

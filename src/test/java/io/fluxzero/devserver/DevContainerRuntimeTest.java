@@ -33,6 +33,34 @@ import static org.junit.jupiter.api.Assertions.*;
 class DevContainerRuntimeTest {
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
+    void acceptsPodmanImageIdentityAndRetiresCleanOwnership(@TempDir Path project) throws Exception {
+        Path script = project.resolve("podman");
+        Files.writeString(script, """
+                #!/bin/sh
+                case "$1 $2" in
+                  'image inspect') echo aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa;;
+                  'network inspect'|'manifest exists') exit 1;;
+                  'manifest inspect') echo '{"schemaVersion":2}';;
+                esac
+                exit 0
+                """);
+        assertTrue(script.toFile().setExecutable(true));
+        var config = new DevContainerConfig("registry.example/web@sha256:" + "a".repeat(64), script.toString(), "always",
+                Map.of(), List.of(), null, null, null, false, List.of(), List.of(), List.of(), null, false);
+        var runtime = new DevContainerRuntime(config, project, project, UUID.randomUUID().toString(), "web",
+                Map.of(), Map.of(), new DevPlaceholderResolver(Map.of(), java.util.Set.of()), ignored -> {});
+        try {
+            runtime.prepare(Duration.ofSeconds(5));
+            assertEquals("sha256:" + "a".repeat(64), runtime.metadata().get("container.imageId"));
+            assertEquals("verified", runtime.metadata().get("container.registryAccess"));
+        } finally { assertNull(runtime.close(Duration.ofSeconds(5))); }
+        assertFalse(Files.exists(project.resolve(".fluxzero/dev/containers.json")));
+        Files.delete(script);
+        assertDoesNotThrow(() -> DevContainerRuntime.reconcile(project));
+    }
+
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
     void closingDuringRuntimePreparationIsBoundedAndStopsTheCliTree(@TempDir Path project) throws Exception {
         Path script = project.resolve("runtime"), started = project.resolve("started");
         Files.writeString(script, """

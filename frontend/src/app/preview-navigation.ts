@@ -27,7 +27,7 @@ export class PreviewNavigation {
       // A configured ingress has its own origin. Keep the explicit navigation history;
       // the browser cannot expose subsequent cross-origin links or SPA routes.
       if(publicIngress && new URL(root).origin!==location.origin && new URL(frame.src).origin===new URL(root).origin) {
-        if(this.index<0) this.record(root);
+        if(this.index<0) this.record(frame.src);
         this.external=false;this.navigating=false;this.update();return;
       }
       // An external login page cannot expose its URL/history to the dashboard.

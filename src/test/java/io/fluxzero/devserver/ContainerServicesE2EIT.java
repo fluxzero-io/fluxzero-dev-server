@@ -108,8 +108,8 @@ class ContainerServicesE2EIT {
                     assertEquals("true", service.status().metadata().get("container.cachedBeforePull"));
                 }
             }
-            DevContainerRuntime.reconcile(project);
             assertFalse(Files.exists(project.resolve(".fluxzero/dev/containers.json")));
+            DevContainerRuntime.reconcile(project);
         } finally {
             cli(root, "docker", "rm", "--force", registry);
             if (pinned != null) cli(root, "docker", "image", "rm", pinned);
@@ -159,6 +159,7 @@ class ContainerServicesE2EIT {
                 assertEquals("running", server.session().services().get("two").state());
             }
             assertFalse(cli(project, "docker", "network", "ls", "--format", "{{.Name}}").lines().toList().contains(currentNetwork));
+            assertFalse(Files.exists(project.resolve(".fluxzero/dev/containers.json")));
             DevContainerRuntime.reconcile(project);
         } finally {
             child.destroyForcibly(); child.waitFor(5, TimeUnit.SECONDS);
