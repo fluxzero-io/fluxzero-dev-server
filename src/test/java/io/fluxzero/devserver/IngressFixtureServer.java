@@ -44,9 +44,13 @@ public class IngressFixtureServer {
         server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         server.createContext("/", exchange -> {
             try {
-                var result = client.send(HttpRequest.newBuilder(URI.create(upstream + exchange.getRequestURI()))
-                        .GET().build(), HttpResponse.BodyHandlers.ofByteArray());
+                var request = HttpRequest.newBuilder(URI.create(upstream + exchange.getRequestURI()));
+                String accept = exchange.getRequestHeaders().getFirst("Accept");
+                if (accept != null) request.header("Accept", accept);
+                var result = client.send(request.GET().build(), HttpResponse.BodyHandlers.ofByteArray());
                 result.headers().firstValue("location").ifPresent(v -> exchange.getResponseHeaders().set("Location", v));
+                result.headers().firstValue("content-type").ifPresent(v -> exchange.getResponseHeaders().set("Content-Type", v));
+                result.headers().firstValue("cache-control").ifPresent(v -> exchange.getResponseHeaders().set("Cache-Control", v));
                 byte[] bytes = result.body();
                 exchange.sendResponseHeaders(result.statusCode(), bytes.length == 0 ? -1 : bytes.length);
                 exchange.getResponseBody().write(bytes);
