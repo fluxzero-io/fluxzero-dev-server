@@ -42,7 +42,9 @@ For each implementation iteration:
 
 1. Call `get_status` and remember its session ID and cursor before editing.
 2. Make one coherent source or test change.
-3. Call `wait_for_change` with that cursor. Omit `types` for the compact default
+3. Call `wait_for_change` with `sessionId: cursor.sessionId` and
+   `afterSequence: cursor.sequence`, using the cursor from `get_status` or the
+   previous wait. Omit `types` for the compact default
    `["status", "problems"]`. Inspect lifecycle states in `events` and changes in
    `problemChanges`, advance to its returned cursor, and wait again while work
    relevant to the edit is still in progress. Do not stop merely because an
