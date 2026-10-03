@@ -369,11 +369,8 @@ io.fluxzero.tools:fluxzero-dev-server:<version>:standalone
 Every push to `main` that passes the cross-platform build, whole-application tests, frontend framework tests, and
 release packaging validation produces a semantic release. The release publishes first to Fluxzero Packages.
 An independent consumer with an empty Maven cache verifies the downloaded artifacts and starts and stops the
-standalone server before the GitHub release is created. Until 1 October 2026, a separate job also uploads to
-Maven Central for automatic publication. That job returns after upload; neither the pipeline nor the GitHub release
-waits for Central processing or download availability. Upload failures remain visible in the Central job and do not
-block the GitHub release after successful Packages verification. From that date, new releases are available only
-from Fluxzero Packages; existing Central releases remain available. The first release is `1.0.0`; breaking launcher,
+standalone server before the GitHub release is created. New releases are available only from Fluxzero Packages;
+existing Maven Central releases remain available. The first release is `1.0.0`; breaking launcher,
 configuration, session, or control protocol changes require a new major version.
 
 Dependabot tracks the Fluxzero SDK BOM independently. Non-major SDK updates are automatically merged only after
@@ -382,12 +379,10 @@ SDK releases do not trigger this repository directly.
 
 ### Release Repository Setup
 
-The GitHub repository must be public. Central publication before 1 October 2026 uses
-`OSSRH_USERNAME` and `OSSRH_PASSWORD`; `OSSRH_SIGNING_KEY` and `OSSRH_SIGNING_PASSPHRASE`
-remain in use for signing Packages releases. The Dependabot secret store must contain
+The GitHub repository must be public. `OSSRH_SIGNING_KEY` and `OSSRH_SIGNING_PASSPHRASE`
+are required for signing Packages releases. The Dependabot secret store must contain
 `DEPENDABOT_AUTOMERGE_APP_CLIENT_ID` and `DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY`; that GitHub App needs write
-access to contents and pull requests in this repository. Central namespace ownership for `io.fluxzero.tools` is
-shared with the Fluxzero CLI artifacts.
+access to contents and pull requests in this repository.
 
 Packages uploads use `https://packages.fluxzero.io/publish/maven`; public downloads use
 `https://packages.fluxzero.io/maven`. The publishing job uses the existing organization-wide GitHub OIDC trust,
@@ -395,10 +390,9 @@ with audience `https://packages.fluxzero.io/publish/maven` and `id-token: write`
 short-lived token as its password. No additional long-lived upload credentials are required.
 
 - `./mvnw -Psign deploy` publishes signed artifacts, sources and Javadoc to Packages.
-- `./mvnw -Psign,central deploy` performs a manual Central publication for pre-cutoff recovery.
 - `bash .github/scripts/verify-packages-consumer.sh <version>` independently downloads and runs a release.
 
-The existing GPG secrets sign both publications. Releases are immutable: after a partial publication, recover
+The existing GPG secrets sign Packages publications. Releases are immutable: after a partial publication, recover
 using the original files or publish a new semantic version. Do not rerun a completed Packages upload with rebuilt
 JARs or regenerated signatures, and never overwrite published release bytes.
 
