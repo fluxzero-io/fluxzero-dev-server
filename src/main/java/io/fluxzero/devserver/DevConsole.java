@@ -85,7 +85,8 @@ final class DevConsole implements AutoCloseable {
         return monitoringAssets != null && path.startsWith(API + "/");
     }
 
-    boolean handle(Request request, Response response, Callback callback) throws Exception {
+    boolean handle(Request request, Response response, Callback callback,
+                   DevGatewayErrorPages errorPages) throws Exception {
         String path = request.getHttpURI().getDecodedPath();
         if (!path.equals(ROOT.substring(0, ROOT.length() - 1)) && !path.startsWith(ROOT)) {
             return false;
@@ -142,10 +143,10 @@ final class DevConsole implements AutoCloseable {
             String suffix = path.substring(MONITORING.length());
             Path file = root.resolve(suffix).normalize();
             if (!file.startsWith(root) || (Files.exists(file) && !file.toRealPath().startsWith(root))) {
-                response.setStatus(404); callback.succeeded(); return true;
+                return errorPages.notFound(request, response, callback);
             }
             if (!Files.isRegularFile(file)) {
-                if (suffix.contains(".")) { response.setStatus(404); callback.succeeded(); return true; }
+                if (suffix.contains(".")) return errorPages.notFound(request, response, callback);
                 file = root.resolve("index.html");
             }
             content = Files.readAllBytes(file);
@@ -160,10 +161,10 @@ final class DevConsole implements AutoCloseable {
         } else {
             String name = path.equals(ROOT) ? "index.html" : path.substring(ROOT.length());
             if (!name.matches("[a-zA-Z0-9_./-]+") || name.contains("..")) {
-                response.setStatus(404); callback.succeeded(); return true;
+                return errorPages.notFound(request, response, callback);
             }
             try (var input = DevConsole.class.getResourceAsStream("/dev-console/" + name)) {
-                if (input == null) { response.setStatus(404); callback.succeeded(); return true; }
+                if (input == null) return errorPages.notFound(request, response, callback);
                 content = input.readAllBytes();
             }
             type = contentType(name);

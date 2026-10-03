@@ -66,12 +66,15 @@ public final class DevGateway implements AutoCloseable {
     private final int port;
     private final boolean backendEnabled;
     private final DevConsole console;
+    private final DevGatewayErrorPages errorPages;
 
-    private DevGateway(Server server, int port, boolean backendEnabled, DevConsole console) {
+    private DevGateway(Server server, int port, boolean backendEnabled, DevConsole console,
+                       DevGatewayErrorPages errorPages) {
         this.server = server;
         this.port = port;
         this.backendEnabled = backendEnabled;
         this.console = console;
+        this.errorPages = errorPages;
     }
 
     static void requireAvailablePort(int port) {
@@ -213,6 +216,9 @@ public final class DevGateway implements AutoCloseable {
             boolean configuredBackendEnabled = backendEnabled;
             Server server = endpoint.server;
             ServerConnector connector = endpoint.connector;
+            DevGatewayErrorPages errorPages = new DevGatewayErrorPages(
+                    console == null ? null : DevConsole.ROOT + "#monitoring/issues",
+                    request -> route(request, configuredBackendPaths, configuredBackendEnabled) == Route.FRONTEND);
 
             ProxyHandler.Reverse reverseProxy = new ProxyHandler.Reverse(
                     request -> console != null && console.isApi(request)
@@ -251,9 +257,9 @@ public final class DevGateway implements AutoCloseable {
                 public boolean handle(Request request, Response response, Callback callback) throws Exception {
                     activity.run();
                     if (console == null && applicationOrigin != null && request.getHttpURI().getDecodedPath().startsWith("/_fluxzero/dev")) {
-                        response.setStatus(404); callback.succeeded(); return true;
+                        return errorPages.notFound(request, response, callback);
                     }
-                    if (console != null && console.handle(request, response, callback)) return true;
+                    if (console != null && console.handle(request, response, callback, errorPages)) return true;
                     if (console != null && applicationOrigin != null && !console.isApi(request)) {
                         response.setStatus(307);
                         response.getHeaders().put(HttpHeader.LOCATION, applicationOrigin + request.getHttpURI().getPathQuery());
@@ -261,7 +267,7 @@ public final class DevGateway implements AutoCloseable {
                     }
                     Route route = route(request, configuredBackendPaths, configuredBackendEnabled);
                     if (route == Route.PASSTHROUGH_BACKEND && !backendReady.getAsBoolean()) {
-                        unavailable(response, callback, BACKEND_UNAVAILABLE);
+                        unavailable(errorPages, request, response, callback, BACKEND_UNAVAILABLE);
                         return true;
                     }
                     if (route != Route.FRONTEND) {
@@ -275,10 +281,10 @@ public final class DevGateway implements AutoCloseable {
                         return super.handle(request, response, callback);
                     }
                     if (!frontendWasReady.get()) {
-                        unavailable(response, callback, FRONTEND_UNAVAILABLE);
+                        unavailable(errorPages, request, response, callback, FRONTEND_UNAVAILABLE);
                         return true;
                     }
-                    waitForFrontend(server, frontend.ready(), frontendWasReady, reverseProxy,
+                    waitForFrontend(server, frontend.ready(), frontendWasReady, reverseProxy, errorPages,
                                     request, response, callback);
                     return true;
                 }
@@ -341,11 +347,13 @@ public final class DevGateway implements AutoCloseable {
             });
             websocketHandler.setHandler(httpHandler);
             context.setHandler(websocketHandler);
+            context.setErrorHandler(errorPages);
+            server.setErrorHandler(errorPages);
             server.setHandler(context);
             server.start();
             if (console != null) console.start();
             endpoint.claimed = true;
-            return new DevGateway(server, connector.getLocalPort(), backendEnabled, console);
+            return new DevGateway(server, connector.getLocalPort(), backendEnabled, console, errorPages);
         } catch (Exception e) {
             endpoint.close();
             if (console != null) console.close();
@@ -379,6 +387,8 @@ public final class DevGateway implements AutoCloseable {
     }
 
     void refreshConsole() { if (console != null) console.updates.refreshSoon(); }
+
+    void diagnosticsUrl(String value) { errorPages.diagnosticsUrl(value); }
 
     @Override
     public void close() {
@@ -429,6 +439,13 @@ public final class DevGateway implements AutoCloseable {
         return stripped.isEmpty() ? "/" : stripped;
     }
 
+    private static void unavailable(DevGatewayErrorPages errorPages, Request request, Response response,
+                                    Callback callback, byte[] message) {
+        response.getHeaders().put(HttpHeader.RETRY_AFTER, "1");
+        errorPages.write(request, response, callback, HttpStatus.SERVICE_UNAVAILABLE_503,
+                         new String(message, StandardCharsets.UTF_8));
+    }
+
     private static void unavailable(Response response, Callback callback, byte[] message) {
         response.setStatus(HttpStatus.SERVICE_UNAVAILABLE_503);
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, "text/plain; charset=utf-8");
@@ -438,6 +455,7 @@ public final class DevGateway implements AutoCloseable {
 
     private static void waitForFrontend(Server server, BooleanSupplier frontendReady,
                                         AtomicBoolean frontendWasReady, Handler handler,
+                                        DevGatewayErrorPages errorPages,
                                         Request request, Response response, Callback callback) {
         Thread.ofVirtual().name("fluxzero-dev-frontend-reload").start(() -> {
             long deadline = System.nanoTime() + FRONTEND_RELOAD_GRACE.toNanos();
@@ -453,7 +471,7 @@ public final class DevGateway implements AutoCloseable {
                     Thread.sleep(FRONTEND_RETRY_INTERVAL.toMillis());
                 }
                 if (server.isRunning()) {
-                    unavailable(response, callback, FRONTEND_UNAVAILABLE);
+                    unavailable(errorPages, request, response, callback, FRONTEND_UNAVAILABLE);
                 } else {
                     callback.succeeded();
                 }
