@@ -160,7 +160,8 @@ class DevServerCompileLifecycleTest {
             assertTrue(awaitRunCount(projectDirectory, 1));
             assertTrue(awaitCompileDetailStartingWith(devServer, "build 1 ready"));
             assertTrue(await(() -> logsContain(projectDirectory, "transient compile warning")));
-            assertFalse(hasCompileProblem(projectDirectory));
+            // Diagnostics are published asynchronously after the in-memory compile status changes.
+            assertTrue(awaitCompileProblem(projectDirectory, false));
             assertTrue(logsContain(projectDirectory, "\"serviceId\":\"project\""));
         }
     }
