@@ -175,59 +175,6 @@ jobs:
       - name: Download and run standalone release with an empty cache
         run: bash .github/scripts/verify-packages-consumer.sh '${{ needs.version.outputs.version }}'
 
-  central:
-    name: Publish to Maven Central
-    needs: [version, packages-smoke]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Determine Maven Central publication window
-        id: central_window
-        shell: bash
-        run: |
-          release_date="$(TZ=Europe/Amsterdam date +%F)"
-          if [[ "$release_date" < "2026-10-01" ]]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            {
-              echo "### Maven Central publication"
-              echo
-              echo "Skipped: releases started on or after 1 October 2026 are published only to https://packages.fluxzero.io/maven."
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - uses: actions/checkout@v7
-        if: steps.central_window.outputs.publish == 'true'
-      - uses: ./.github/actions/monitoring-source
-        if: steps.central_window.outputs.publish == 'true'
-        with:
-          client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
-          private-key: ${{ secrets.AUDITLOG_APP_PRIVATE_KEY }}
-      - name: Set release timestamp
-        if: steps.central_window.outputs.publish == 'true'
-        run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
-      - name: Install Java and Maven credentials
-        if: steps.central_window.outputs.publish == 'true'
-        uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: "25"
-          cache: maven
-          server-id: central
-          server-username: MAVEN_USERNAME
-          server-password: MAVEN_PASSWORD
-      - name: Set release version
-        if: steps.central_window.outputs.publish == 'true'
-        run: ./mvnw -B versions:set -DnewVersion=${{ needs.version.outputs.version }}
-      - name: Publish release
-        if: steps.central_window.outputs.publish == 'true'
-        run: ./mvnw -B deploy -Psign,central -DskipTests
-        env:
-          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
-          MAVEN_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
-          MAVEN_GPG_KEY: ${{ secrets.OSSRH_SIGNING_KEY }}
-          MAVEN_GPG_PASSPHRASE: ${{ secrets.OSSRH_SIGNING_PASSPHRASE }}
-
   github-release:
     name: Publish GitHub release
     needs: [version, packages-smoke, package]
