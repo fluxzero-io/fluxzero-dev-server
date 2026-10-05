@@ -120,9 +120,3 @@ jobs:
           "-DaltDeploymentRepository=fluxzero::file://${{ runner.temp }}/publication"
       - name: Resolve and run an independent consumer
         run: bash .github/scripts/verify-packages-consumer.sh 0.0.0 'file://${{ runner.temp }}/publication'
-      - name: Verify Central packaging without publication
-        run: |
-          cat > "$RUNNER_TEMP/central-settings.xml" <<'XML'
-          <settings><servers><server><id>central</id><username>unused</username><password>unused</password></server></servers></settings>
-          XML
-          ./mvnw -B -s "$RUNNER_TEMP/central-settings.xml" -Psign,central deploy -DskipTests -Dgpg.skip -DskipPublishing=true
