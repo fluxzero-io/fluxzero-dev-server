@@ -42,6 +42,9 @@ final class TestPipeline implements AutoCloseable {
     TestTelemetry.Progress liveProgress() {var current=telemetry;return current==null?null:current.progress();}
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
     private final Set<Path> pendingChanges = new LinkedHashSet<>();
+    private final Set<Path> deferredChanges = new LinkedHashSet<>();
+    private boolean deferredInitial;
+    private boolean deferredManual;
     private final Set<String> failingSelectors = new LinkedHashSet<>();
     private final Set<String> incompleteSelectors = new LinkedHashSet<>();
     private final AtomicBoolean running = new AtomicBoolean();
@@ -80,7 +83,11 @@ final class TestPipeline implements AutoCloseable {
         }
         synchronized (pendingChanges) {
             pendingChanges.addAll(changedFiles);
-            if (!automaticPaused) manualRequested = false; // A newer automatic run supersedes a queued manual run.
+            if (!automaticPaused) {
+                // A newer automatic run supersedes a queued manual run.
+                manualRequested = false;
+                deferredManual = false;
+            }
         }
         schedule();
     }
@@ -102,7 +109,14 @@ final class TestPipeline implements AutoCloseable {
     }
 
     void setAutomaticPaused(boolean paused) {
-        synchronized (pendingChanges) { automaticPaused = paused; }
+        synchronized (pendingChanges) {
+            automaticPaused = paused;
+            if (!paused) {
+                pendingChanges.addAll(deferredChanges);
+                initialRequested |= deferredInitial;
+                manualRequested |= deferredManual;
+            }
+        }
         schedule();
     }
 
@@ -123,40 +137,60 @@ final class TestPipeline implements AutoCloseable {
                 boolean initial, manual;
                 synchronized (pendingChanges) {
                     if (automaticPaused && !manualRequested) return;
+                    if (pendingChanges.isEmpty() && !initialRequested && !manualRequested) {
+                        return;
+                    }
+                    pendingChanges.addAll(deferredChanges);
+                    deferredChanges.clear();
                     changes = Set.copyOf(pendingChanges);
                     pendingChanges.clear();
-                    initial = initialRequested;
+                    initial = initialRequested || deferredInitial;
+                    deferredInitial = false;
                     initialRequested = false;
-                    manual = manualRequested;
+                    manual = manualRequested || deferredManual;
+                    deferredManual = false;
                     manualRequested = false;
                 }
                 if (changes.isEmpty() && !initial && !manual) {
                     return;
                 }
-                TestInputSnapshot inputs = TestInputSnapshot.capture(config.projectDirectory());
-                Optional<TestInputSnapshot> previous = initial
-                        ? sessionStore.readTestInputs().filter(TestInputSnapshot::compatible)
-                        : Optional.empty();
-                if (initial) {
-                    if (previous.isEmpty()) {
-                        changes = inputs.files().keySet().stream()
-                                .map(config.projectDirectory()::resolve)
-                                .collect(java.util.stream.Collectors.toUnmodifiableSet());
-                    } else {
-                        Set<Path> initialChanges = new LinkedHashSet<>(changes);
-                        initialChanges.addAll(inputs.changesSince(previous.get(), config.projectDirectory()));
-                        changes = Set.copyOf(initialChanges);
+                TestInputSnapshot inputs;
+                TestPlanner.TestPlan plan;
+                try {
+                    inputs = TestInputSnapshot.capture(config.projectDirectory());
+                    Optional<TestInputSnapshot> previous = initial
+                            ? sessionStore.readTestInputs().filter(TestInputSnapshot::compatible)
+                            : Optional.empty();
+                    if (initial) {
+                        if (previous.isEmpty()) {
+                            changes = inputs.files().keySet().stream()
+                                    .map(config.projectDirectory()::resolve)
+                                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                        } else {
+                            Set<Path> initialChanges = new LinkedHashSet<>(changes);
+                            initialChanges.addAll(inputs.changesSince(previous.get(), config.projectDirectory()));
+                            changes = Set.copyOf(initialChanges);
+                        }
                     }
+                    plan = manual ? TestPlanner.TestPlan.module("manual test run") : initial && previous.isEmpty()
+                            ? TestPlanner.TestPlan.module(
+                                    "initial test baseline", "no previously tested project snapshot")
+                            : moduleFailurePending
+                                    ? TestPlanner.TestPlan.module("previous module test failure")
+                                    : moduleIncompletePending
+                                            ? TestPlanner.TestPlan.module("previous module test run did not complete")
+                                            : planner.plan(changes, Set.copyOf(failingSelectors),
+                                                           Set.copyOf(incompleteSelectors));
+                } catch (RuntimeException e) {
+                    synchronized (pendingChanges) {
+                        deferredChanges.addAll(changes);
+                        deferredInitial |= initial;
+                        deferredManual |= manual;
+                    }
+                    reportPlanningFailure(e);
+                    // Retain the request, but wait for a new change/resume request rather than spinning.
+                    continue;
                 }
-                TestPlanner.TestPlan plan = manual ? TestPlanner.TestPlan.module("manual test run") : initial && previous.isEmpty()
-                        ? TestPlanner.TestPlan.module(
-                                "initial test baseline", "no previously tested project snapshot")
-                        : moduleFailurePending
-                                ? TestPlanner.TestPlan.module("previous module test failure")
-                                : moduleIncompletePending
-                                        ? TestPlanner.TestPlan.module("previous module test run did not complete")
-                                        : planner.plan(changes, Set.copyOf(failingSelectors),
-                                                       Set.copyOf(incompleteSelectors));
                 if (!plan.shouldRun() && initial) {
                     output.accept("[test] skipped initial tests because test inputs are unchanged");
                 }
@@ -175,6 +209,19 @@ final class TestPipeline implements AutoCloseable {
             running.set(false);
             schedule();
         }
+    }
+
+    private void reportPlanningFailure(RuntimeException failure) {
+        String detail = "Test planning failed (" + failure.getClass().getSimpleName()
+                        + "); pending changes will be retried on the next request.";
+        output.accept("[test] incomplete: " + detail);
+        // Exception messages may include project data. Keep only implementation frames in diagnostics.
+        java.util.Arrays.stream(failure.getStackTrace())
+                .filter(frame -> frame.getClassName().startsWith("io.fluxzero.devserver."))
+                .limit(8).forEach(frame -> output.accept("[test] at " + frame));
+        TestStatus status = TestStatus.incomplete(List.of(), "test planning failed", Map.of(), -1, detail, 0);
+        statusConsumer.accept(status);
+        sessionStore.writeTestStatus(status);
     }
 
     private void restoreIncompleteRun() {

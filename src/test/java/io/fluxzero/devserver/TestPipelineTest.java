@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -400,6 +402,63 @@ class TestPipelineTest {
         String log = Files.readString(projectDirectory.resolve("runs.log"));
         assertTrue(log.lines().allMatch(line -> line.contains(" test ")), log);
         assertTrue(log.contains("-Dtest=com.acme.OrderHandlerTest#fails"), log);
+    }
+
+    @Test
+    void kotlinProductionCorrectionRetriesFailedTestWithPayloadlessImpact(@TempDir Path projectDirectory)
+            throws Exception {
+        installFakeMaven(projectDirectory);
+        Files.createFile(projectDirectory.resolve("fail-first"));
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        List<TestStatus> statuses = new CopyOnWriteArrayList<>();
+        try (TestPipeline pipeline = new TestPipeline(config(projectDirectory), store, statuses::add, ignored -> {})) {
+            pipeline.request(Set.of(projectDirectory.resolve("src/test/kotlin/com/acme/OrderHandlerTest.kt")));
+            assertTrue(awaitStatus(statuses, "failed", List.of("com.acme.OrderHandlerTest")));
+            Files.writeString(store.directory().resolve(DevSessionStore.TEST_IMPACT_FILE), """
+                    {"tests": {"com.acme.WebTest#get": {"messages": [{"payloadClass": null}], "web": [{}]}}}
+                    """);
+
+            pipeline.request(Set.of(projectDirectory.resolve("src/main/kotlin/com/acme/OrderHandler.kt")));
+
+            assertTrue(awaitStatus(statuses, "passed", List.of("com.acme.OrderHandlerTest")), statuses::toString);
+            assertEquals("previously failing tests", store.readTestStatus().orElseThrow().reason());
+        }
+        assertEquals("2", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void planningFailureIsVisibleAndRetainsChangesUntilNextRequest(boolean resume, @TempDir Path projectDirectory)
+            throws Exception {
+        installFakeMaven(projectDirectory);
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        store.writeTestStatus(TestStatus.completed(List.of("com.acme.PreviousTest"), "previous run", 1, "failed"));
+        // Invalid reactor data makes selector validation fail before the test process can be started.
+        Files.writeString(projectDirectory.resolve("pom.xml"), "<project>");
+        List<TestStatus> statuses = new CopyOnWriteArrayList<>();
+        List<String> output = new CopyOnWriteArrayList<>();
+        try (TestPipeline pipeline = new TestPipeline(config(projectDirectory), store, statuses::add, output::add)) {
+            pipeline.request(Set.of(projectDirectory.resolve("src/test/kotlin/com/acme/NewTest.kt")));
+            assertTrue(await(() -> statuses.stream().anyMatch(s -> "incomplete".equals(s.state())
+                                                                  && "test planning failed".equals(s.reason()))),
+                       statuses::toString);
+            assertFalse(Files.exists(projectDirectory.resolve("run-count.txt")));
+            assertTrue(output.stream().anyMatch(line -> line.contains("Test planning failed (IllegalStateException)")));
+
+            assertFalse(await(() -> statuses.stream().filter(s -> "incomplete".equals(s.state())).count() > 1,
+                              Duration.ofMillis(200)), "A planning failure must not trigger an automatic retry loop");
+            Files.writeString(projectDirectory.resolve("pom.xml"), "<project/>");
+            if (resume) {
+                pipeline.setAutomaticPaused(true);
+                pipeline.setAutomaticPaused(false);
+            } else {
+                pipeline.request(Set.of(projectDirectory.resolve("README.md")));
+            }
+
+            assertTrue(awaitStatus(statuses, "passed", List.of("com.acme.NewTest", "com.acme.PreviousTest")),
+                       statuses::toString);
+        }
+        assertEquals("1", Files.readString(projectDirectory.resolve("run-count.txt")).strip());
     }
 
     @Test
