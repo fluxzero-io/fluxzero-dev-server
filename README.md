@@ -818,6 +818,10 @@ completed full runs and uses stable testcase identities during selective runs. N
 removed cases are pruned when a fresh inventory or a completed full run establishes their absence.
 When events are unavailable, XML remains the fallback for run diagnostics; incomplete telemetry does not invent
 per-test outcomes. An interrupted run keeps its valid reported outcomes and leaves unfinished tests pending.
+If test planning fails before execution, the run is marked incomplete and the output identifies the internal
+failure. Pending changes are retained for the next source change, Resume, or Rerun; the server does not keep
+retrying an unchanged planning failure. Payloadless requests in test-impact data remain valid and do not
+prevent affected or previously failing tests from running.
 
 The rerun button beside the test bar runs the full suite for each test-enabled module, even with unchanged
 inputs. Runs use the existing test pipeline. A newer code-change run supersedes a queued manual run;

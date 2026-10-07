@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -221,6 +223,41 @@ class TestPlannerTest {
         assertFalse(plan.runModule());
         assertEquals(List.of("com.acme.InvoiceFixtureTest#createsInvoice"), plan.stableSelectors());
         assertEquals("test impact index", plan.reason());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"messages,java", "web,java", "messages,kt", "web,kt"})
+    void absentPayloadClassDoesNotHideValidImpactOrPendingTests(String section, String extension,
+                                                               @TempDir Path projectDirectory) throws Exception {
+        writeImpactIndex(projectDirectory, """
+                {
+                  "com.acme.EndpointTest#request": {
+                    "%s": [{"payloadClass": null}, {}, {"payloadClass": 42},
+                           {"payloadClass": "com.acme.Request"}]
+                  }
+                }
+                """.formatted(section));
+
+        TestPlanner.TestPlan plan = new TestPlanner(projectDirectory).plan(
+                Set.of(projectDirectory.resolve("src/main/" + (extension.equals("kt") ? "kotlin" : "java")
+                                                + "/com/acme/Request." + extension)),
+                Set.of("com.acme.PreviousTest"));
+
+        assertEquals(List.of("com.acme.EndpointTest#request", "com.acme.PreviousTest"), plan.stableSelectors());
+        assertEquals("test impact index and pending tests", plan.reason());
+    }
+
+    @Test
+    void payloadlessUsageStillAllowsProductionChangeFallback(@TempDir Path projectDirectory) throws Exception {
+        writeImpactIndex(projectDirectory, """
+                {"com.acme.EndpointTest#get": {"messages": [{"payloadClass": null}], "web": [{}]}}
+                """);
+
+        var plan = new TestPlanner(projectDirectory).plan(
+                Set.of(projectDirectory.resolve("src/main/kotlin/com/acme/Shared.kt")), Set.of());
+
+        assertTrue(plan.runModule());
+        assertEquals("changed app code fallback", plan.reason());
     }
 
     @Test

@@ -269,7 +269,9 @@ final class TestPlanner {
             return false;
         }
         return StreamSupport.stream(array.spliterator(), false)
-                .map(node -> node.path("payloadClass").asText(null))
+                .map(node -> node.path("payloadClass"))
+                .filter(JsonNode::isTextual)
+                .map(JsonNode::textValue)
                 .anyMatch(changedClasses::contains);
     }
 
