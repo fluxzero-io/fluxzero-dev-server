@@ -14,6 +14,8 @@
 
 package io.fluxzero.devserver;
 
+import io.fluxzero.sdk.Fluxzero;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -22,6 +24,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
+import java.util.stream.Stream;
 
 final class AppProcessRunner {
     private final DevServerConfig config;
@@ -131,6 +134,8 @@ final class AppProcessRunner {
         environment.put("FLUX_PORT", Integer.toString(port(runtimeBaseUrl)));
         environment.put("FLUXZERO_APPLICATION_NAME", application.applicationName());
         environment.put("FLUX_APPLICATION_NAME", application.applicationName());
+        environment.put("FLUXZERO_APPLICATION_ID", applicationId(
+                application.launchId(), resolvedApplicationEnvironment, System.getenv()));
         environment.put("FLUXZERO_PROXY_URL", proxyUrl);
         environment.put("PROXY_PORT", Integer.toString(port(internalProxyUrl)));
         environment.put("FLUXZERO_DEV_SESSION_ID", sessionId);
@@ -177,6 +182,16 @@ final class AppProcessRunner {
 
     String clientId(BuildSnapshot snapshot, ApplicationBuild application) {
         return sessionId + "-" + safeId(application.launchId()) + "-build-" + snapshot.buildNumber();
+    }
+
+    static String applicationId(String launchId, Map<String, String> applicationEnvironment,
+                                Map<String, String> inheritedEnvironment) {
+        return Stream.of(applicationEnvironment.get("FLUXZERO_APPLICATION_ID"),
+                         applicationEnvironment.get("FLUX_APPLICATION_ID"),
+                         inheritedEnvironment.get("FLUXZERO_APPLICATION_ID"),
+                         inheritedEnvironment.get("FLUX_APPLICATION_ID"))
+                .filter(value -> value != null && !value.isBlank()).findFirst()
+                .orElseGet(() -> Fluxzero.idForName("dev-application:" + launchId));
     }
 
     private List<String> environmentSystemProperties(ApplicationBuild application) {

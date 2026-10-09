@@ -332,6 +332,21 @@ Launchers resolve the latest compatible stable `1.x` release from [Fluxzero Pack
 snapshot build can be selected with `--dev-server-version` or `FLUXZERO_DEV_SERVER_VERSION` after installing it
 in the local Maven repository.
 
+### Stable application identity
+
+Every managed backend receives `FLUXZERO_APPLICATION_ID`, available through
+`Fluxzero.get().client().applicationId()` just as in the cloud. By default, the dev server derives it with
+`Fluxzero.idForName("dev-application:" + launchId)`: a deterministic UUID without dashes.
+The launch id comes from the selected application alias (or the discovered application name); composed projects
+prefix it with their project id. Reloads, build numbers, ports and dev-server sessions do not change it.
+Renaming the alias or project id changes the derived identity. It is a local identity, independent of the
+application's cloud identity and the per-instance `FLUXZERO_CLIENT_ID`.
+
+An explicit `applicationConfig.<alias>.env.FLUXZERO_APPLICATION_ID` overrides the default. The legacy
+`FLUX_APPLICATION_ID` is also accepted. Per-application values take precedence over inherited environment values;
+within each source, `FLUXZERO_APPLICATION_ID` takes precedence over the legacy name. Blank values are ignored.
+This requires no additional configuration or generated identity file.
+
 ### Test Server Version Alignment
 
 The dev server detects the Fluxzero SDK version declared by each Maven or Gradle build and resolves the matching

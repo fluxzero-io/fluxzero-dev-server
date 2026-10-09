@@ -95,6 +95,10 @@ profiles:
 - All application processes receive the same runtime and public proxy URLs. An application configuration can override
   its Fluxzero namespace without exposing that supervisor-owned variable through `env`.
 - Application launch ids are scoped by project id, so equally named modules in different roots cannot collide.
+- Each backend receives a stable `FLUXZERO_APPLICATION_ID` derived from its scoped launch id using
+  `Fluxzero.idForName("dev-application:" + launchId)`. Reloads and new sessions preserve it. Explicit per-application
+  identity environment values override inherited values and the derived default; see
+  [stable application identity](../../README.md#stable-application-identity).
 - Frontend route paths are preserved upstream. This is required for Angular applications whose `baseHref` includes the
   mounted path.
 - HTTP and WebSocket requests use the same longest-prefix route selection. Backend paths such as `/api` take precedence

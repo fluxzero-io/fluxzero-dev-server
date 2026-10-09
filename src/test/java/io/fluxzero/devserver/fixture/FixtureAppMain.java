@@ -27,6 +27,7 @@ public final class FixtureAppMain {
         System.out.println("proxy.port=" + System.getenv("PROXY_PORT"));
         System.out.println("proxy.system.port=" + System.getProperty("PROXY_PORT"));
         System.out.println("application=" + System.getenv("FLUXZERO_APPLICATION_NAME"));
+        System.out.println("application.id=" + System.getenv("FLUXZERO_APPLICATION_ID"));
         System.out.println("namespace=" + System.getenv("FLUXZERO_NAMESPACE"));
         System.out.println("environment=" + System.getenv("ENVIRONMENT"));
         System.out.println("spring.profile=" + System.getProperty("spring.profiles.active"));

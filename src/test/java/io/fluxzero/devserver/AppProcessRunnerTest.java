@@ -30,10 +30,78 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AppProcessRunnerTest {
+
+    @Test
+    void applicationIdentitySurvivesReloadAndRestartAndDistinguishesLaunches(@TempDir Path projectDirectory)
+            throws Exception {
+        Path classes = testClassesDirectory();
+        ApplicationBuild orders = new ApplicationBuild(
+                "shared-display-name", ".", FixtureAppMain.class.getName(), List.of(classes), List.of(), false,
+                "orders", Map.of(), Map.of());
+        String first = launchedApplicationId(projectDirectory, orders, "first-session", 1);
+        assertTrue(first.matches("[a-f0-9]{32}"));
+        assertEquals(first, launchedApplicationId(projectDirectory, orders, "first-session", 2));
+        assertEquals(first, launchedApplicationId(projectDirectory, orders, "second-session", 1));
+        String shop = launchedApplicationId(projectDirectory, orders.scopedTo("shop"), "first-session", 1);
+        String billing = launchedApplicationId(projectDirectory, orders.scopedTo("billing"), "first-session", 1);
+        assertNotEquals(first, shop);
+        assertNotEquals(shop, billing);
+    }
+
+    @Test
+    void passesExplicitApplicationIdentityToChild(@TempDir Path projectDirectory) throws Exception {
+        Path classes = testClassesDirectory();
+        for (String key : List.of("FLUXZERO_APPLICATION_ID", "FLUX_APPLICATION_ID")) {
+            DevApplicationConfig selection = new DevApplicationConfig(
+                    "orders", null, Map.of(key, "configured-application"), Map.of());
+            ApplicationBuild application = new ApplicationBuild(
+                    "orders", ".", FixtureAppMain.class.getName(), List.of(classes), List.of(), false,
+                    "orders", selection.env(), Map.of());
+            assertEquals("configured-application", launchedApplicationId(
+                    projectDirectory, application, "session", 1));
+        }
+    }
+
+    @Test
+    void prefersPerApplicationIdentityAndPreservesInheritedOverrides() {
+        Map<String, String> inherited = Map.of("FLUXZERO_APPLICATION_ID", "inherited",
+                                               "FLUX_APPLICATION_ID", "legacy-inherited");
+        assertEquals("configured", AppProcessRunner.applicationId("orders", Map.of(
+                "FLUXZERO_APPLICATION_ID", "configured", "FLUX_APPLICATION_ID", "legacy-configured"), inherited));
+        assertEquals("legacy-configured", AppProcessRunner.applicationId(
+                "orders", Map.of("FLUX_APPLICATION_ID", "legacy-configured"), inherited));
+        assertEquals("inherited", AppProcessRunner.applicationId("orders", Map.of(), inherited));
+        assertEquals("legacy-inherited", AppProcessRunner.applicationId("orders", Map.of(),
+                Map.of("FLUX_APPLICATION_ID", "legacy-inherited")));
+        assertEquals(AppProcessRunner.applicationId("orders", Map.of(), Map.of()),
+                     AppProcessRunner.applicationId("orders", Map.of("FLUXZERO_APPLICATION_ID", " "), Map.of()));
+    }
+
+    private String launchedApplicationId(Path directory, ApplicationBuild application, String session, int build)
+            throws Exception {
+        DevServerConfig config = new DevServerConfig(
+                directory, application.mainClass(), application.applicationName(), null,
+                false, false, false, Duration.ofSeconds(2), Duration.ofSeconds(2),
+                DevServerConfig.DEFAULT_DEBOUNCE, FrontendConfig.none(), List.of());
+        List<String> output = new CopyOnWriteArrayList<>();
+        AppProcessRunner runner = new AppProcessRunner(
+                config, "ws://localhost:1234", "http://localhost:5678", session,
+                (applicationName, instanceId, stream, line) -> output.add(line));
+        AppInstance app = runner.start(new BuildSnapshot(
+                build, directory.resolve("build"), testClassesDirectory(), List.of(), Instant.now()), application);
+        try {
+            assertTrue(await(output, "application.id="));
+            return output.stream().filter(line -> line.startsWith("application.id="))
+                    .findFirst().orElseThrow().substring("application.id=".length());
+        } finally {
+            app.stop(Duration.ofSeconds(2));
+        }
+    }
 
     @Test
     void startsAppProcessWithFluxzeroEnvironment(@TempDir Path projectDirectory) throws Exception {
