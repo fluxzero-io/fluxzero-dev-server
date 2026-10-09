@@ -102,6 +102,21 @@ public class DevGatewayTest {
             socket.sendClose(WebSocket.NORMAL_CLOSURE, "done").get(5, TimeUnit.SECONDS);
             var missing = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevConsole.MONITORING + "missing.js")).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(404, missing.statusCode());
+            HttpResponse<String> unavailable = request(gateway.url() + "/app-page", "text/html", null);
+            assertEquals(503, unavailable.statusCode());
+            assertTrue(unavailable.body().contains("Fluxzero Dev Server"));
+            assertTrue(unavailable.body().contains("href=\"" + DevConsole.ROOT + "#monitoring/issues\""));
+            assertEquals("1", unavailable.headers().firstValue("retry-after").orElseThrow());
+            HttpResponse<String> backendUnavailable = request(gateway.url() + "/api/orders", "text/html", null);
+            assertEquals(503, backendUnavailable.statusCode());
+            assertEquals("Fluxzero backend is not ready yet", backendUnavailable.body());
+            assertEquals("text/plain; charset=utf-8", backendUnavailable.headers().firstValue("content-type").orElseThrow());
+            assertEquals("Fluxzero backend is not ready yet",
+                    request(gateway.url() + "/api/orders", "application/json", null).body());
+            assertEquals(404, request(gateway.url() + DevConsole.MONITORING + "missing.js", "text/html", null).statusCode());
+            HttpResponse<String> missingPage = request(gateway.url() + DevConsole.ROOT + "unknown", "text/html", null);
+            assertEquals(404, missingPage.statusCode());
+            assertTrue(missingPage.body().contains("Fluxzero Dev Server"));
         }
     }
 
@@ -387,6 +402,112 @@ public class DevGatewayTest {
     }
 
     @Test
+    void rendersSafeBrowserPageForLocalGatewayException() throws Exception {
+        String secret = "private-error-marker";
+        try (TestUpstream frontend = TestUpstream.start("frontend")) {
+            for (String applicationOrigin : List.of("", "https://application.local")) {
+                try (var endpoint = DevGateway.reserve(0, "127.0.0.1");
+                     DevGateway gateway = DevGateway.start(null,
+                             List.of(new DevGateway.FrontendRoute("root", "/", frontend.url(), () -> true)),
+                             () -> false, List.of(), endpoint,
+                             () -> { throw new IllegalStateException(secret); }, false, null,
+                             applicationOrigin.isEmpty() ? null : applicationOrigin)) {
+                    HttpResponse<String> browser = request(gateway.url() + "/orders?token=private-query-marker",
+                            "text/html,application/xhtml+xml;q=0.9", "private-header-marker");
+                    assertEquals(500, browser.statusCode());
+                    assertEquals("no-store", browser.headers().firstValue("cache-control").orElseThrow());
+                    assertTrue(browser.headers().firstValue("content-type").orElseThrow().startsWith("text/html"));
+                    assertTrue(browser.body().contains("<main>"));
+                    assertTrue(browser.body().contains("Fluxzero Dev Server"));
+                    assertTrue(browser.body().contains("HTTP 500"));
+                    assertTrue(browser.body().contains("href=\"\">Retry"));
+                    assertTrue(browser.body().contains("prefers-color-scheme:dark"));
+                    assertTrue(browser.body().contains("focus-visible"));
+                    for (String sensitive : List.of(secret, "private-query-marker", "private-header-marker",
+                                                    frontend.url(), "Powered by Jetty", "stacktrace")) {
+                        assertFalse(browser.body().contains(sensitive), sensitive);
+                    }
+                    HttpResponse<String> api = request(gateway.url() + "/orders?token=private-query-marker",
+                            "application/json", "private-header-marker");
+                    assertEquals(500, api.statusCode());
+                    assertEquals("application/json; charset=utf-8", api.headers().firstValue("content-type").orElseThrow());
+                    assertEquals("{\"status\":500,\"error\":\"Internal Server Error\"}", api.body());
+                }
+            }
+        }
+    }
+
+    @Test
+    void rendersUnreachableUpstreamWithoutExposingItsOriginAndKeepsAssetResponsePlain() throws Exception {
+        int unavailablePort;
+        try (ServerSocket socket = new ServerSocket(0)) { unavailablePort = socket.getLocalPort(); }
+        String privateOrigin = "http://127.0.0.1:" + unavailablePort;
+        for (String applicationOrigin : List.of("", "https://application.local")) {
+            try (var endpoint = DevGateway.reserve(0, "127.0.0.1");
+                 DevGateway gateway = DevGateway.start(null,
+                         List.of(new DevGateway.FrontendRoute("root", "/", privateOrigin, () -> true)),
+                         () -> false, List.of(), endpoint, () -> { }, false, null,
+                         applicationOrigin.isEmpty() ? null : applicationOrigin)) {
+                HttpResponse<String> browser = request(gateway.url() + "/missing?token=private-query-marker",
+                        "text/html", "private-header-marker");
+                assertTrue(browser.statusCode() >= 500);
+                assertTrue(browser.body().contains("Fluxzero Dev Server"));
+                assertTrue(browser.body().contains("HTTP " + browser.statusCode()));
+                assertFalse(browser.body().contains(privateOrigin));
+                assertFalse(browser.body().contains("private-query-marker"));
+                assertFalse(browser.body().contains("Powered by Jetty"));
+
+                HttpResponse<String> asset = request(gateway.url() + "/assets/main.js", "text/html", null);
+                assertTrue(asset.statusCode() >= 500);
+                assertEquals("text/plain; charset=utf-8", asset.headers().firstValue("content-type").orElseThrow());
+                assertFalse(asset.body().contains("<html"));
+            }
+        }
+    }
+
+    @Test
+    void rendersOnlyGatewayOwnedUnknownRoutesInIngressMode() throws Exception {
+        try (TestUpstream frontend = TestUpstream.start("frontend");
+             var endpoint = DevGateway.reserve(0, "127.0.0.1");
+             DevGateway gateway = DevGateway.start(null,
+                     List.of(new DevGateway.FrontendRoute("root", "/", frontend.url(), () -> true)),
+                     () -> false, List.of(), endpoint, () -> { }, false, null, "https://application.local")) {
+            HttpResponse<String> browser = request(gateway.url() + DevConsole.ROOT + "missing?secret=abc", "text/html", null);
+            assertEquals(404, browser.statusCode());
+            assertTrue(browser.body().contains("HTTP 404"));
+            assertFalse(browser.body().contains("secret=abc"));
+            HttpResponse<String> plain = request(gateway.url() + DevConsole.ROOT + "missing", "application/json", null);
+            assertEquals(404, plain.statusCode());
+            assertEquals("", plain.body());
+            assertEquals("no-store", plain.headers().firstValue("cache-control").orElseThrow());
+        }
+    }
+
+    @Test
+    void leavesIntentionalUpstreamErrorsUntouched() throws Exception {
+        var upstream = com.sun.net.httpserver.HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        upstream.createContext("/", exchange -> {
+            byte[] body = "application-owned-error".getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+            exchange.getResponseHeaders().set("X-Upstream-Error", "present");
+            exchange.sendResponseHeaders(418, body.length);
+            try (var output = exchange.getResponseBody()) { output.write(body); }
+        });
+        upstream.start();
+        try (DevGateway gateway = DevGateway.start(null,
+                List.of(new DevGateway.FrontendRoute("root", "/",
+                        "http://127.0.0.1:" + upstream.getAddress().getPort(), () -> true)),
+                () -> false, List.of(), 0, () -> { }, false)) {
+            HttpResponse<String> response = request(gateway.url() + "/intentional", "text/html", null);
+            assertEquals(418, response.statusCode());
+            assertEquals("application-owned-error", response.body());
+            assertEquals("present", response.headers().firstValue("x-upstream-error").orElseThrow());
+        } finally {
+            upstream.stop(0);
+        }
+    }
+
+    @Test
     void routesAllTrafficToFrontendWhenLocalBackendIsDisabled() throws Exception {
         try (TestUpstream frontend = TestUpstream.start("frontend");
              DevGateway gateway = DevGateway.start(
@@ -618,6 +739,13 @@ public class DevGatewayTest {
     private static HttpResponse<String> get(String url) throws Exception {
         return HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(),
                                 HttpResponse.BodyHandlers.ofString());
+    }
+
+    private static HttpResponse<String> request(String url, String accept, String marker) throws Exception {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(5))
+                .header("Accept", accept);
+        if (marker != null) builder.header("X-Private-Marker", marker);
+        return HTTP_CLIENT.send(builder.GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
     private static HttpResponse<String> post(String url, String body) throws Exception {
