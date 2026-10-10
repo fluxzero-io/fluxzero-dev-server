@@ -20,6 +20,11 @@ import java.util.Set;
 
 record FixtureOidcUser(String subject, String email, String tenantId, Set<String> roles) implements User {
 
+    // Keep getName for the legacy SDK compatibility scenario; SDK 2 requires an explicit identity.
+    public String id() {
+        return subject;
+    }
+
     @Override
     public String getName() {
         return subject;
