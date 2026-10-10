@@ -317,7 +317,9 @@ public final class DevServerControlMain {
     }
 
     private static boolean applicationReady(DevSession session) {
+        // Backend-only sessions leave the frontend stopped while the gateway serves Devboard.
         boolean frontendReady = "skipped".equals(session.gateway().state())
+                                || "stopped".equals(session.frontend().state())
                                 || "running".equals(session.frontend().state());
         return infrastructureReady(session) && "running".equals(session.app().state())
                && "succeeded".equals(session.reload().state()) && frontendReady;

@@ -41,6 +41,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevServerControlMainTest {
 
     @Test
+    void backendOnlyStartupCompletesWithTheDevboardGatewayRunning(@TempDir Path projectDirectory)
+            throws Exception {
+        DevSession session = readyBackend(projectDirectory);
+        new DevSessionStore(projectDirectory).writeSession(session);
+
+        assertEquals("running", session.gateway().state());
+        assertEquals("stopped", session.frontend().state());
+        assertEquals(0, DevServerControlMain.waitForStartup(
+                projectDirectory, session.pid(), Duration.ofSeconds(1), false, false));
+    }
+
+    @Test
+    void backgroundStartupStillWaitsForAConfiguredFrontend(@TempDir Path projectDirectory)
+            throws Exception {
+        DevSession session = readyBackend(projectDirectory).withFrontend(
+                DevSession.ServiceStatus.stopped("frontend").withState("starting", "frontend starting"));
+        DevSessionStore store = new DevSessionStore(projectDirectory);
+        store.writeSession(session);
+        assertEquals(1, DevServerControlMain.waitForStartup(
+                projectDirectory, session.pid(), Duration.ofMillis(100), false, false));
+
+        store.writeSession(session.withFrontend(session.frontend().withState("running", "frontend ready")));
+        assertEquals(0, DevServerControlMain.waitForStartup(
+                projectDirectory, session.pid(), Duration.ofSeconds(1), false, false));
+    }
+
+    private static DevSession readyBackend(Path projectDirectory) {
+        return DevSession.empty(DevServerConfig.defaults(projectDirectory))
+                .withStatus("running")
+                .withRuntime(DevSession.ServiceStatus.running("runtime", "ws://localhost:12345", 12345, null, null))
+                .withProxy(DevSession.ServiceStatus.running("proxy", "http://localhost:12346", 12346, null, null))
+                .withGateway(DevSession.ServiceStatus.running("gateway", "http://localhost:12347", 12347, null, null))
+                .withApp(DevSession.ServiceStatus.running("app", null, null, null, "application ready"))
+                .withReload(DevSession.ServiceStatus.stopped("reload").withState("succeeded", "application ready"));
+    }
+
+    @Test
     void agentControlPlaneBecomesAvailableBeforeApplicationReadiness(@TempDir Path projectDirectory)
             throws Exception {
         DevSession base = DevSession.empty(DevServerConfig.defaults(projectDirectory));
