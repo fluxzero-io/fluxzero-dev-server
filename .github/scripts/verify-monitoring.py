@@ -71,7 +71,9 @@ with tempfile.TemporaryDirectory(prefix="monitoring-consumer-") as directory:
             while time.monotonic() < deadline:
                 result = json.loads(request(api + "/logs/search", {"@class": "io.fluxzero.sdk.common.Message", "metadata": {},
                         "payload": {"@class": "io.fluxzero.auditlog.publishers.api.SearchLog",
-                                    "messageTypes": ["CUSTOM"], "term": marker, "facetFilters": [],
+                                    "messageTypes": ["CUSTOM"], "term": marker, "facetFilters": [
+                                        {"facetName": "fzc.logCategory", "values": ["application_logs"]},
+                                        {"facetName": "level", "values": ["INFO"]}],
                                     "sortableFilters": [], "forceFlush": True}}))
                 if any(marker in str(row.get("payload")) for row in result["data"]):
                     break
