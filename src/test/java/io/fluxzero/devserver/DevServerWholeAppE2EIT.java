@@ -766,6 +766,9 @@ class DevServerWholeAppE2EIT {
         DevServerConfig config = config(project);
         try (DevServer ignored = new DevServer(config).start()) {
             DevSession session = waitForSession(project, s -> "running".equals(s.app().state()), "app running");
+            assertEquals(0, DevServerControlMain.waitForStartup(
+                    project, session.pid(), Duration.ofSeconds(5), false, false),
+                    "A backend-only application must complete background CLI startup");
             String proxyUrl = session.proxy().url();
 
             HttpResponse<String> anonymous = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/secure/me"))
