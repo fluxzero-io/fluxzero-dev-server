@@ -1,7 +1,13 @@
 version: 2
+registries:
+  fluxzero-public-maven:
+    type: maven-repository
+    url: https://packages.fluxzero.io/maven
+
 updates:
   - package-ecosystem: "maven"
     directory: "/"
+    registries: [fluxzero-public-maven]
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10

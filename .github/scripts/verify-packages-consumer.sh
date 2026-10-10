@@ -30,3 +30,6 @@ for suffix in .pom .jar -standalone.jar -sources.jar -javadoc.jar; do
 done
 python3 "$root/.github/scripts/verify-standalone.py" \
   "$artifact_dir/fluxzero-dev-server-$version-standalone.jar" "$version"
+
+python3 "$root/.github/scripts/verify-monitoring.py" \
+  "$artifact_dir/fluxzero-dev-server-$version-standalone.jar"
