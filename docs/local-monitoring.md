@@ -224,43 +224,30 @@ process/storage measurements are shown on the current project page instead.
 This is a local development UI served under the dev server's existing access
 model. Do not expose it as a public authenticated dashboard.
 
-## Windows prototype checkout
+## Verify the packaged monitoring
 
-Use a Windows x64 JDK 25, Git, Node.js 24.18 or newer and Python 3.9 or newer.
-The dev-server build installs its own pinned Node and packages Auditlog automatically. Python is needed to package the SDK documentation archive.
-The complete unreleased prototype spans these branches:
+The Dev Server and bundled Auditlog use SDK 2.17.3. Building the pinned Auditlog
+source requires the existing read-only repository integration; no sibling SDK
+checkout is needed. The standalone JAR includes the monitoring backend and UI.
 
-| Repository | Branch |
-| --- | --- |
-| fluxzero-dev-server | `codex/local-monitoring` |
-| fluxzero-auditlog | `codex/local-monitoring` |
-| fluxzero-sdk-java | `codex/testserver-reset` |
+Build with JDK 25 using `./mvnw -B clean install` (or `mvnw.cmd` on Windows).
+Then run the independent monitoring smoke test:
 
-Build the SDK Test Server once in its dedicated checkout. SDK 1.269.0 does not
-contain the optional `TestServer.truncateData(Server)` API used by legacy maintenance endpoints.
-The dashboard resets in-memory application data through a confirmed complete-environment restart. This local version does not change the SDK dependency of the application:
-
-```powershell
-cd C:\work\fluxzero-sdk-java
-.\mvnw.cmd -B versions:set "-DnewVersion=0-U13-SNAPSHOT" "-DgenerateBackupPoms=false"
-.\mvnw.cmd -B -pl test-server,proxy -am install -DskipTests "-Dagent-docs.python=python"
-
-cd C:\work\fluxzero-dev-server
-.\mvnw.cmd -B clean install
-
+```sh
+python3 .github/scripts/verify-monitoring.py target/fluxzero-dev-server-1-SNAPSHOT-standalone.jar
 ```
 
-Use `python3` instead of `python` in the property if that is the installed
-interpreter name. Auditlog is bundled automatically; no artifact paths are needed. Then launch the built dev server explicitly from PowerShell:
+It starts an isolated project with the bundled SDK, checks the host UI contract,
+and verifies local application-log ingestion and search through the gateway.
+Publication verification runs the same check against the downloaded standalone
+artifact. The normal CI matrix covers Linux, macOS and Windows; application and
+frontend workflow tests run on Linux.
 
-```powershell
-$env:FLUXZERO_DEV_RUNTIME_VERSION = "0-U13-SNAPSHOT"
-java -jar C:\work\fluxzero-dev-server\target\fluxzero-dev-server-1-SNAPSHOT-standalone.jar --project-dir C:\work\my-app
+To run a locally built distribution explicitly:
+
+```sh
+java -jar target/fluxzero-dev-server-1-SNAPSHOT-standalone.jar --project-dir /path/to/app
 ```
 
-An existing `fz dev` installation does not automatically select this checkout.
-Without monitoring enabled, the Projects UI can also be tested independently of
-the Auditlog checkout. The dashboard does not expose a separate data-truncation action. The prototype's Windows download selection and ZIP extraction have
-automated coverage; the complete Windows monitoring start/restart/truncate flow
-still needs to be exercised on Windows. The repository's standard CI matrix
-includes Windows, while the application and frontend E2E jobs currently use Linux.
+An installed `fz dev` resolves the published Dev Server and does not automatically
+select a development checkout.

@@ -29,6 +29,13 @@
         <junit.version>6.1.1</junit.version>
     </properties>
 
+    <repositories>
+        <repository>
+            <id>fluxzero</id>
+            <url>https://packages.fluxzero.io/maven</url>
+        </repository>
+    </repositories>
+
     <dependencyManagement>
         <dependencies>
             <dependency>
