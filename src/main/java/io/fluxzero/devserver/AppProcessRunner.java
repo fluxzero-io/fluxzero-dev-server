@@ -103,15 +103,21 @@ final class AppProcessRunner {
     AppInstance start(BuildSnapshot snapshot, ApplicationBuild application, String clientId) throws IOException {
         String mainClass = application.mainClass() == null || application.mainClass().isBlank()
                 ? MainClassDetector.detect(application.classesDirectory()) : application.mainClass();
+        boolean managedBff = config.idpMode() != IdpMode.EXTERNAL && ManagedBffSupport.containsBff(application);
         List<String> command = new ArrayList<>();
         command.add(javaExecutable());
         command.add(JvmHeapMemory.LOCAL_JMX_OPTION);
         command.add("--enable-native-access=ALL-UNNAMED");
         command.add("-Dfluxzero.dev.session=" + sessionId);
-        command.addAll(environmentSystemProperties(application));
+        command.addAll(environmentSystemProperties(application, managedBff));
         command.add("-cp");
-        command.add(classpath(application));
-        if (application.testApplication()) {
+        command.add(classpath(application, managedBff));
+        if (managedBff) {
+            command.add(ManagedBffLauncher.class.getName());
+            command.add(ManagedBffSupport.sessionKeyPath(config.projectDirectory(), applicationId(
+                    application.launchId(), placeholderResolver.resolve(application.environment()), System.getenv())).toString());
+            command.add(mainClass);
+        } else if (application.testApplication()) {
             command.add(TestApplicationLauncher.class.getName());
             command.add(mainClass);
         } else {
@@ -194,7 +200,7 @@ final class AppProcessRunner {
                 .orElseGet(() -> Fluxzero.idForName("dev-application:" + launchId));
     }
 
-    private List<String> environmentSystemProperties(ApplicationBuild application) {
+    private List<String> environmentSystemProperties(ApplicationBuild application, boolean managedBff) {
         List<String> properties = new ArrayList<>();
         addSystemProperty(properties, "ENVIRONMENT", config.environment());
         addSystemProperty(properties, "environment", config.environment());
@@ -203,8 +209,13 @@ final class AppProcessRunner {
         if (config.idpMode() == IdpMode.EXTERNAL) {
             return properties;
         }
-        ManagedIdpService.devProperties(proxyUrl, applicationUrl)
-                .forEach((key, value) -> addSystemProperty(properties, key, value));
+        Map<String, String> environment = placeholderResolver.resolve(application.environment());
+        ManagedBffSupport.properties(application, managedBff,
+                                     ManagedIdpService.devProperties(proxyUrl, applicationUrl), environment, System.getenv())
+                .forEach((key, value) -> {
+                    String override = ManagedBffSupport.configured(key, environment, System.getenv());
+                    addSystemProperty(properties, key, override == null ? value : override);
+                });
         return properties;
     }
 
@@ -212,12 +223,14 @@ final class AppProcessRunner {
         command.add("-D" + key + "=" + value);
     }
 
-    private String classpath(ApplicationBuild application) throws IOException {
+    private String classpath(ApplicationBuild application, boolean managedBff) throws IOException {
         List<Path> entries = new ArrayList<>();
         application.classesDirectories().stream().filter(Files::isDirectory).forEach(entries::add);
         application.runtimeClasspath().stream().filter(Files::exists)
                 .filter(path -> !reactorClassesDirectory(path)).forEach(entries::add);
-        if (application.testApplication()) {
+        if (managedBff) {
+            entries.add(ManagedBffSupport.launcherJar(config.projectDirectory()));
+        } else if (application.testApplication()) {
             try {
                 entries.add(Path.of(TestApplicationLauncher.class.getProtectionDomain().getCodeSource().getLocation()
                                             .toURI()));
