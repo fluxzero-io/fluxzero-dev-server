@@ -193,6 +193,13 @@ public final class DevGateway implements AutoCloseable {
     static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
                             BooleanSupplier backendReady, List<String> backendPaths, Reservation endpoint, Runnable activity,
                             boolean backendEnabled, DevConsole console, String applicationOrigin) {
+        return start(fluxzeroProxyUrl, frontends, backendReady, backendPaths, endpoint, activity,
+                     backendEnabled, console, applicationOrigin, false);
+    }
+
+    static DevGateway start(String fluxzeroProxyUrl, List<FrontendRoute> frontends,
+                            BooleanSupplier backendReady, List<String> backendPaths, Reservation endpoint, Runnable activity,
+                            boolean backendEnabled, DevConsole console, String applicationOrigin, boolean managedIdp) {
         int port = endpoint.port();
         if (backendEnabled) {
             Objects.requireNonNull(fluxzeroProxyUrl, "fluxzeroProxyUrl must not be null");
@@ -224,7 +231,11 @@ public final class DevGateway implements AutoCloseable {
                 protected org.eclipse.jetty.client.Request newProxyToServerRequest(Request request, HttpURI uri) {
                     org.eclipse.jetty.client.Request proxyRequest = super.newProxyToServerRequest(request, uri);
                     if (backendRequest(request, configuredBackendPaths, configuredBackendEnabled)) {
+                        boolean idpRequest = managedIdp
+                                && route(request, configuredBackendPaths, configuredBackendEnabled) == Route.PREFIXED_BACKEND
+                                && ManagedIdpService.ownsPath(stripBackendPrefix(request.getHttpURI().getPath()));
                         String namespace = console != null && console.isApi(request) ? DevConsole.NAMESPACE
+                                : idpRequest ? ManagedIdpService.NAMESPACE
                                 : DevNamespaceHeader.routingValue(request.getHeaders().get(DevNamespaceHeader.NAME));
                         if (namespace != null) {
                             proxyRequest.headers(headers -> headers.put(DevNamespaceHeader.NAME, namespace));

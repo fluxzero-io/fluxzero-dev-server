@@ -34,6 +34,7 @@ import java.util.function.Consumer;
 final class ManagedIdpService implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(ManagedIdpService.class);
 
+    static final String NAMESPACE = "fluxzero-managed-idp";
     static final String CLIENT_ID = "local-auth-app";
     static final String SCOPE = "openid profile email";
     static final String LOGIN_STATE_SECRET = "local-development-login-state-secret-change-me";
@@ -69,7 +70,7 @@ final class ManagedIdpService implements AutoCloseable {
             WebSocketClient.ClientConfig clientConfig = WebSocketClient.ClientConfig.builder()
                     .runtimeBaseUrl(runtimeBaseUrl)
                     .name(config.applicationName() + "-idp")
-                    .namespace(config.namespace())
+                    .namespace(NAMESPACE)
                     .id(config.applicationName() + "-idp")
                     .build();
             Fluxzero fluxzero = DefaultFluxzero.builder()
@@ -89,6 +90,12 @@ final class ManagedIdpService implements AutoCloseable {
                 IDP_SLOT.release();
             }
         }
+    }
+
+    static boolean ownsPath(String path) {
+        return java.util.Set.of("/.well-known/openid-configuration", "/.well-known/oauth-authorization-server",
+                "/.well-known/jwks.json", "/oauth2/auth", "/oauth2/token", "/login", "/userinfo",
+                "/oauth2/sessions/logout").contains(path);
     }
 
     private static void acquireSlot() {

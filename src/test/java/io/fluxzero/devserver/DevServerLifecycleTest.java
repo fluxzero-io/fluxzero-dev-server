@@ -21,6 +21,9 @@ import io.fluxzero.idp.client.Pkce;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.CookieManager;
+import java.net.CookiePolicy;
+import java.net.HttpCookie;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
@@ -620,7 +623,14 @@ class DevServerLifecycleTest {
                 DevServerConfig.DEFAULT_DEBOUNCE,
                 FrontendConfig.none(), null);
 
-        try (DevServer devServer = new DevServer(config).start()) {
+        CookieManager cookies = new CookieManager(null, (uri, cookie) -> {
+            // Send browser-style cookies, without Java's legacy $Version/$Path attributes.
+            cookie.setVersion(0);
+            return CookiePolicy.ACCEPT_ORIGINAL_SERVER.shouldAccept(uri, cookie);
+        });
+        try (DevServer devServer = new DevServer(config).start();
+             HttpClient browser = HttpClient.newBuilder().cookieHandler(cookies)
+                     .followRedirects(HttpClient.Redirect.NEVER).build()) {
             String proxyUrl = devServer.session().gateway().url() + DevGateway.BACKEND_PREFIX;
             JsonNode discovery = awaitJson(proxyUrl + "/.well-known/openid-configuration");
             assertEquals(proxyUrl, discovery.path("issuer").asText());
@@ -630,31 +640,47 @@ class DevServerLifecycleTest {
             String verifier = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
             String state = "dev-state";
             String redirectUri = devServer.session().gateway().url() + "/app/callback";
-            HttpResponse<String> authorize = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/auth?"
+            HttpRequest authorizationRequest = HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/auth?"
                     + form(Map.of(
                             "response_type", "code",
                             "client_id", ManagedIdpService.CLIENT_ID,
                             "redirect_uri", redirectUri,
                             "scope", ManagedIdpService.SCOPE,
                             "state", state,
+                            "nonce", "bff-nonce",
                             "code_challenge", Pkce.challenge(verifier),
                             "code_challenge_method", "S256"))))
                     .GET()
-                    .build());
+                    .build();
+            HttpResponse<String> authorize = browser.send(authorizationRequest, HttpResponse.BodyHandlers.ofString());
             assertEquals(302, authorize.statusCode(), authorize.body());
-            String loginRequestCookie = cookie(authorize, "fz_local_stub_login_request");
+            assertEquals(DevGateway.BACKEND_PREFIX, cookie(authorize, "fz_local_stub_login_request").getPath());
+            URI loginUrl = URI.create(location(authorize));
+            assertEquals(proxyUrl + "/login?tenant_id=local-auth", loginUrl.toString());
+            assertEquals(200, browser.send(HttpRequest.newBuilder(loginUrl).GET().build(),
+                    HttpResponse.BodyHandlers.ofString()).statusCode());
 
-            HttpResponse<String> login = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/login"))
-                    .header("Cookie", loginRequestCookie)
+            HttpResponse<String> login = browser.send(HttpRequest.newBuilder(loginUrl)
                     .header("Content-Type", "application/x-www-form-urlencoded")
                     .POST(HttpRequest.BodyPublishers.ofString(form(Map.of("username", "rene@example.com"))))
-                    .build());
+                    .build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(302, login.statusCode(), login.body());
             URI callback = URI.create(location(login));
             assertEquals("/app/callback", callback.getPath());
             assertEquals(URI.create(redirectUri).getAuthority(), callback.getAuthority());
             assertEquals(state, queryParam(callback, "state"));
             String code = queryParam(callback, "code");
+            assertEquals(DevGateway.BACKEND_PREFIX, cookie(login, "fz_local_stub_idp_session").getPath());
+            HttpCookie clearedLogin = cookie(login, "fz_local_stub_login_request");
+            assertEquals(DevGateway.BACKEND_PREFIX, clearedLogin.getPath());
+            assertEquals(0, clearedLogin.getMaxAge());
+            assertEquals(List.of("fz_local_stub_idp_session"), cookies.getCookieStore().getCookies().stream()
+                    .map(HttpCookie::getName).toList());
+            assertTrue(cookies.get(callback, Map.of()).getOrDefault("Cookie", List.of()).isEmpty(),
+                    "Provider cookies must not leak to application paths outside /_fluxzero");
+            HttpResponse<String> sso = browser.send(authorizationRequest, HttpResponse.BodyHandlers.ofString());
+            assertEquals(302, sso.statusCode());
+            assertTrue(location(sso).startsWith(redirectUri + "?"));
 
             HttpResponse<String> token = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/token"))
                     .header("Content-Type", "application/x-www-form-urlencoded")
@@ -667,6 +693,25 @@ class DevServerLifecycleTest {
                     .build());
             assertEquals(200, token.statusCode(), token.body());
             String accessToken = objectMapper.readTree(token.body()).path("access_token").asText();
+            String idToken = objectMapper.readTree(token.body()).path("id_token").asText();
+            var claims = objectMapper.readTree(java.util.Base64.getUrlDecoder().decode(idToken.split("\\.")[1]));
+            assertEquals("bff-nonce", claims.path("nonce").asText());
+            assertFalse(claims.path("sid").asText().isBlank());
+            String refreshToken = objectMapper.readTree(token.body()).path("refresh_token").asText();
+            assertFalse(refreshToken.isBlank());
+            HttpResponse<String> refreshed = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/oauth2/token"))
+                    .header("Content-Type", "application/x-www-form-urlencoded")
+                    .POST(HttpRequest.BodyPublishers.ofString(form(Map.of(
+                            "grant_type", "refresh_token", "refresh_token", refreshToken,
+                            "client_id", ManagedIdpService.CLIENT_ID))))
+                    .build());
+            assertEquals(200, refreshed.statusCode());
+            var refreshedTokens = objectMapper.readTree(refreshed.body());
+            assertNotEquals(refreshToken, refreshedTokens.path("refresh_token").asText());
+            var refreshedClaims = objectMapper.readTree(java.util.Base64.getUrlDecoder().decode(
+                    refreshedTokens.path("id_token").asText().split("\\.")[1]));
+            assertEquals(claims.path("sid"), refreshedClaims.path("sid"));
+            assertEquals(claims.path("auth_time"), refreshedClaims.path("auth_time"));
 
             HttpResponse<String> userInfo = send(HttpRequest.newBuilder(URI.create(proxyUrl + "/userinfo"))
                     .header("Authorization", "Bearer " + accessToken)
@@ -677,6 +722,20 @@ class DevServerLifecycleTest {
             assertEquals("rene@example.com", identity.path("sub").asText());
             assertEquals("rene@example.com", identity.path("email").asText());
             assertEquals("local-auth", identity.path("tenant_id").asText());
+
+            String logoutRedirect = devServer.session().gateway().url() + "/signed-out";
+            HttpResponse<String> logout = browser.send(HttpRequest.newBuilder(URI.create(
+                    discovery.path("end_session_endpoint").asText() + "?"
+                            + form(Map.of("post_logout_redirect_uri", logoutRedirect))))
+                    .GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(302, logout.statusCode());
+            assertEquals(logoutRedirect, location(logout));
+            HttpCookie clearedSession = cookie(logout, "fz_local_stub_idp_session");
+            assertEquals(DevGateway.BACKEND_PREFIX, clearedSession.getPath());
+            assertEquals(0, clearedSession.getMaxAge());
+            assertTrue(cookies.getCookieStore().getCookies().isEmpty());
+            HttpResponse<String> afterLogout = browser.send(authorizationRequest, HttpResponse.BodyHandlers.ofString());
+            assertEquals(loginUrl.toString(), location(afterLogout));
         }
     }
 
@@ -783,10 +842,10 @@ class DevServerLifecycleTest {
         return HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build().send(request, bodyHandler);
     }
 
-    private static String cookie(HttpResponse<?> response, String name) {
+    private static HttpCookie cookie(HttpResponse<?> response, String name) {
         return response.headers().allValues("set-cookie").stream()
                 .filter(value -> value.startsWith(name + "="))
-                .map(value -> value.split(";", 2)[0])
+                .map(value -> HttpCookie.parse(value).getFirst())
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing Set-Cookie " + name));
     }

@@ -948,3 +948,35 @@ The folder browser lists local directories only and accepts manually entered pat
 including hidden folders. Click a breadcrumb to navigate to a parent folder; long
 paths collapse their middle folders into an expandable ellipsis. These actions
 require the same-origin local console.
+
+## Managed local BFF authentication
+
+With the default `idp: managed`, applications carrying `io.fluxzero.idp:client-bff` use the managed test IDP.
+The dev server supplies the issuer, public origin, and application ID as client ID; the library derives its
+`/auth/<applicationId>/login` callback. Route `/auth` (or the configured auth path) to the backend when using a
+frontend development server. No application-specific test IDP or session-key generator is needed.
+
+The dev server creates a random AES-256 session key per project and application under ignored
+`.fluxzero/dev/oidc/<stable-id>/session.jwks`, with owner-only file permissions on POSIX. It injects only the path as
+`fluxzero.auth.session-key-file`. Reloads and dev-server restarts reuse that file; deleting the directory invalidates
+existing local sessions. This is local development material, never production key provisioning.
+
+Before calling the application main method, a small bootstrap uses the application's own SDK property source to
+check for an existing `fluxzero.auth.session-key-file` or `fluxzero.auth.oidc.disabled=true`. Environment variables,
+system properties, additional Fluxzero configuration locations, and `application[-<environment>].properties` keep
+their normal precedence. An explicit key path is left untouched; opt-out skips managed key creation. The bootstrap
+adds no SDK dependencies or configuration resources to the application classpath. Configuration created later by
+application code should select its own key explicitly, or set the opt-out in one of these startup sources.
+`idp: external` leaves authentication configuration to the application. Consumers without `client-bff` retain their
+existing defaults.
+The bundled test IDP supports authorization code with PKCE and nonce using client authentication `none`.
+It issues client-bound rotating refresh tokens, preserves the login session ID and nonce, and rejects refresh after
+provider logout. State remains in memory and is reset when the managed IDP restarts.
+
+Managed IDP routes under `/_fluxzero` use the dedicated local
+`fluxzero-managed-idp` namespace, so application handlers such as MCP discovery
+cannot compete for the same paths. Application routes and external-IDP mode retain
+their own routing. The stub derives its public redirects and cookie paths directly
+from the supplied issuer, including `/_fluxzero`; the dev server does not rewrite
+these IDP redirects. The local stub covers public-client PKCE, not production
+private-key client policy, account management or backchannel delivery.

@@ -1110,7 +1110,7 @@ public class DevServer implements AutoCloseable {
                         .flatMap(p -> p.testPipeline.testCases(p.id).stream()).toList());
         if (config.ingress() == null) {
             devGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
-                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), console, null);
+                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), console, null, config.idpMode() == IdpMode.MANAGED);
             publicUrl = devGateway.url();
             publicFluxzeroUrl = devGateway.backendUrl();
         } else {
@@ -1124,7 +1124,7 @@ public class DevServer implements AutoCloseable {
             publicUrl = ingressUrl.replaceAll("/+$", "");
             publicFluxzeroUrl = config.backendEnabled() ? publicUrl + DevGateway.BACKEND_PREFIX : null;
             applicationGateway = DevGateway.start(proxyUrl, routes, () -> !currentApps.isEmpty(),
-                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), null, publicUrl);
+                    config.frontend().backendPaths(), gatewayEndpoint, this::activity, config.backendEnabled(), null, publicUrl, config.idpMode() == IdpMode.MANAGED);
             try (var consoleEndpoint = DevGateway.reserve(effectiveGatewayPort, "127.0.0.1")) {
                 devGateway = DevGateway.start(proxyUrl, List.of(new DevGateway.FrontendRoute("ingress", "/", publicUrl,
                         () -> "running".equals(ingressState()))), () -> !currentApps.isEmpty(), List.of(),

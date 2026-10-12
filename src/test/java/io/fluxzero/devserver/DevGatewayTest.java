@@ -57,6 +57,32 @@ public class DevGatewayTest {
             .connectTimeout(Duration.ofSeconds(2)).build();
 
     @Test
+    void isolatesManagedIdpRoutesFromApplicationDiscovery() throws Exception {
+        try (TestUpstream backend = TestUpstream.start("backend")) {
+            for (boolean managed : List.of(true, false)) {
+                try (var endpoint = DevGateway.reserve(0, "127.0.0.1");
+                     DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                             "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"),
+                             endpoint, () -> {}, true, null, null, managed)) {
+                    for (String path : List.of("/.well-known/openid-configuration", "/.well-known/jwks.json",
+                                               "/oauth2/auth", "/oauth2/token", "/login", "/userinfo",
+                                               "/oauth2/sessions/logout")) {
+                        var response = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + DevGateway.BACKEND_PREFIX + path))
+                                .header(DevNamespaceHeader.NAME, "application").build(), HttpResponse.BodyHandlers.ofString());
+                        assertEquals(managed ? ManagedIdpService.NAMESPACE : "application",
+                                     response.headers().firstValue("X-Received-Namespace").orElseThrow());
+                    }
+                    for (String path : List.of("/.well-known/openid-configuration", DevGateway.BACKEND_PREFIX + "/api/query")) {
+                        var response = HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(gateway.url() + path))
+                                .header(DevNamespaceHeader.NAME, "application").build(), HttpResponse.BodyHandlers.ofString());
+                        assertEquals("application", response.headers().firstValue("X-Received-Namespace").orElseThrow());
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
     void servesConsoleBeforeAppsAreReadyAndIsolatesMonitoringApi() throws Exception {
         java.nio.file.Path assets = java.nio.file.Files.createTempDirectory("auditlog-ui-test");
         java.nio.file.Files.writeString(assets.resolve("index.html"), "<html><head><base href=\"/\"></head>Auditlog</html>");
