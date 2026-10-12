@@ -344,6 +344,7 @@ class DevServerLifecycleTest {
         AgentSelector projectProblems = new AgentSelector(
                 Set.of("project"), Set.of(), Set.of("project"), null);
 
+        long testServerPid;
         try (DevServer devServer = new DevServer(
                 initial, () -> DevServerConfig.fromArgs(reloadedArguments)).start()) {
             String sessionId = devServer.session().sessionId();
@@ -370,7 +371,9 @@ class DevServerLifecycleTest {
                                        .getActiveProblems(projectProblems, 20).problems().isEmpty()),
                          () -> "Problems remained after recovery: "
                                + devServer.agentQueryService().getActiveProblems(projectProblems, 20));
+            testServerPid = devServer.session().runtime().pid();
         }
+        assertFalse(ProcessUtils.isAlive(testServerPid), "Test Server process survived Dev Server shutdown");
     }
 
     @Test
@@ -421,7 +424,7 @@ class DevServerLifecycleTest {
             assertTrue(Files.isRegularFile(mcpTokenFile));
             assertEquals(200, healthStatus(session.proxy().url()));
 
-            JsonNode json = objectMapper.readTree(sessionFile.toFile());
+            JsonNode json = objectMapper.readTree(AtomicFileUtils.readAllBytes(sessionFile));
             assertEquals(session.proxy().url(), json.path("proxy").path("url").asText());
             assertEquals(session.idp().url(), json.path("idp").path("url").asText());
             assertEquals(session.mcp().url(), json.path("mcp").path("url").asText());
@@ -431,7 +434,9 @@ class DevServerLifecycleTest {
             assertTrue(json.path("heartbeatAt").asLong() > 0);
         }
 
-        JsonNode stoppedJson = objectMapper.readTree(sessionFile.toFile());
+        assertFalse(ProcessUtils.isAlive(session.runtime().pid()),
+                    "Test Server process survived Dev Server shutdown");
+        JsonNode stoppedJson = objectMapper.readTree(AtomicFileUtils.readAllBytes(sessionFile));
         assertEquals("stopped", stoppedJson.path("status").asText());
         assertEquals("stopped", stoppedJson.path("runtime").path("state").asText());
         assertEquals("stopped", stoppedJson.path("proxy").path("state").asText());
@@ -472,13 +477,16 @@ class DevServerLifecycleTest {
         }
         DevServerConfig config = backendOnlyConfig(projectDirectory, port);
 
+        long testServerPid;
         try (DevServer devServer = new DevServer(config).start()) {
             DevSession session = devServer.session();
+            testServerPid = session.runtime().pid();
             assertEquals(port, session.gateway().port());
             assertEquals("http://localhost:" + port, session.gateway().url());
             assertEquals("running", session.gateway().state());
             assertEquals(200, healthStatus(session.proxy().url()));
         }
+        assertFalse(ProcessUtils.isAlive(testServerPid), "Test Server process survived Dev Server shutdown");
     }
 
     @Test
@@ -510,12 +518,15 @@ class DevServerLifecycleTest {
                 DevServerConfig.DEFAULT_DEBOUNCE,
                 FrontendConfig.none(), List.of(), false, "local", List.of(), 0, IdpMode.EXTERNAL);
 
+        long testServerPid;
         try (DevServer devServer = new DevServer(config).start()) {
+            testServerPid = devServer.session().runtime().pid();
             assertEquals("running", devServer.session().runtime().state());
             assertEquals("running", devServer.session().proxy().state());
             assertEquals("external", devServer.session().idp().state());
             assertTrue(devServer.session().idp().detail().contains("application configuration applies"));
         }
+        assertFalse(ProcessUtils.isAlive(testServerPid), "Test Server process survived Dev Server shutdown");
     }
 
     private static DevServerConfig backendOnlyConfig(Path projectDirectory, int port) {

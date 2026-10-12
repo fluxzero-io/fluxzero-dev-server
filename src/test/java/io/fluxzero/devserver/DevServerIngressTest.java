@@ -71,6 +71,16 @@ class DevServerIngressTest {
             assertEquals(200, get(publicUrl + "/inbox/messages/1?q=2").statusCode());
             assertEquals(404, get(publicUrl + DevConsole.ROOT + "status.json").statusCode());
             assertEquals(404, get(internal + DevConsole.ROOT + "status.json").statusCode());
+            var missingBrowser = CLIENT.send(HttpRequest.newBuilder(URI.create(publicUrl + DevConsole.ROOT + "unknown?token=hidden"))
+                    .header("Accept", "text/html").GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, missingBrowser.statusCode());
+            assertTrue(missingBrowser.body().contains("Fluxzero Dev Server"));
+            assertTrue(missingBrowser.body().contains(console + DevConsole.ROOT + "#monitoring/issues"));
+            assertFalse(missingBrowser.body().contains("token=hidden"));
+            var missingJson = CLIENT.send(HttpRequest.newBuilder(URI.create(publicUrl + DevConsole.ROOT + "unknown"))
+                    .header("Accept", "application/json").GET().build(), HttpResponse.BodyHandlers.ofString());
+            assertEquals(404, missingJson.statusCode());
+            assertEquals("", missingJson.body());
             var redirect = get(console + "/inbox/messages/1?q=2");
             assertEquals(307, redirect.statusCode());
             assertEquals(publicUrl + "/inbox/messages/1?q=2", redirect.headers().firstValue("location").orElseThrow());

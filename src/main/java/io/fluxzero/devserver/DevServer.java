@@ -1130,6 +1130,7 @@ public class DevServer implements AutoCloseable {
                         () -> "running".equals(ingressState()))), () -> !currentApps.isEmpty(), List.of(),
                         consoleEndpoint, this::activity, config.backendEnabled(), console, publicUrl);
             }
+            applicationGateway.diagnosticsUrl(devGateway.url() + DevConsole.ROOT + "#monitoring/issues");
         }
         String detail = config.backendEnabled()
                 ? "public dev URL; Fluxzero mounted at " + DevGateway.BACKEND_PREFIX

@@ -139,8 +139,13 @@ class DevServerBootstrapTest {
                 .redirectError(ProcessBuilder.Redirect.appendTo(directory.resolve("bootstrap-test.log").toFile())).start();
     }
 
-    private void stop(Path root) {
-        new DevSessionStore(root).readSession().ifPresent(s ->
-                ProcessUtils.stopIfOwned(s.pid(), root.toString(), s.startedAt(), Duration.ofSeconds(3)));
+    private void stop(Path root) throws Exception {
+        DevSession session = new DevSessionStore(root).readSession().orElse(null);
+        if (session == null) return;
+        ProcessUtils.stopIfOwned(session.pid(), root.toString(), session.startedAt(), Duration.ofSeconds(3));
+        assertFalse(ProcessUtils.isAlive(session.pid(), session.startedAt()),
+                    "Detached server survived test cleanup: PID " + session.pid());
+        // The process has exited, but Windows can briefly retain its redirected output handle.
+        AtomicFileUtils.deleteIfExists(root.resolve(".fluxzero/dev/bootstrap.log"));
     }
 }
