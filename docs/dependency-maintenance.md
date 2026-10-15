@@ -25,11 +25,11 @@ release-bot PR. Review that input against the released source and run the packag
 monitoring consumer. A publication that has not passed Auditlog's activation
 boundary is not automatically a replacement for the selected release input.
 
-The Maven application fixtures also exercise historical application layouts and
-older SDK/Spring Boot compatibility. Preserve those target versions when they
-define the scenario; the plain-app fixture receives the SDK selected by the test.
-Review their build-tool pins alongside Maven updates rather than migrating a
-legacy application as an incidental dependency change.
+The plain-app and test-events Maven fixtures have their own update directories;
+the plain-app SDK version is supplied by the owning E2E test and is excluded from
+independent updates there. The frozen repair-cafe fixture exercises the historical
+Spring Boot/SDK 1 application layout. Preserve that complete compatibility input
+rather than migrating a legacy application as an incidental dependency change.
 
 TypeScript stays on 6.0.x because Angular's compiler and builder require
 `>=6.0 <6.1`; assess TypeScript 7 when Angular supports it. The console build and

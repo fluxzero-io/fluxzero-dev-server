@@ -18,6 +18,24 @@ updates:
     commit-message:
       prefix: "deps"
 
+  - package-ecosystem: maven
+    directories:
+      - /src/test/resources/e2e-fixtures/plain-app
+      - /src/test/resources/e2e-fixtures/test-events
+    registries: [fluxzero-public-maven]
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+    ignore:
+      # The plain-app SDK version is substituted by the owning E2E test.
+      - dependency-name: "io.fluxzero:*"
+    groups:
+      fixture-maven-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
