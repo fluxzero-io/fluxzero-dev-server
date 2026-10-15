@@ -20,11 +20,13 @@ import org.eclipse.aether.repository.RemoteRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -55,10 +57,18 @@ class TestServerArtifactResolverTest {
         assertFalse(first.cached());
         assertEquals(4, first.classpath().size());
         assertTrue(first.classpath().stream().allMatch(Files::isRegularFile));
-        assertTrue(Files.readString(local.resolve("io/fluxzero/test-server/1.999.0/_remote.repositories"))
-                           .contains("test-server-1.999.0.jar>fluxzero="));
-        assertTrue(Files.readString(local.resolve("org/example/support/1.0/_remote.repositories"))
-                           .contains("support-1.0.jar>central="));
+        // Each repository publishes distinct bytes only for its intended inputs.
+        // Verify the resolved content, not Maven's private tracking-file format.
+        for (Path published : List.of(
+                packages.resolve("io/fluxzero/test-server/1.999.0/test-server-1.999.0.jar"),
+                packages.resolve("io/fluxzero/proxy/1.999.0/proxy-1.999.0.jar"),
+                central.resolve("org/example/support/1.0/support-1.0.jar"),
+                central.resolve("ch/qos/logback/logback-classic/" + DevServerVersion.logbackVersion()
+                                + "/logback-classic-" + DevServerVersion.logbackVersion() + ".jar"))) {
+            Path cached = first.classpath().stream()
+                    .filter(path -> path.getFileName().equals(published.getFileName())).findFirst().orElseThrow();
+            assertEquals(-1L, Files.mismatch(published, cached), published.getFileName().toString());
+        }
 
         // Both remotes are now unavailable. Cached starts must still work.
         Files.move(packages, directory.resolve("packages-offline"));
@@ -85,7 +95,12 @@ class TestServerArtifactResolverTest {
                 </project>
                 """.formatted(group, artifact, version, dependencies));
         Path jar = target.resolve(artifact + "-" + version + ".jar");
-        try (var ignored = new JarOutputStream(Files.newOutputStream(jar))) { }
+        try (var output = new JarOutputStream(Files.newOutputStream(jar))) {
+            output.putNextEntry(new JarEntry("test-origin.txt"));
+            output.write((repository.getFileName() + ":" + group + ":" + artifact + ":" + version)
+                                 .getBytes(StandardCharsets.UTF_8));
+            output.closeEntry();
+        }
         for (Path file : List.of(pom, jar)) {
             String hash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-1").digest(Files.readAllBytes(file)));
             Files.writeString(file.resolveSibling(file.getFileName() + ".sha1"), hash);
