@@ -13,7 +13,10 @@ cat > "$consumer/pom.xml" <<XML
 <project xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
   <groupId>consumer</groupId><artifactId>release-smoke</artifactId><version>1</version>
-  <repositories><repository><id>fluxzero</id><url>$repository_url</url></repository></repositories>
+  <repositories>
+    <repository><id>release-under-test</id><url>$repository_url</url></repository>
+    <repository><id>fluxzero</id><url>https://packages.fluxzero.io/maven</url></repository>
+  </repositories>
 </project>
 XML
 for suffix in 'pom' 'jar' 'jar:standalone' 'jar:sources' 'jar:javadoc'; do
@@ -25,8 +28,12 @@ done
 artifact_dir="$consumer/repository/io/fluxzero/tools/fluxzero-dev-server/$version"
 for suffix in .pom .jar -standalone.jar -sources.jar -javadoc.jar; do
   file="fluxzero-dev-server-$version$suffix"
-  grep -Fx "$file>fluxzero=" "$artifact_dir/_remote.repositories"
   test -s "$artifact_dir/$file"
+  # Verify the exact source bytes, independent of Maven's internal tracking format.
+  curl --fail --silent --show-error \
+    "${repository_url%/}/io/fluxzero/tools/fluxzero-dev-server/$version/$file" \
+    -o "$consumer/$file.expected"
+  cmp "$consumer/$file.expected" "$artifact_dir/$file"
 done
 python3 "$root/.github/scripts/verify-standalone.py" \
   "$artifact_dir/fluxzero-dev-server-$version-standalone.jar" "$version"
