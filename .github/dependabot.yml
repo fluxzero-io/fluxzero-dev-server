@@ -36,6 +36,18 @@ updates:
     commit-message:
       prefix: deps
 
+  - package-ecosystem: gradle
+    directory: /src/test/resources/e2e-fixtures/test-events
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+    groups:
+      gradle-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

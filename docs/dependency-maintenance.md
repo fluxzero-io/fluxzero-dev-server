@@ -27,7 +27,8 @@ boundary is not automatically a replacement for the selected release input.
 
 The plain-app and test-events Maven fixtures have their own update directories;
 the plain-app SDK version is supplied by the owning E2E test and is excluded from
-independent updates there. The frozen repair-cafe fixture exercises the historical
+independent updates there. The test-events Gradle build is maintained separately.
+The frozen repair-cafe fixture exercises the historical
 Spring Boot/SDK 1 application layout. Preserve that complete compatibility input
 rather than migrating a legacy application as an incidental dependency change.
 
