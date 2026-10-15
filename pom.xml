@@ -41,7 +41,7 @@
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <fluxzero.version>2.18.7</fluxzero.version>
         <fluxzero-idp.version>0.25.0</fluxzero-idp.version>
-        <jackson.version>2.22.2</jackson.version>
+        <jackson.version>2.22.3</jackson.version>
         <jetty.version>12.1.13</jetty.version>
         <jline.version>4.4.7</jline.version>
         <junit.version>6.1.3</junit.version>
