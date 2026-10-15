@@ -21,9 +21,10 @@ afterwards. Fork PRs cannot use these secrets; qualify their complete distributi
 on a trusted maintainer branch.
 
 Auditlog's exact bundled source revision is maintained through its existing
-release-bot PR. Review that input against the released source and run the packaged
-monitoring consumer. A publication that has not passed Auditlog's activation
-boundary is not automatically a replacement for the selected release input.
+release-bot PR and explicit dependency maintenance. Select a successfully
+published source revision and run the packaged monitoring consumer before
+replacing it. Qualifying that input for the local Dev Server is independent of
+activating Auditlog's production frontend or Marketplace application.
 
 The plain-app and test-events Maven fixtures have their own update directories;
 the plain-app SDK version is supplied by the owning E2E test and is excluded from
