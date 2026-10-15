@@ -46,7 +46,12 @@ jobs:
         timeout-minutes: 20
         run: ${{ matrix.maven }} -B clean install
       - name: Test Devboard frontend
-        run: npm test --prefix frontend
+        # Maven's pinned Node is also used for tests, independent of the runner default.
+        run: target/frontend-tools/node/node target/frontend-tools/node/node_modules/npm/bin/npm-cli.js test --prefix frontend
+        if: runner.os != 'Windows'
+      - name: Test Devboard frontend on Windows
+        if: runner.os == 'Windows'
+        run: target/frontend-tools/node/node.exe target/frontend-tools/node/node_modules/npm/bin/npm-cli.js test --prefix frontend
       - name: Preserve failed test reports
         if: failure()
         uses: actions/upload-artifact@v7
@@ -92,7 +97,7 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "24"
           cache: npm
           cache-dependency-path: src/test/resources/frontend-fixtures/**/package-lock.json
       - name: Test Vite and Angular workflows

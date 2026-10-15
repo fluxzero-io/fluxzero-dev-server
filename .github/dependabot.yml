@@ -11,6 +11,10 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    groups:
+      maven-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: "deps"
 
@@ -19,5 +23,28 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    groups:
+      actions-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
     commit-message:
       prefix: "deps"
+
+  - package-ecosystem: npm
+    directories:
+      - /frontend
+      - /src/test/resources/frontend-fixtures/angular
+      - /src/test/resources/frontend-fixtures/vite
+    schedule:
+      interval: daily
+    open-pull-requests-limit: 10
+    ignore:
+      # Angular's compiler/build packages require TypeScript >=6.0 <6.1.
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+    groups:
+      npm-minor-and-patch:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps

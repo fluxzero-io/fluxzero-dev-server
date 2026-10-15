@@ -226,9 +226,11 @@ model. Do not expose it as a public authenticated dashboard.
 
 ## Verify the packaged monitoring
 
-The Dev Server and bundled Auditlog use SDK 2.17.3. Building the pinned Auditlog
-source requires the existing read-only repository integration; no sibling SDK
-checkout is needed. The standalone JAR includes the monitoring backend and UI.
+The Dev Server uses the SDK selected in its root POM; the bundled Auditlog uses
+the SDK selected by its pinned source revision. Qualify their process boundary
+with the packaged monitoring smoke test. Building the pinned Auditlog source
+requires the existing read-only repository integration; no sibling SDK checkout
+is needed. The standalone JAR includes the monitoring backend and UI.
 
 Build with JDK 25 using `./mvnw -B clean install` (or `mvnw.cmd` on Windows).
 Then run the independent monitoring smoke test:
