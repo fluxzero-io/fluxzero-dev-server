@@ -244,7 +244,7 @@
                     <execution>
                         <id>install-console-node</id><phase>generate-resources</phase>
                         <goals><goal>install-node-and-npm</goal></goals>
-                        <configuration><skip>false</skip><nodeVersion>v24.18.0</nodeVersion></configuration>
+                        <configuration><skip>false</skip><nodeVersion>v24.22.0</nodeVersion></configuration>
                     </execution>
                     <execution>
                         <id>install-console-dependencies</id><phase>generate-resources</phase>
