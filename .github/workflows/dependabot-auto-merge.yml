@@ -5,60 +5,86 @@ on:
     branches: [ main ]
     types: [ opened, synchronize, reopened ]
 
+concurrency:
+  group: dependabot-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
 
 jobs:
-  metadata:
-    name: Inspect dependency update
+  auto-merge:
+    name: Enable Dependabot auto-merge
     if: >-
       github.actor == 'dependabot[bot]' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
-      github.repository == 'fluxzero-io/fluxzero-dev-server'
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-    outputs:
-      dependency-names: ${{ steps.metadata.outputs.dependency-names }}
-      package-ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}
-      update-type: ${{ steps.metadata.outputs.update-type }}
-
+    timeout-minutes: 5
     steps:
-      - name: Fetch Dependabot metadata
+      # This workflow never checks out or executes pull-request code.
+      # The merge App credentials come from the existing Dependabot secrets.
+      - name: Fetch verified Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v3
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ github.token }}
 
-  verify:
-    name: Verify dependency update
-    needs: metadata
-    if: >-
-      needs.metadata.outputs.package-ecosystem == 'maven' &&
-      contains(needs.metadata.outputs.dependency-names, 'io.fluxzero:fluxzero-bom') &&
-      needs.metadata.outputs.update-type != 'version-update:semver-major'
-    uses: ./.github/workflows/verify.yml
-    secrets: inherit
+      - name: Require the merge App configuration
+        env:
+          APP_CLIENT_ID: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY }}
+        run: |
+          test -n "$APP_CLIENT_ID" && test -n "$APP_PRIVATE_KEY" || {
+            echo '::error::Configure the existing Dependabot Automerge App for this repository.'
+            exit 1
+          }
 
-  auto-merge-sdk:
-    name: Enable SDK auto-merge
-    needs: [metadata, verify]
-    if: >-
-      needs.metadata.outputs.package-ecosystem == 'maven' &&
-      contains(needs.metadata.outputs.dependency-names, 'io.fluxzero:fluxzero-bom') &&
-      needs.metadata.outputs.update-type != 'version-update:semver-major'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create app token
+      - name: Create bounded merge App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           client-id: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_CLIENT_ID }}
           private-key: ${{ secrets.DEPENDABOT_AUTOMERGE_APP_PRIVATE_KEY }}
           permission-contents: write
           permission-pull-requests: write
 
-      - name: Enable auto-merge after required checks
+      - name: Enable native auto-merge behind required CI
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          READ_TOKEN: ${{ github.token }}
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           PR_URL: ${{ github.event.pull_request.html_url }}
-        run: gh pr merge "$PR_URL" --auto --rebase
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          REQUIRED_CHECKS: '["Dev Server required checks"]'
+        run: |
+          set -euo pipefail
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch|version-update:semver-minor) ;;
+            *)
+              auto_merge="$(gh pr view "$PR_URL" --json autoMergeRequest --jq '.autoMergeRequest != null')"
+              if [[ "$auto_merge" == true ]]; then
+                gh pr merge "$PR_URL" --disable-auto
+              fi
+              echo "Leaving $UPDATE_TYPE for separate assessment."
+              exit 0
+              ;;
+          esac
+
+          # Refuse immediate merging when the required-check ruleset is absent.
+          rules="$(GH_TOKEN="$READ_TOKEN" gh api "repos/${GITHUB_REPOSITORY}/rules/branches/${BASE_REF}")"
+          jq -e --argjson required "$REQUIRED_CHECKS" '
+            [ .[] | select(.type == "required_status_checks" and .parameters.strict_required_status_checks_policy == true)
+              | .parameters.required_status_checks[] | select(.integration_id == 15368) | .context ] as $configured
+            | ($required | length > 0) and all($required[]; . as $check | $configured | index($check) != null)
+          ' <<< "$rules" > /dev/null || {
+            echo '::error::Activate the matching required CI ruleset before enabling dependency merges.'
+            exit 1
+          }
+
+          # The App, rather than GITHUB_TOKEN, makes the eventual merge. Its push
+          # starts the existing main CI/release workflows; strict CI rules gate it.
+          gh pr merge "$PR_URL" --auto --rebase --match-head-commit "$PR_HEAD_SHA"

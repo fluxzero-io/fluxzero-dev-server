@@ -687,7 +687,7 @@ class DevServerWholeAppE2EIT {
     }
 
     @Test
-    void addedHandlerTestAndRemovedHandlerProduceClearStaleImpactFailure(@TempDir Path tempDirectory)
+    void removedHandlerLeavesItsImpactedTestIncompleteAndKeepsAppRunning(@TempDir Path tempDirectory)
             throws Exception {
         Path project = copyFixture(tempDirectory);
 
@@ -716,12 +716,15 @@ class DevServerWholeAppE2EIT {
 
             TestStatus removed = waitForTestStatusAfter(
                     project, added.updatedAt(),
-                    status -> "failed".equals(status.state())
+                    status -> "incomplete".equals(status.state())
                               && "test impact index".equals(status.reason())
                               && status.selectors().equals(List.of(
                                       "com.example.app.TemporaryFixtureHandlerTest#handlesTemporaryFixture")),
                     "removed handler stale impact test");
             assertTrue(removed.detail().contains("TemporaryFixtureHandler"), removed.detail());
+            assertTrue(removed.detail().contains("COMPILATION ERROR")
+                       && removed.detail().contains("cannot find symbol"), removed.detail());
+            assertNotEquals(0, removed.exitCode());
             assertEquals("v1", rawClient.greetingState().path("version").asText());
         }
     }

@@ -4,9 +4,26 @@ on:
   pull_request:
     branches: [ main ]
 
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   verify:
     name: Verify pull request
-    if: github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/verify.yml
     secrets: inherit
+
+  gate:
+    name: Dev Server required checks
+    if: always()
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every platform and acceptance lane
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success

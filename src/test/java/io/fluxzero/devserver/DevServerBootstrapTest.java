@@ -56,7 +56,13 @@ class DevServerBootstrapTest {
             assertEquals(session.sessionId(), new DevSessionStore(root).readSession().orElseThrow().sessionId());
             assertTrue(ProcessUtils.isAlive(session.pid(), session.startedAt()));
             var registry = new DevEnvironmentRegistry(directory.resolve("registry"));
-            assertEquals(root.toRealPath().toString(), registry.listKnown().getFirst().projectDirectory(), "Detached child must inherit the isolated registry");
+            // The main process registers after startup has made the session ready for its launcher.
+            assertTimeoutPreemptively(Duration.ofSeconds(5), () -> {
+                while (registry.listKnown().isEmpty()) TimeUnit.MILLISECONDS.sleep(25);
+            }, "Detached child must register in the isolated registry");
+            var known = registry.listKnown();
+            assertEquals(1, known.size(), "Concurrent bootstraps must share one registration");
+            assertEquals(root.toRealPath().toString(), known.getFirst().projectDirectory(), "Detached child must inherit the isolated registry");
         } finally { first.destroyForcibly(); second.destroyForcibly(); stop(root); }
     }
 

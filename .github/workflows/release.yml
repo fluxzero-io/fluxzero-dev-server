@@ -29,7 +29,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.new_tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Select explicit or initial release version
@@ -48,11 +48,13 @@ jobs:
           fi
       - name: Calculate semantic version
         id: version
-        uses: mathieudutour/github-tag-action@v6.2
+        uses: mathieudutour/github-tag-action@af99e60ce8132224b8e6ebab5023449fe256ed46 # v7
         with:
           github_token: ${{ github.token }}
           tag_prefix: ""
           default_bump: patch
+          commit_analyzer_preset: angular
+          ignore_keywords: ""
           custom_tag: ${{ steps.existing.outputs.selected }}
           custom_release_rules: "deps:patch:Dependency updates"
           dry_run: true
@@ -62,7 +64,7 @@ jobs:
     needs: version
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/monitoring-source
         with:
           client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
@@ -70,7 +72,7 @@ jobs:
       - name: Set release timestamp
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "25"
@@ -86,7 +88,7 @@ jobs:
           unzip -p target/fluxzero-dev-server-${{ needs.version.outputs.version }}-standalone.jar META-INF/MANIFEST.MF > target/standalone-manifest.txt
           grep -F "Implementation-Version: ${{ needs.version.outputs.version }}" target/standalone-manifest.txt
           grep -F "Fluxzero-SDK-Version: $SDK_VERSION" target/standalone-manifest.txt
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-artifacts
           path: |
@@ -102,7 +104,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
       - name: Create release tag
@@ -127,7 +129,7 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/monitoring-source
         with:
           client-id: ${{ secrets.AUDITLOG_APP_CLIENT_ID }}
@@ -135,7 +137,7 @@ jobs:
       - name: Set release timestamp
         run: echo "RELEASE_TIMESTAMP=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
       - name: Install Java and Maven credentials
-        uses: actions/setup-java@v6
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "25"
@@ -167,8 +169,8 @@ jobs:
     needs: [version, packages]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "25"
@@ -182,7 +184,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
           path: release-artifacts
