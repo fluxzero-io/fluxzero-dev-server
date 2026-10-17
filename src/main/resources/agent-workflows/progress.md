@@ -24,6 +24,18 @@ reapply only your intended change. Never replace the whole file from a stale cop
   managed development feedback loop below; tracking progress is not a reason to
   rerun tests. Leave incomplete or unverified work `in_progress` and explain its
   actual state in the conversation.
+- To regroup an existing feature, call `upsert_progress_feature` with the same globally
+  unique `id` and the existing destination's `milestoneId`. No title is required.
+  Omitted fields, `createdAt`, status and existing history are preserved; `updatedAt`
+  is refreshed. You can update fields and move in one atomic call. Status changes
+  still append history and entering `done` still requires verification.
+- For intended removal, use `delete_progress_feature` with `revision` and global
+  feature `id`, or `delete_progress_milestone` with `revision` and milestone `id`.
+  Deletion also removes the affected history. A non-empty milestone is protected:
+  move or delete its features first, or explicitly pass `deleteFeatures: true` to
+  remove its contents too. Do not delete items merely because work is complete.
+  Unknown ids or destinations, invalid input and stale revisions fail without
+  changing the progress file. Reread after a conflict or lost response before retrying.
 - Preserve completed items and history. Reopen the same item when correcting an
   incomplete result; use a new bug item for a new user-reported problem. Update
   status at meaningful transitions and before handing back the work, not after
