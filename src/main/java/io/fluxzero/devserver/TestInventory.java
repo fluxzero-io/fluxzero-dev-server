@@ -34,6 +34,7 @@ final class TestInventory {
     private final Map<String, Set<String>> discoveredThisRun = new LinkedHashMap<>();
     private final Map<String, Map<String, String>> names = new LinkedHashMap<>();
     private final Map<String, Map<String, Long>> durations = new LinkedHashMap<>();
+    private Map<String, Map<String, Long>> runOrderDurations;
     private boolean known;
 
     TestInventory(Path directory) {
@@ -66,6 +67,8 @@ final class TestInventory {
     }
 
     synchronized void reset(List<String> selectors) {
+        runOrderDurations = new LinkedHashMap<>();
+        durations.forEach((scope, values) -> runOrderDurations.put(scope, Map.copyOf(values)));
         selected.clear();
         discoveredThisRun.clear();
         modules.forEach((scope, tests) -> {
@@ -132,7 +135,8 @@ final class TestInventory {
         var result = new java.util.ArrayList<TestCatalog.Case>();
         modules.forEach((scope, tests) -> tests.forEach((id, state) -> result.add(
                 TestCatalog.describe(project, scope, id, names.getOrDefault(scope, Map.of()).get(id), state,
-                        state.equals("pending") ? null : durations.getOrDefault(scope, Map.of()).get(id)))));
+                        state.equals("pending") ? null : durations.getOrDefault(scope, Map.of()).get(id),
+                        (runOrderDurations == null ? durations : runOrderDurations).getOrDefault(scope, Map.of()).get(id)))));
         return result;
     }
 
@@ -167,6 +171,7 @@ final class TestInventory {
         names.forEach((scope, labels) -> labels.keySet().retainAll(modules.get(scope).keySet()));
         durations.keySet().retainAll(modules.keySet());
         durations.forEach((scope, values) -> values.keySet().retainAll(modules.get(scope).keySet()));
+        runOrderDurations = null;
         save();
     }
 

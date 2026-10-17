@@ -26,6 +26,27 @@ class TestInventoryTest {
     private static final String A = "[engine:junit-jupiter]/[class:demo.A]/[method:first()]";
     private static final String B = "[engine:junit-jupiter]/[class:demo.B]/[method:second()]";
 
+    @Test void rerunsFreezeDurationOrderingUntilCompletionButFailuresStillComeFirst(@TempDir Path directory) {
+        var inventory = new TestInventory(directory);
+        inventory.discover("m", Set.of(A, B), Set.of());
+        inventory.event("m", "passed", A);inventory.duration("m", A, 100);
+        inventory.event("m", "passed", B);inventory.duration("m", B, 200);
+        inventory.finish(true, true, Map.of("m", Set.of(A, B)));
+        for (var selectors : List.of(List.of("demo.B"), List.<String>of())) {
+            inventory.reset(selectors);
+            assertEquals("demo.B", TestCatalog.page(inventory.cases("project"), "all", "", "0").items().getFirst().suite());
+            inventory.duration("m", B, 10);inventory.event("m", "passed", B);
+            assertEquals("demo.B", TestCatalog.page(inventory.cases("project"), "all", "", "0").items().getFirst().suite());
+            inventory.duration("m", A, 100);inventory.event("m", "failed", A);
+            assertEquals("demo.A", TestCatalog.page(inventory.cases("project"), "all", "", "0").items().getFirst().suite());
+            inventory.event("m", "passed", A);
+            assertEquals("demo.B", TestCatalog.page(inventory.cases("project"), "all", "", "0").items().getFirst().suite());
+            inventory.finish(selectors.isEmpty(), true, Map.of("m", Set.of(A, B)));
+            assertEquals("demo.A", TestCatalog.page(inventory.cases("project"), "all", "", "0").items().getFirst().suite());
+            inventory.duration("m", B, 200);
+        }
+    }
+
     @Test void rerunsKeepRowsAndOnlyReplaceSelectedDurations(@TempDir Path directory) {
         var inventory = new TestInventory(directory);
         inventory.discover("module", Set.of(A, B), Set.of());

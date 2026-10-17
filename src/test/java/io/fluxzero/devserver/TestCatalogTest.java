@@ -26,6 +26,42 @@ import static org.junit.jupiter.api.Assertions.*;
 class TestCatalogTest {
     private static final String ID = "[engine:junit-jupiter]/[class:demo.CheckoutTest]/[method:acceptsValidPayment()]";
 
+    @Test void ordersFailuresBeforeSlowSuccessesWithUnknownDurationsLast() {
+        var tests = List.of(
+                TestCatalog.describe("project", "m", "A#slow", "Slow success", "passed", 5000L),
+                TestCatalog.describe("project", "m", "A#failed", "Fast failure", "failed", 10L),
+                TestCatalog.describe("project", "m", "A#broken", "Slow failure", "failed", 200L),
+                TestCatalog.describe("project", "m", "A#unknown", "Unknown failure", "failed"),
+                TestCatalog.describe("project", "m", "A#zero", "Zero", "passed", 0L),
+                TestCatalog.describe("project", "m", "A#absent", "Unknown success", "passed"),
+                TestCatalog.describe("project", "m", "A#tie", "Another slow success", "passed", 5000L));
+        var page = TestCatalog.page(tests, "all", "", "0");
+        assertEquals(List.of("Slow failure", "Fast failure", "Unknown failure", "Another slow success", "Slow success", "Zero", "Unknown success"),
+                page.items().stream().map(TestCatalog.Case::name).toList());
+        assertFalse(new com.fasterxml.jackson.databind.ObjectMapper().valueToTree(page).get("items").get(0).has("sortDurationMillis"),
+                "Frozen sort measurements are internal, not reported as current timings");
+        assertEquals(List.of("Another slow success", "Slow success", "Zero", "Unknown success"),
+                TestCatalog.page(tests, "passed", "", "0").items().stream().map(TestCatalog.Case::name).toList());
+    }
+
+    @Test void ordersGroupsByTotalDurationAndSortsBeforePaging() {
+        String template = "[engine:junit-jupiter]/[class:demo.A]/[test-template:example(int)]";
+        var tests = new java.util.ArrayList<TestCatalog.Case>();
+        tests.add(TestCatalog.describe("project", "m", template + "/[test-template-invocation:#1]", "First", "passed", 1000L));
+        tests.add(TestCatalog.describe("project", "m", template + "/[test-template-invocation:#2]", "Second", "passed", 2000L));
+        tests.add(TestCatalog.describe("project", "m", "A#other", "Other", "passed", 2500L));
+        var page = TestCatalog.page(tests, "all", "", "0", true, null);
+        assertEquals(3000L, page.items().getFirst().durationMillis());
+        assertEquals(2500L, page.items().getLast().durationMillis());
+        assertEquals(List.of(2000L, 1000L), TestCatalog.page(tests, "all", "", "0", true, page.items().getFirst().key())
+                .items().stream().map(TestCatalog.Case::durationMillis).toList());
+        tests.clear();
+        for (int i=0;i<75;i++) tests.add(TestCatalog.describe("project", "m", "A#test" + i, null, "passed", (long)i));
+        assertEquals(74L, TestCatalog.page(tests, "all", "", "0").items().getFirst().durationMillis());
+        assertEquals(25L, TestCatalog.page(tests, "all", "", "0").items().getLast().durationMillis());
+        assertEquals(24L, TestCatalog.page(tests, "all", "", "50").items().getFirst().durationMillis());
+    }
+
     @Test void completingTestsKeepsTheVisiblePageStableAndGroupsPendingUntilFinished() {
         var tests = new java.util.ArrayList<TestCatalog.Case>();
         for (int i=0;i<75;i++) tests.add(TestCatalog.describe("project", "m", "demo.A#scenario" + i, null, "pending"));

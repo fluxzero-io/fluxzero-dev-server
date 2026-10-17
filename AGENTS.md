@@ -95,7 +95,8 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
   and Progress as direct navigation links, followed by Tests and Startup; Monitoring is the collapsible group for technical detail.
   Tests keeps its known total visible through reruns in one split badge: green passed, blue pending, red failed
   and neutral skipped counts, omitting empty segments except the green count. Preserve known scenario rows
-  through reruns and keep their order as pending tests pass; failures come first. Show available test durations
+  through reruns; failures come first, then order failures and remaining tests separately by duration descending, unknown durations
+  last. Freeze duration ordering while rerunning and apply new timings when the run finishes. Show available test durations
   in the left metadata and omit the implicit `project` scope. Startup replaces its green success count
   with only the red failure count. Hide these counters when disconnected, stopped or without known tests/results.
   Progress is persistent functional history in `.fluxzero/progress.yaml`, not live health or an engineering

@@ -14,6 +14,8 @@
 
 package io.fluxzero.devserver;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -26,7 +28,8 @@ import java.util.regex.Pattern;
 final class TestCatalog {
     static final int PAGE_SIZE = 50;
     private static final Pattern SEGMENT = Pattern.compile("\\[([^:]+):([^\\]]*)]");
-    record Case(String key, String project, String suite, String name, String state, String source, String groupKey, String groupName, Map<String, Long> variants, Long durationMillis) {}
+    record Case(String key, String project, String suite, String name, String state, String source, String groupKey, String groupName,
+                Map<String, Long> variants, Long durationMillis, @JsonIgnore Long sortDurationMillis) {}
     record Page(List<Case> items, int total, int offset, int pageSize, Map<String, Long> counts) {}
 
     static Case describe(String project, String scope, String id, String displayName, String state) {
@@ -34,6 +37,10 @@ final class TestCatalog {
     }
 
     static Case describe(String project, String scope, String id, String displayName, String state, Long durationMillis) {
+        return describe(project, scope, id, displayName, state, durationMillis, durationMillis);
+    }
+
+    static Case describe(String project, String scope, String id, String displayName, String state, Long durationMillis, Long sortDurationMillis) {
         String decoded;
         try {decoded = java.net.URLDecoder.decode(id.replace("+", "%2B"), StandardCharsets.UTF_8);}
         catch (IllegalArgumentException e) {decoded = id;}
@@ -86,7 +93,7 @@ final class TestCatalog {
         Case parent = template < 0 ? null : describe(project, scope, id.substring(0, template),
                 displayName != null && displayName.contains(" · ") ? displayName.substring(0, displayName.indexOf(" · ")) : null, state);
         return new Case(key, clipped(project, 200), clipped(suite, 1000), clipped(name, 1000), state, clipped(decoded, 2000),
-                        parent == null ? null : parent.key(), parent == null ? null : parent.name(), null, durationMillis);
+                        parent == null ? null : parent.key(), parent == null ? null : parent.name(), null, durationMillis, sortDurationMillis);
     }
 
     static Page page(List<Case> cases, String state, String query, String requestedOffset) {
@@ -118,7 +125,8 @@ final class TestCatalog {
                 return new Case(first.groupKey(), first.project(), first.suite(), first.groupName(), groupState,
                                 first.source(), first.groupKey(), first.groupName(), variants,
                                 members.stream().allMatch(test -> test.durationMillis() != null)
-                                        ? members.stream().mapToLong(Case::durationMillis).sum() : null);
+                                        ? members.stream().mapToLong(Case::durationMillis).sum() : null,
+                                members.stream().map(Case::sortDurationMillis).filter(java.util.Objects::nonNull).reduce(Long::sum).orElse(null));
             }).sorted(order()).toList();
         }
         int offset = 0;
@@ -127,8 +135,9 @@ final class TestCatalog {
         return new Page(matching.subList(offset, Math.min(matching.size(), offset + PAGE_SIZE)), matching.size(), offset, PAGE_SIZE, counts);
     }
     private static Comparator<Case> order() {
-        // Keep pending, passed and skipped rows in place as a run progresses; failures still come first.
+        // The inventory freezes ordering durations during a rerun; newly failed tests still come first.
         return Comparator.comparingInt((Case test) -> test.state().equals("failed") ? 0 : 1)
+                .thenComparing(Case::sortDurationMillis, Comparator.nullsLast(Comparator.reverseOrder()))
                 .thenComparing(Case::suite).thenComparing(Case::name).thenComparing(Case::key);
     }
     private static String clipped(String value, int length) {return value.substring(0, Math.min(value.length(), length));}

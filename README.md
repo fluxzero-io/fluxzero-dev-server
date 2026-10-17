@@ -65,8 +65,12 @@ preview URL; external pages that cannot expose their location fall back to the a
 
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
 Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups
-and scenarios appear first. Show more adds 50 entries at a time and live refresh preserves expanded lists.
+and scenarios appear first, ordered slowest first, followed by other scenarios ordered slowest first.
+Groups use the sum of known variant durations; unknown durations sort last, with names breaking ties.
+Show more adds 50 entries at a time and live refresh preserves expanded lists.
 Known rows remain visible during reruns, and passing a pending test does not move it onto another page.
+Duration ordering uses the previous measurements until the run finishes, then adopts the new timings;
+new failures immediately move ahead of other results.
 Only tests confirmed absent by discovery or a completed run are removed. Result filters still show only their
 selected state. Available durations appear beside the test class on the left; named project scopes remain visible,
 while the default `project` label is omitted. Durations come from the test runner, are retained with cached results,
