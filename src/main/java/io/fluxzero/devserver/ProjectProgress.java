@@ -85,6 +85,8 @@ final class ProjectProgress {
                     List<Milestone> milestones = new ArrayList<>(current.data().milestones());
                     if (operation.equals("milestone")) updateMilestone(milestones, args);
                     else if (operation.equals("feature")) updateFeature(milestones, args);
+                    else if (operation.equals("delete_feature")) deleteFeature(milestones, args);
+                    else if (operation.equals("delete_milestone")) deleteMilestone(milestones, args);
                     else throw new IllegalArgumentException("Unknown progress operation.");
                     Document next = new Document(1, milestones);
                     validate(next);
@@ -118,9 +120,8 @@ final class ProjectProgress {
         if(index<0) throw new IllegalArgumentException("Create the milestone first with upsert_progress_milestone.");
         Milestone milestone=milestones.get(index);
         List<Feature> features = new ArrayList<>(milestone.features());
-        int featureIndex=-1;
-        for(int i=0;i<features.size();i++) if(features.get(i).id().equals(id)) featureIndex=i;
-        Feature old=featureIndex<0?null:features.get(featureIndex);
+        FeatureLocation location = findFeature(milestones, id);
+        Feature old = location == null ? null : milestones.get(location.milestoneIndex()).features().get(location.featureIndex());
         String status=field(args,"status",old==null?"planned":old.status(),true,30);
         String verification=text(args,"verification",false,4000);
         List<Change> history=new ArrayList<>(old==null?List.of():old.history());
@@ -139,8 +140,51 @@ final class ProjectProgress {
                 field(args,"kind",old==null?"feature":old.kind(),true,20),status,
                 field(args,"description",old==null?"":old.description(),false,4000),acceptance,
                 old==null?now:old.createdAt(),now,history);
-        if(featureIndex<0) features.add(next); else features.set(featureIndex,next);
-        milestones.set(index,new Milestone(milestone.id(),milestone.title(),milestone.description(),features));
+        if (location != null && location.milestoneIndex() == index) features.set(location.featureIndex(), next);
+        else {
+            if (location != null) removeFeature(milestones, location);
+            features.add(next);
+        }
+        milestones.set(index, withFeatures(milestone, features));
+    }
+    private record FeatureLocation(int milestoneIndex, int featureIndex) {}
+
+    private static FeatureLocation findFeature(List<Milestone> milestones, String id) {
+        for (int m = 0; m < milestones.size(); m++) {
+            List<Feature> features = milestones.get(m).features();
+            for (int f = 0; f < features.size(); f++) {
+                if (features.get(f).id().equals(id)) return new FeatureLocation(m, f);
+            }
+        }
+        return null;
+    }
+    private static Milestone withFeatures(Milestone milestone, List<Feature> features) {
+        return new Milestone(milestone.id(), milestone.title(), milestone.description(), features);
+    }
+    private static void removeFeature(List<Milestone> milestones, FeatureLocation location) {
+        Milestone milestone = milestones.get(location.milestoneIndex());
+        List<Feature> features = new ArrayList<>(milestone.features());
+        features.remove(location.featureIndex());
+        milestones.set(location.milestoneIndex(), withFeatures(milestone, features));
+    }
+    private static void deleteFeature(List<Milestone> milestones, Map<String, Object> args) {
+        FeatureLocation location = findFeature(milestones, id(args, "id"));
+        if (location == null) throw new IllegalArgumentException("Unknown progress feature id.");
+        removeFeature(milestones, location);
+    }
+    private static void deleteMilestone(List<Milestone> milestones, Map<String, Object> args) {
+        String id = id(args, "id");
+        if (args.containsKey("deleteFeatures") && !(args.get("deleteFeatures") instanceof Boolean))
+            throw new IllegalArgumentException("deleteFeatures must be a boolean.");
+        for (int i = 0; i < milestones.size(); i++) {
+            Milestone milestone = milestones.get(i);
+            if (!milestone.id().equals(id)) continue;
+            if (!milestone.features().isEmpty() && !Boolean.TRUE.equals(args.get("deleteFeatures")))
+                throw new IllegalArgumentException("Milestone is not empty. Move or delete its features first, or explicitly set deleteFeatures to true.");
+            milestones.remove(i);
+            return;
+        }
+        throw new IllegalArgumentException("Unknown progress milestone id.");
     }
     private Path path() throws IOException {
         Path flux=directory.resolve(".fluxzero"), file=flux.resolve("progress.yaml");
