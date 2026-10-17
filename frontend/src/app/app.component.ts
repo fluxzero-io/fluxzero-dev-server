@@ -16,7 +16,7 @@ import {StartupPageComponent} from './startup-page.component';
 import {EnvironmentComponent} from './environment.component';
 import {ConsoleConnection, ConsoleState} from './console-connection';
 
-type ResultBadge = {value:string; failed:boolean; label:string; passedValue?:string};
+type ResultBadge = {value:string; failed:boolean; label:string};
 
 @Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
@@ -188,10 +188,16 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly testBadge = computed(() => {
     if (!this.badgesAvailable()) return null;
     const results=this.status()?.testResults;
-    const passed=results?.passed || 0,failed=results?.failed || 0;
-    return failed > 0
-      ? {value:String(failed),passedValue:String(passed),failed:true,label:passed+' passed tests, '+failed+' failed tests'}
-      : this.resultBadge(passed, 0, 'passed tests', 'failed tests');
+    if (!results) return null;
+    const passed=results.passed || 0,failed=results.failed || 0,skipped=results.skipped || 0;
+    const total=Math.max(results.total || 0, results.running ? results.expectedTotal || 0 : 0);
+    const pending=Math.max(0,total-passed-failed-skipped);
+    if (!passed && !failed && !pending && !skipped) return null;
+    const segments=[{state:'passed',value:passed,label:passed+' passed tests'}];
+    if (pending) segments.push({state:'pending',value:pending,label:pending+' pending tests'});
+    if (failed) segments.push({state:'failed',value:failed,label:failed+' failed tests'});
+    if (skipped) segments.push({state:'skipped',value:skipped,label:skipped+' skipped tests'});
+    return {segments,failed:failed>0,label:segments.map(segment=>segment.label).join(', ')};
   });
   readonly startupBadge = computed(() => {
     if (!this.badgesAvailable()) return null;

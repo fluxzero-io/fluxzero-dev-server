@@ -200,7 +200,7 @@ describe('Dev console navigation', () => {
   it('keeps versions out of the workspace heading and shows current problem badges, clearing them on recovery and disconnect', () => {
     const component = fixture.componentInstance;
     const root: HTMLElement = fixture.nativeElement;
-    component.status.update(s => ({...s!, versions:{devServer:'1.2.3',fluxzero:'2.0.0-RC1'}, workspaceIssue:'',testResults:{...s!.testResults!,passed:423,failed:5}}));
+    component.status.update(s => ({...s!, versions:{devServer:'1.2.3',fluxzero:'2.0.0-RC1'}, workspaceIssue:'',testResults:{...s!.testResults!,passed:423,failed:5,skipped:0,total:428}}));
     fixture.detectChanges();
     expect(root.querySelector('.workspace-versions')).toBeNull();
     expect(root.querySelector('.workspace-issue')).toBeNull();
@@ -221,7 +221,7 @@ describe('Dev console navigation', () => {
     const component=fixture.componentInstance;
     const root:HTMLElement=fixture.nativeElement;
     const actions=[{id:'one',name:'Create home',state:'succeeded'},{id:'two',name:'Add floor',state:'succeeded'}];
-    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:0},startup:{state:'succeeded',actions}}));fixture.detectChanges();
+    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:0,skipped:0,total:8},startup:{state:'succeeded',actions}}));fixture.detectChanges();
     expect(root.querySelector('a[href="#tests"] .nav-result-badge:not(.failed)')?.textContent).toBe('8');
     expect(root.querySelector('a[href="#startup"] .nav-result-badge:not(.failed)')?.textContent).toBe('2');
     expect(root.querySelector('a[href="#tests"]')?.nextElementSibling?.getAttribute('href')).toBe('#startup');
@@ -231,7 +231,7 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('h1')?.textContent).toBe('Startup commands');
     expect(root.querySelectorAll('.startup-row').length).toBe(2);
     component.readRoute();expect(component.route()).toBe('startup');
-    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:3},startup:{state:'failed',actions:[actions[0],{...actions[1],state:'failed'}]}}));fixture.detectChanges();
+    component.status.update(s=>({...s!,testResults:{...s!.testResults!,failed:3,total:11},startup:{state:'failed',actions:[actions[0],{...actions[1],state:'failed'}]}}));fixture.detectChanges();
     const testBadge=root.querySelector('a[href="#tests"] .nav-result-badge.failed.split-result');
     expect(testBadge?.querySelector('.nav-result-passed')?.textContent).toBe('8');
     expect(testBadge?.querySelector('.nav-result-failed')?.textContent).toBe('3');
@@ -538,28 +538,30 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectNone('status.json');
     TestBed.inject(HttpTestingController).expectNone('environments.json');
   });
-  it('keeps both result segments through live test runs without a refresh', () => {
-    const component=fixture.componentInstance;
-    const state=component.status()!;
+  it('keeps the known total throughout full and selective reruns, completion, skips and interruption', () => {
+    const state=fixture.componentInstance.status()!;
     const root:HTMLElement=fixture.nativeElement;
     for(const results of [
-      {passed:160,failed:2,running:false},
-      {passed:0,failed:0,running:true},
-      {passed:2,failed:0,running:true},
-      {passed:160,failed:2,running:true},
-      {passed:160,failed:2,running:false},
-      {passed:160,failed:0,running:false},
-      {passed:160,failed:2,running:true}
+      {passed:162,failed:0,skipped:0,running:false},
+      {passed:0,failed:0,skipped:0,running:true},
+      {passed:2,failed:0,skipped:0,running:true},
+      {passed:70,failed:2,skipped:0,running:true},
+      {passed:158,failed:2,skipped:1,running:false,incomplete:true},
+      {passed:159,failed:2,skipped:1,running:false},
+      {passed:150,failed:0,skipped:1,running:true},
+      {passed:162,failed:0,skipped:0,running:false}
     ]) {
-      push({status:{...state,testResults:{...state.testResults!,...results,total:results.passed+results.failed}},environments:component.environments()});
+      push({status:{...state,testResults:{...state.testResults!,...results,total:162}},environments:[]});
       fixture.detectChanges();
-      const badge=root.querySelector('a[href="#tests"] .nav-result-badge');
-      if(results.failed) {
-        expect(badge?.querySelector('.nav-result-passed')?.textContent).toBe(String(results.passed));
-        expect(badge?.querySelector('.nav-result-failed')?.textContent).toBe(String(results.failed));
-      } else {
-        expect(badge?.textContent ?? '').toBe(results.passed ? String(results.passed) : '');
-      }
+      const badge=root.querySelector('a[href="#tests"] .nav-result-badge')!;
+      expect(badge).not.toBeNull();
+      expect(badge.querySelector('.nav-result-passed')?.textContent).toBe(String(results.passed));
+      const pending=162-results.passed-results.failed-results.skipped;
+      expect(badge.querySelector('.nav-result-pending')?.textContent ?? '').toBe(pending ? String(pending) : '');
+      expect(badge.querySelector('.nav-result-failed')?.textContent ?? '').toBe(results.failed ? String(results.failed) : '');
+      expect(badge.querySelector('.nav-result-skipped')?.textContent ?? '').toBe(results.skipped ? String(results.skipped) : '');
+      expect(Array.from(badge.children).reduce((sum,segment)=>sum+Number(segment.textContent),0)).toBe(162);
+      if (pending) expect(badge.getAttribute('aria-label')).toContain(pending+' pending tests');
     }
   });
   it('shows pushed test output as text and keeps long lines inside the mobile layout', async () => {

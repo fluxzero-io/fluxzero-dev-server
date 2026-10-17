@@ -27,6 +27,19 @@ import java.util.jar.JarFile;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TestTelemetryTest {
+    @Test void acceptsOptionalDurationsWithoutLosingResultsOnMalformedTiming(@TempDir Path directory) {
+        var inventory = new TestInventory(directory);
+        try (var events = new TestTelemetry(() -> {}, inventory)) {
+            events.record("m", "registered", "demo.A#works");
+            events.record("m", "duration", "demo.A#works\0-1");
+            events.record("m", "duration", "demo.A#works\0invalid");
+            events.record("m", "duration", "demo.A#works\0" + 42);
+            events.record("m", "passed", "demo.A#works");
+            assertFalse(events.progress().lost());
+            assertEquals(42L, inventory.cases("project").getFirst().durationMillis());
+            assertEquals(new TestCounts(1, 0, 0), events.progress().counts());
+        }
+    }
     @Test void aggregatesIndependentForksDynamicTestsAndDuplicatesWithoutInventingCompletions() {
         try(var events=new TestTelemetry(()->{})) {
             events.record("fork-a","plan","");events.record("fork-a","registered","case");

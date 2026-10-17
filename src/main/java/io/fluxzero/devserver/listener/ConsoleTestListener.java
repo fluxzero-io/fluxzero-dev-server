@@ -31,6 +31,7 @@ import org.junit.platform.launcher.TestPlan;
 
 /** Loaded by JUnit Platform's public ServiceLoader hook in the isolated test classpath. */
 public final class ConsoleTestListener implements TestExecutionListener {
+    private final java.util.Map<String, Long> starts = new java.util.concurrent.ConcurrentHashMap<String, Long>();
     private volatile TestEventClient client;
     private volatile TestPlan plan;
     @Override public void testPlanExecutionStarted(TestPlan plan) {
@@ -64,17 +65,23 @@ public final class ConsoleTestListener implements TestExecutionListener {
         } catch (Throwable ignored) { /* Runners without discovery support retain the last complete inventory. */ }
     }
     @Override public void dynamicTestRegistered(TestIdentifier test) {if(test.isTest()) send("registered",test);}
-    @Override public void executionStarted(TestIdentifier test) {if(test.isTest())send("started",test);}
+    @Override public void executionStarted(TestIdentifier test) {
+        if(test.isTest()) {starts.put(test.getUniqueId(), System.nanoTime());send("started",test);}
+    }
     @Override public void executionSkipped(TestIdentifier test,String reason) {
         if(test.isTest())send("skipped",test);
         else if(plan!=null) for(TestIdentifier child:plan.getDescendants(test)) if(child.isTest())send("skipped",child);
     }
     @Override public void executionFinished(TestIdentifier test,TestExecutionResult result) {
+        Long start = starts.remove(test.getUniqueId());
+        if (start != null && client != null)
+            client.event("duration", test.getUniqueId() + "\0" + java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start));
         if(test.isTest()) send(result.getStatus()==TestExecutionResult.Status.SUCCESSFUL?"passed":
                 result.getStatus()==TestExecutionResult.Status.ABORTED?"skipped":"failed",test);
         else if(result.getStatus()==TestExecutionResult.Status.FAILED && client!=null)client.event("container-failed",test.getUniqueId());
     }
     @Override public void testPlanExecutionFinished(TestPlan plan) {
+        starts.clear();
         if(client!=null){client.event("end", "");client.close();client=null;}
     }
     private void send(String kind, TestIdentifier test) {

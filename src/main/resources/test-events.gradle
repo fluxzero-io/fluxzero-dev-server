@@ -25,6 +25,7 @@ gradle.allprojects { project ->
         }
         task.afterTest { descriptor, result ->
             def id = active.get(keyFor(descriptor))?.poll() ?: (descriptor.className + '#' + descriptor.name)
+            client?.event('duration', id + '\u0000' + Math.max(0L, result.endTime - result.startTime))
             client?.event(result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.SUCCESS ? 'passed' :
                 result.resultType == org.gradle.api.tasks.testing.TestResult.ResultType.SKIPPED ? 'skipped' : 'failed', id)
         }
