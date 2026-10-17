@@ -27,6 +27,33 @@ describe('Scenario catalog', () => {
     request.flush(empty);fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No failed tests.');
   });
+  it('shows durations on the left, omits the default project and preserves named modules', () => {
+    http.expectOne(r=>r.url==='tests.json').flush({...empty,total:3,items:[
+      {key:'a',project:'project',suite:'demo.CheckoutTest',name:'Customer can pay',state:'passed',source:'id',durationMillis:1250},
+      {key:'b',project:'billing',suite:'demo.InvoiceTest',name:'Creates invoice',state:'passed',source:'id2',durationMillis:0},
+      {key:'c',project:'project',suite:'demo.LegacyTest',name:'No timing available',state:'passed',source:'id3'}]});fixture.detectChanges();
+    const rows=fixture.nativeElement.querySelectorAll('.scenario-row');
+    expect(rows[0].querySelector('.scenario-name small').textContent).toBe('1.25 s · CheckoutTest');
+    expect(rows[1].querySelector('.scenario-name small').textContent).toBe('0 ms · InvoiceTest · billing');
+    expect(rows[2].querySelector('.scenario-name small').textContent).toBe('LegacyTest');
+    expect(rows[2].querySelector('.scenario-duration')).toBeNull();
+  });
+  it('keeps the same row elements while a rerun moves pending tests to results', () => {
+    const initial={...empty,total:2,counts:{passed:2,failed:0,pending:0},items:[
+      {key:'a',project:'project',suite:'Checkout',name:'Customer can pay',state:'passed',source:'id',durationMillis:25},
+      {key:'b',project:'project',suite:'Checkout',name:'Customer can cancel',state:'passed',source:'id2',durationMillis:30}]};
+    http.expectOne(r=>r.url==='tests.json').flush(initial);fixture.detectChanges();
+    const rows=Array.from(fixture.nativeElement.querySelectorAll('.scenario-row'));
+    for (const passed of [0,1,2]) {
+      fixture.componentInstance.refresh();fixture.detectChanges();
+      expect(Array.from(fixture.nativeElement.querySelectorAll('.scenario-row'))).toEqual(rows);
+      http.expectOne(r=>r.url==='tests.json').flush({...initial,counts:{passed,pending:2-passed},
+        items:initial.items.map((test,i)=>({...test,state:i<passed?'passed':'pending',durationMillis:i<passed?12:null}))});
+      fixture.detectChanges();
+      expect(Array.from(fixture.nativeElement.querySelectorAll('.scenario-row'))).toEqual(rows);
+      expect(fixture.nativeElement.querySelectorAll('.scenario-duration').length).toBe(passed);
+    }
+  });
   it('opens output without requesting an output result filter and keeps counts', () => {
     http.expectOne(r=>r.url==='tests.json').flush(empty);fixture.detectChanges();
     fixture.componentInstance.select('output');fixture.detectChanges();

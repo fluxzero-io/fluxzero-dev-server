@@ -26,6 +26,30 @@ class TestInventoryTest {
     private static final String A = "[engine:junit-jupiter]/[class:demo.A]/[method:first()]";
     private static final String B = "[engine:junit-jupiter]/[class:demo.B]/[method:second()]";
 
+    @Test void rerunsKeepRowsAndOnlyReplaceSelectedDurations(@TempDir Path directory) {
+        var inventory = new TestInventory(directory);
+        inventory.discover("module", Set.of(A, B), Set.of());
+        inventory.event("module", "passed", A);inventory.duration("module", A, 125);
+        inventory.event("module", "failed", B);inventory.duration("module", B, 2400);
+        inventory.finish(true, true, Map.of("module", Set.of(A, B)));
+        inventory = new TestInventory(directory);
+        assertEquals(List.of(125L, 2400L), TestCatalog.page(inventory.cases("project"), "all", "", "0").items()
+                .stream().sorted(java.util.Comparator.comparing(TestCatalog.Case::suite)).map(TestCatalog.Case::durationMillis).toList());
+        inventory.reset(List.of("demo.B"));
+        var cases = inventory.cases("project");
+        assertEquals(2, cases.size());
+        assertEquals(125L, cases.stream().filter(c -> c.state().equals("passed")).findFirst().orElseThrow().durationMillis());
+        assertNull(cases.stream().filter(c -> c.state().equals("pending")).findFirst().orElseThrow().durationMillis());
+        inventory.event("module", "passed", B);inventory.duration("module", B, 0);
+        inventory.finish(false, true, Map.of("module", Set.of(B)));
+        assertEquals(new TestCounts(2, 0, 0), inventory.snapshot().counts());
+        inventory.reset(List.of());
+        assertEquals(2, inventory.cases("project").size());
+        assertTrue(inventory.cases("project").stream().allMatch(c -> c.state().equals("pending") && c.durationMillis() == null));
+        inventory.finish(true, false, Map.of());
+        assertEquals(2, new TestInventory(directory).cases("project").size(), "Interrupted runs retain pending rows");
+    }
+
     @Test void selectionClearsOnlyItsPreviousResultsAndSurvivesReconnect(@TempDir Path directory) {
         var inventory = new TestInventory(directory);
         inventory.discover("module", Set.of(A, B), Set.of());

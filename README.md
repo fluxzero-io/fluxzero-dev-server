@@ -33,8 +33,10 @@ Restart those environments with a dashboard-enabled Dev Server build to switch t
 The Total memory breakdown shows known versions after each service name, including the Dev Server,
 selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
 or update failures add a short notice and a navigation indicator. Tests shows its green success count
-beside the red failure count in one split navigation badge when errors exist. Startup replaces its green success
-count with the red failure count.
+beside blue pending, red failed and neutral skipped counts in one split navigation badge. During a full rerun,
+green starts at zero and blue holds the known total; each completed test moves from blue to its result segment.
+Selective reruns retain results for unaffected tests. Empty segments are hidden except the green count.
+Startup replaces its green success count with the red failure count.
 During selective runs, test counters retain all known catalog results even when newly discovered dynamic tests
 make the final total uncertain; they do not fall back to counting only the current selection.
 These indicators clear on recovery and do not surface historical log errors or ordinary startup transitions.
@@ -64,6 +66,11 @@ preview URL; external pages that cannot expose their location fall back to the a
 The Tests panel groups parameterized scenarios by test method, collapsed by default with result counts.
 Expand a group to inspect its variants. Search and result filters include collapsed variants; failed groups
 and scenarios appear first. Show more adds 50 entries at a time and live refresh preserves expanded lists.
+Known rows remain visible during reruns, and passing a pending test does not move it onto another page.
+Only tests confirmed absent by discovery or a completed run are removed. Result filters still show only their
+selected state. Available durations appear beside the test class on the left; named project scopes remain visible,
+while the default `project` label is omitted. Durations come from the test runner, are retained with cached results,
+and clear for selected tests when rerunning. Parameterized groups show the sum when all displayed variants have timings.
 
 The Tests panel follows new output while scrolled to the bottom, and preserves your reading position when
 scrolled up. Its pause control pauses automatic tests; an active test run is allowed to finish. Builds, application reloads

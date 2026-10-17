@@ -51,6 +51,8 @@ class TestTelemetryE2EIT {
                 :System.getProperty("fluxzero.dev.gradleExecutable",windows?"gradle.bat":"gradle");
         List<String> command=new ArrayList<>(List.of(executable,tool==BuildTool.MAVEN?"--batch-mode":"--console=plain","test"));
         if(tool==BuildTool.GRADLE)command.add("--no-daemon");
+        List<String> rerunCommand = new ArrayList<>(command);
+        if (tool == BuildTool.GRADLE) rerunCommand.add("--rerun-tasks");
         var process=new AtomicReference<Process>();
         var ref=new AtomicReference<TestTelemetry>();
         var intermediate=new AtomicBoolean();
@@ -83,8 +85,32 @@ class TestTelemetryE2EIT {
             assertEquals(9, inventory.snapshot().total());
             assertEquals(new TestCounts(7, 1, 1), inventory.snapshot().counts());
             assertTrue(inventory.snapshot().known());
+            var completed = inventory.cases("project").stream().filter(test -> !test.state().equals("skipped")).toList();
+            assertEquals(8, completed.size());
+            assertTrue(completed.stream().allMatch(test -> test.durationMillis() != null && test.durationMillis() >= 0),
+                    "Both runners must supply timing for every executed test");
+            assertTrue(completed.stream().anyMatch(test -> test.durationMillis() >= 100), "Fixture delays must be measured");
             assertFalse(progress.lost());assertTrue(intermediate.get(),"Counts must arrive before the test process completes");
             assertTrue(result.output().stream().anyMatch(line->line.contains("live test output")));
+        }
+        var previousKeys = inventory.cases("project").stream().map(TestCatalog.Case::key).collect(java.util.stream.Collectors.toSet());
+        inventory.reset(List.of());
+        assertEquals(9, inventory.snapshot().total());
+        assertEquals(0, inventory.snapshot().counts().total());
+        var retained = new AtomicBoolean(true);
+        try (var rerun = new TestTelemetry(() -> {
+            var currentKeys = inventory.cases("project").stream().map(TestCatalog.Case::key).collect(java.util.stream.Collectors.toSet());
+            if (!currentKeys.containsAll(previousKeys)) retained.set(false);
+        }, inventory)) {
+            var environment = new HashMap<String, String>();
+            rerun.configure(rerunCommand, environment, tool, directory.resolve(".fluxzero/dev"));
+            var result = ProcessUtils.run(rerunCommand, directory, environment, ignored -> {}, ignored -> {});
+            rerun.drain();
+            assertEquals(new TestCounts(7, 1, 1), rerun.progress().counts(), result.tail(60));
+            assertFalse(rerun.progress().lost());assertTrue(rerun.progress().streamsEnded());
+            assertTrue(retained.get(), "Discovery and execution must retain all known rows throughout a rerun");
+            inventory.finish(true, true, rerun.observedTests());
+            assertEquals(previousKeys, inventory.cases("project").stream().map(TestCatalog.Case::key).collect(java.util.stream.Collectors.toSet()));
         }
     }
 }

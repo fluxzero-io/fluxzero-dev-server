@@ -33,6 +33,7 @@ final class TestInventory {
     private final Map<String, Set<String>> selected = new LinkedHashMap<>();
     private final Map<String, Set<String>> discoveredThisRun = new LinkedHashMap<>();
     private final Map<String, Map<String, String>> names = new LinkedHashMap<>();
+    private final Map<String, Map<String, Long>> durations = new LinkedHashMap<>();
     private boolean known;
 
     TestInventory(Path directory) {
@@ -51,6 +52,14 @@ final class TestInventory {
                         names.put(scope, retained);
                     });
                     if (saved.templates() != null) templates.putAll(saved.templates());
+                    if (saved.durations() != null) saved.durations().forEach((scope, values) -> {
+                        var retained = new LinkedHashMap<String, Long>();
+                        values.forEach((id, duration) -> {
+                            if (modules.getOrDefault(scope, Map.of()).containsKey(id) && duration != null && duration >= 0)
+                                retained.put(id, duration);
+                        });
+                        durations.put(scope, retained);
+                    });
                 }
             }
         } catch (Exception ignored) { /* A missing inventory is unknown, not zero tests. */ }
@@ -64,6 +73,8 @@ final class TestInventory {
                     || selectors.stream().anyMatch(selector -> matches(id, selector))).collect(java.util.stream.Collectors.toSet());
             selected.put(scope, ids);
             ids.forEach(id -> tests.put(id, "pending"));
+            var timings = durations.get(scope);
+            if (timings != null) ids.forEach(timings::remove);
         });
         save();
     }
@@ -112,10 +123,16 @@ final class TestInventory {
             labels.put(id, label.substring(0, Math.min(label.length(), 1000)));
     }
 
+    synchronized void duration(String scope, String id, long millis) {
+        if (millis >= 0 && modules.getOrDefault(scope, Map.of()).containsKey(id))
+            durations.computeIfAbsent(scope, ignored -> new LinkedHashMap<>()).put(id, millis);
+    }
+
     synchronized List<TestCatalog.Case> cases(String project) {
         var result = new java.util.ArrayList<TestCatalog.Case>();
         modules.forEach((scope, tests) -> tests.forEach((id, state) -> result.add(
-                TestCatalog.describe(project, scope, id, names.getOrDefault(scope, Map.of()).get(id), state))));
+                TestCatalog.describe(project, scope, id, names.getOrDefault(scope, Map.of()).get(id), state,
+                        state.equals("pending") ? null : durations.getOrDefault(scope, Map.of()).get(id)))));
         return result;
     }
 
@@ -148,6 +165,8 @@ final class TestInventory {
         }
         names.keySet().retainAll(modules.keySet());
         names.forEach((scope, labels) -> labels.keySet().retainAll(modules.get(scope).keySet()));
+        durations.keySet().retainAll(modules.keySet());
+        durations.forEach((scope, values) -> values.keySet().retainAll(modules.get(scope).keySet()));
         save();
     }
 
@@ -155,13 +174,14 @@ final class TestInventory {
         try {
             Files.createDirectories(file.getParent());
             Path temp = file.resolveSibling(file.getFileName() + ".tmp");
-            new ObjectMapper().writeValue(temp.toFile(), new Saved(known, modules, templates, names));
+            new ObjectMapper().writeValue(temp.toFile(), new Saved(known, modules, templates, names, durations));
             try {Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);}
             catch (java.nio.file.AtomicMoveNotSupportedException e) {Files.move(temp, file, StandardCopyOption.REPLACE_EXISTING);}
         } catch (Exception ignored) { /* Live status remains available if the local cache cannot be written. */ }
     }
 
-    record Saved(boolean known, Map<String, Map<String, String>> modules, Map<String, Set<String>> templates, Map<String, Map<String, String>> names) {}
+    record Saved(boolean known, Map<String, Map<String, String>> modules, Map<String, Set<String>> templates,
+                 Map<String, Map<String, String>> names, Map<String, Map<String, Long>> durations) {}
 
     record Snapshot(boolean known, int total, TestCounts counts) {}
 }

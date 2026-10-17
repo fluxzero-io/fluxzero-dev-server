@@ -138,6 +138,13 @@ final class TestTelemetry implements AutoCloseable {
                 int separator = id.indexOf('\0');
                 if (inventory != null && separator > 0) inventory.name(scope, id.substring(0, separator), id.substring(separator + 1));
             }
+            case "duration" -> {
+                int separator = id.indexOf('\0');
+                if (inventory != null && separator > 0) {
+                    try {inventory.duration(scope, id.substring(0, separator), Long.parseLong(id.substring(separator + 1)));}
+                    catch (NumberFormatException ignored) { /* Optional timing must not invalidate test results. */ }
+                }
+            }
             case "plan" -> streams.putIfAbsent(stream,false);
             case "discovered" -> streams.put(stream,true);
             case "end" -> ended.add(stream);

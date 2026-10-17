@@ -2,7 +2,7 @@ import {Component, input, output, signal, inject, forwardRef, OnInit, OnChanges,
 import {HttpClient} from '@angular/common/http';
 import {forkJoin, Subscription} from 'rxjs';
 
-export interface TestCase {key:string;project:string;suite:string;name:string;state:string;source:string;groupName?:string|null;variants?:Record<string,number>}
+export interface TestCase {key:string;project:string;suite:string;name:string;state:string;source:string;durationMillis?:number|null;groupName?:string|null;variants?:Record<string,number>}
 export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:number;counts:Record<string,number>}
 
 @Component({selector:'dev-scenario-list',standalone:true,imports:[forwardRef(() => ScenarioListComponent)],template:`
@@ -16,7 +16,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
               [attr.aria-controls]="'variants-' + test.key" (click)="toggle(test.key)">
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" role="img" [attr.aria-label]="label(test.state)"></i>
               <i class="bi scenario-chevron" [class.bi-chevron-right]="!expanded().has(test.key)" [class.bi-chevron-down]="expanded().has(test.key)" aria-hidden="true"></i>
-              <span class="scenario-name"><strong>{{test.name}}</strong><small>{{suiteName(test.suite)}} · {{test.project}}</small></span>
+              <span class="scenario-name"><strong>{{test.name}}</strong><small>@if(test.durationMillis != null) {<span class="scenario-duration" title="Test duration">{{duration(test.durationMillis)}} · </span>}{{suiteName(test.suite)}}@if(test.project !== 'project') { · {{test.project}}}</small></span>
               <span class="scenario-group-summary">{{variants['passed'] || 0}} / {{total(variants)}} passed</span>
             </button>
             <div [id]="'variants-' + test.key" [hidden]="!expanded().has(test.key)" class="scenario-variants">
@@ -25,7 +25,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
           } @else {
             <div class="scenario-row">
               <i class="bi scenario-status" [class.bi-check-circle]="test.state === 'passed'" [class.bi-x-circle]="test.state === 'failed'" [class.bi-dash-circle]="test.state === 'skipped'" [class.bi-clock]="test.state === 'pending'" [class.passed]="test.state === 'passed'" [class.failed]="test.state === 'failed'" aria-hidden="true"></i>
-              <div class="scenario-name"><strong>{{displayName(test)}}</strong>@if(!group()) {<small [title]="test.source">{{suiteName(test.suite)}} · {{test.project}}</small>}</div>
+              <div class="scenario-name"><strong>{{displayName(test)}}</strong>@if(!group() || test.durationMillis != null) {<small [title]="test.source">@if(test.durationMillis != null) {<span class="scenario-duration" title="Test duration">{{duration(test.durationMillis)}}</span>}@if(!group()) {@if(test.durationMillis != null) { · }{{suiteName(test.suite)}}@if(test.project !== 'project') { · {{test.project}}}}</small>}</div>
               <span class="scenario-state">{{label(test.state)}}</span>
             </div>
           }
@@ -52,6 +52,7 @@ export interface TestPage {items:TestCase[];total:number;offset:number;pageSize:
   .scenario-chevron {font-size:12px;color:var(--dashboard-muted);}
   .scenario-status {flex:0 0 auto;color:var(--dashboard-muted);}.passed {color:var(--dashboard-success-text);}.failed {color:var(--dashboard-danger-text);font-weight:600;}
   .scenario-name {flex:1;min-width:0;overflow-wrap:anywhere;}.scenario-name strong {display:block;font-size:14px;font-weight:500;}
+  .scenario-duration {font-variant-numeric:tabular-nums;}
   .scenario-name small {display:block;color:var(--dashboard-muted);font-size:11px;margin-top:4px;}
   .scenario-state,.scenario-group-summary {font-size:12px;color:var(--dashboard-muted);white-space:nowrap;}
   .scenario-group-summary {text-align:right;}
@@ -119,6 +120,11 @@ export class ScenarioListComponent implements OnInit, OnChanges, OnDestroy {
   displayName(test:TestCase) {
     const prefix=test.groupName ? test.groupName + ' · ' : '';
     return this.group() && prefix && test.name.startsWith(prefix) ? test.name.slice(prefix.length).trim() || test.name : test.name;
+  }
+  duration(millis:number) {
+    if (millis < 1000) return millis + ' ms';
+    if (millis < 60000) return (millis / 1000).toFixed(2).replace(/\.?0+$/, '') + ' s';
+    return Math.floor(millis / 60000) + ' min ' + Math.floor(millis % 60000 / 1000) + ' s';
   }
   label(state:string) {return ({passed:'Passed',failed:'Failed',skipped:'Skipped',pending:'Not completed'} as Record<string,string>)[state] || state;}
 }

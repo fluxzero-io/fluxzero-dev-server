@@ -25,6 +25,25 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TestCatalogTest {
     private static final String ID = "[engine:junit-jupiter]/[class:demo.CheckoutTest]/[method:acceptsValidPayment()]";
+
+    @Test void completingTestsKeepsTheVisiblePageStableAndGroupsPendingUntilFinished() {
+        var tests = new java.util.ArrayList<TestCatalog.Case>();
+        for (int i=0;i<75;i++) tests.add(TestCatalog.describe("project", "m", "demo.A#scenario" + i, null, "pending"));
+        var before = TestCatalog.page(tests, "all", "", "0").items().stream().map(TestCatalog.Case::key).toList();
+        tests.set(0, TestCatalog.describe("project", "m", "demo.A#scenario0", null, "passed", 12L));
+        var after = TestCatalog.page(tests, "all", "", "0");
+        assertEquals(before, after.items().stream().map(TestCatalog.Case::key).toList());
+        assertEquals(12L, after.items().getFirst().durationMillis());
+        assertEquals(Map.of("pending", 74L, "passed", 1L, "failed", 0L, "skipped", 0L), after.counts());
+        String template = "[engine:junit-jupiter]/[class:demo.A]/[test-template:example(int)]";
+        var first = TestCatalog.describe("project", "m", template + "/[test-template-invocation:#1]", "A", "passed", 12L);
+        var second = TestCatalog.describe("project", "m", template + "/[test-template-invocation:#2]", "B", "pending");
+        var group = TestCatalog.page(List.of(first, second), "all", "", "0", true, null).items().getFirst();
+        assertEquals("pending", group.state());assertNull(group.durationMillis());
+        second = TestCatalog.describe("project", "m", template + "/[test-template-invocation:#2]", "B", "passed", 31L);
+        group = TestCatalog.page(List.of(first, second), "all", "", "0", true, null).items().getFirst();
+        assertEquals("passed", group.state());assertEquals(43L, group.durationMillis());
+    }
     @Test void describesLegacyAndDynamicNamesWithoutMergingModules() {
         var legacy = TestCatalog.describe("app", "a", ID, null, "passed");
         assertEquals("Accepts valid payment", legacy.name());
