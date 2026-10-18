@@ -1,5 +1,6 @@
-import {Component, signal, ViewChild} from '@angular/core';
+import {Component, computed, input, signal, ViewChild} from '@angular/core';
 import {ScenarioListComponent, TestPage} from './scenario-list.component';
+import {Status} from './models';
 export type {TestCase, TestPage} from './scenario-list.component';
 @Component({selector:'dev-test-catalog', standalone:true, imports:[ScenarioListComponent], template:`
   <section class="scenario-panel" aria-labelledby="scenarios-title">
@@ -11,7 +12,7 @@ export type {TestCase, TestPage} from './scenario-list.component';
     <div class="scenario-filters" role="group" aria-label="Filter test results">
       @for(option of filters; track option.key) {
         <button type="button" [class.output-tab]="option.key === 'output'" [class.selected]="filter() === option.key" [attr.aria-pressed]="filter() === option.key" (click)="select(option.key)">
-          {{option.label}}@if(option.key !== 'output' && page(); as data) {<span>{{count(option.key, data)}}</span>}
+          {{option.label}}@if(option.key !== 'output' && counts(); as data) {<span>{{option.key === 'all' ? total() : data[option.key] || 0}}</span>}
         </button>
       }
     </div>
@@ -48,6 +49,15 @@ export type {TestCase, TestPage} from './scenario-list.component';
   `})
 export class TestCatalogComponent {
   readonly page = signal<TestPage | undefined>(undefined);
+  readonly results = input<Status['testResults']>();
+  readonly counts = computed<Record<string,number> | undefined>(() => {
+    const results=this.results();
+    if (!results) return this.page()?.counts;
+    const {passed,failed,skipped}=results;
+    const total=Math.max(results.total, results.running ? results.expectedTotal || 0 : 0);
+    return {passed,failed,skipped,pending:Math.max(0,total-passed-failed-skipped)};
+  });
+  readonly total = computed(() => Object.values(this.counts() || {}).reduce((a,b)=>a+b,0));
   readonly filter = signal('all');
   readonly query = signal('');
   readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'},{key:'output',label:'Output'}];
@@ -56,5 +66,4 @@ export class TestCatalogComponent {
   search(event:Event) {this.query.set((event.target as HTMLInputElement).value);}
   refresh() {if(this.filter() !== 'output') this.list?.refresh();}
   loadMore() {this.list?.loadMore();}
-  count(filter:string, page:TestPage) {return filter === 'all' ? Object.values(page.counts).reduce((a,b)=>a+b,0) : page.counts[filter]||0;}
 }

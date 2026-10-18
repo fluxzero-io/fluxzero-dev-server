@@ -192,6 +192,33 @@ describe('Dev console navigation', () => {
       .flush({items:[],total:0,offset:0,pageSize:50,counts:{passed:8,failed:2,skipped:1,pending:0}});
     fixture.detectChanges();
   }
+  it('updates tab counts from pushed status even while list requests lag and Output is open', () => {
+    const component=fixture.componentInstance, root:HTMLElement=fixture.nativeElement;
+    const http=TestBed.inject(HttpTestingController);
+    component.navigate('tests');fixture.detectChanges();
+    const slowList=http.expectOne(r=>r.url==='tests.json');
+    const update=(passed:number,failed:number,skipped:number,running=true) => {
+      push({status:{...component.status()!,testResults:{available:true,passed,failed,skipped,
+        total:passed+failed+skipped,expectedTotal:100,running,label:''}},environments:[]});
+      fixture.detectChanges();
+    };
+    const counts=()=>Array.from(root.querySelectorAll('.scenario-filters span')).map(e=>e.textContent);
+    update(0,0,0);
+    expect(counts()).toEqual(['100','0','0','0']);
+    update(18,2,1);
+    expect(counts()).toEqual(['100','18','2','1']);
+    expect(root.querySelector('.nav-result-passed')?.textContent).toBe('18');
+    expect(root.querySelector('.nav-result-pending')?.textContent).toBe('79');
+    // An older HTTP response must not replace the more recent pushed counters.
+    slowList.flush({items:[],total:0,offset:0,pageSize:50,counts:{passed:100,failed:0,skipped:0,pending:0}});
+    fixture.detectChanges();
+    expect(counts()).toEqual(['100','18','2','1']);
+    openOutput();update(96,3,1,false);
+    expect(counts()).toEqual(['100','96','3','1']);
+    expect(root.querySelector('.nav-result-passed')?.textContent).toBe('96');
+    http.expectNone(r=>r.url==='tests.json');
+  });
+
   function openOutput() {
     (fixture.nativeElement.querySelector('.output-tab') as HTMLButtonElement).click();fixture.detectChanges();
   }

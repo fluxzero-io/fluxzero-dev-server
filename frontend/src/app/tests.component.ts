@@ -12,7 +12,7 @@ import {Handler, sendCommand} from './dom-handlers';
         <p class="workspace-stopped" role="status">Workspace stopped. Start it from <a href="#projects">Workspace</a> to run tests.</p>
       } @else {
       <div class="tests-card">
-        <dev-test-catalog>
+        <dev-test-catalog [results]="state.testResults">
           <div test-actions class="test-actions">
             <button class="icon-button dashboard-action" type="button" aria-label="Rerun" title="Rerun"
               [disabled]="startingTests() || state.testResults?.running || !state.testResults?.runnable || busy()" (click)="runTests()">
