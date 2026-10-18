@@ -136,15 +136,17 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.remove-confirm')).toBeNull();http.verify();
   });
 
-  it('confirms an available update before sending its exact version', async () => {
+  for (const pinned of [undefined, 'true']) it(`confirms an available update with pin=${pinned} before sending its exact version`, async () => {
     const root=fixture.nativeElement as HTMLElement;
     expect(root.querySelector('dev-server-update .update-button')).toBeNull();
     const status=fixture.componentInstance.status()!;
-    push({status:{...status, update:{status:'available',latestVersion:'1.99.0'}},environments:[]});
+    push({status:{...status, update:{status:'available',latestVersion:'1.99.0',pinned}},environments:[]});
     fixture.detectChanges();
     (root.querySelector('dev-server-update .update-button') as HTMLButtonElement).click(); fixture.detectChanges();
     const dialog=root.querySelector('dev-server-update dialog') as HTMLDialogElement;
     expect(dialog.open).toBeTrue(); expect(dialog.textContent).toContain('resets local app data');
+    expect(dialog.querySelector('#update-pin') !== null).toBe(pinned === 'true');
+    if (pinned) expect(dialog.textContent).toContain('Updating changes this session only');
     TestBed.inject(HttpTestingController).expectNone('actions/update-devserver');
     (dialog.querySelector('.dialog-cancel') as HTMLButtonElement).click(); fixture.detectChanges();
     expect(dialog.open).toBeFalse();

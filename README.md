@@ -934,11 +934,13 @@ tools and configuration reference, without upgrading the project implicitly.
 
 ### Updating from Devboard
 
-When launched by an update-aware CLI without an explicit version pin, Devboard checks for a newer stable,
+When launched by an update-aware CLI, Devboard checks for a newer stable,
 compatible dev-server release shortly after startup and then hourly. The quiet **Update & restart** action
 appears above the sidebar connection indicator only when an update is available. Offline checks and older
-CLI installations leave the workspace usable and do not show an issue. Snapshot builds and explicit pins
-are excluded.
+CLI installations leave the workspace usable and do not show an issue. Snapshot builds are excluded.
+An explicit version pin does not hide available updates: the confirmation explains that a manual update
+changes this session only. Explicit version settings are preserved and may select the pinned version again
+on a future start.
 
 The dev server delegates version selection and checksum-verified artifact preparation to `fz dev check-update`
 and `fz dev prepare-update`. It downloads before stopping anything and revalidates the selected version.
