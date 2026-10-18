@@ -44,17 +44,22 @@ final class DevServerUpdates implements AutoCloseable {
     @FunctionalInterface interface Cli { Map<String, String> run(List<String> arguments) throws Exception; }
     private final Cli cli;
     private final boolean enabled;
+    private final boolean pinned;
     private final java.util.concurrent.ScheduledExecutorService worker;
     private volatile Map<String, String> status = Map.of("status", "unavailable");
 
     DevServerUpdates(Path directory) {
-        this("latest".equals(System.getProperty("fluxzero.dev.updatePolicy"))
-                && System.getenv("FLUXZERO_DEV_SERVER_VERSION") == null,
+        this(System.getProperty("fluxzero.dev.updatePolicy"), System.getenv("FLUXZERO_DEV_SERVER_VERSION"),
                 args -> runCli(directory, args), true);
     }
 
     DevServerUpdates(boolean enabled, Cli cli, boolean schedule) {
-        this.enabled = enabled;
+        this(enabled ? "latest" : null, null, cli, schedule);
+    }
+
+    DevServerUpdates(String policy, String pinnedVersion, Cli cli, boolean schedule) {
+        this.enabled = "latest".equals(policy) || "pinned".equals(policy);
+        this.pinned = "pinned".equals(policy) || pinnedVersion != null && !pinnedVersion.isBlank();
         this.cli = cli;
         worker = Executors.newSingleThreadScheduledExecutor(r -> {
             var thread = new Thread(r, "dev-server-update-check"); thread.setDaemon(true); return thread;
@@ -64,6 +69,7 @@ final class DevServerUpdates implements AutoCloseable {
 
     Map<String, String> status() {
         var result = new java.util.LinkedHashMap<>(status);
+        if (pinned) result.put("pinned", "true");
         String attempt = System.getProperty(ATTEMPT_PROPERTY);
         String failure = System.getProperty(ERROR_PROPERTY);
         String phase = System.getProperty(PHASE_PROPERTY);
@@ -104,14 +110,25 @@ final class DevServerUpdates implements AutoCloseable {
     private static Map<String, String> runCli(Path directory, List<String> arguments) throws Exception {
         var command = new ArrayList<>(List.of("fz", "dev")); command.addAll(arguments);
         command.addAll(List.of("--project-dir", directory.toString(), "--json"));
-        var result = run(command, directory, arguments.getFirst().equals("check-update")
+        var result = runUpdateCommand(new ProcessBuilder(command).directory(directory.toFile()), arguments.getFirst().equals("check-update")
                 ? Duration.ofSeconds(20) : Duration.ofMinutes(3));
         if (result.length() > 16384) throw new IllegalStateException("Unexpected update response.");
         return new ObjectMapper().readValue(result, new com.fasterxml.jackson.core.type.TypeReference<>() {});
     }
 
     static String run(List<String> command, Path directory, Duration timeout) throws Exception {
-        Process process = new ProcessBuilder(command).directory(directory.toFile()).start();
+        return run(new ProcessBuilder(command).directory(directory.toFile()), timeout);
+    }
+
+    static String runUpdateCommand(ProcessBuilder builder, Duration timeout) throws Exception {
+        // A pin selects the launch version. Checking/preparing a manually confirmed session update
+        // must still resolve newer releases, without changing the parent or future launch settings.
+        builder.environment().remove("FLUXZERO_DEV_SERVER_VERSION");
+        return run(builder, timeout);
+    }
+
+    static String run(ProcessBuilder builder, Duration timeout) throws Exception {
+        Process process = builder.start();
         BoundedOutput stdout = new BoundedOutput(MAX_STDOUT, false);
         BoundedOutput stderr = new BoundedOutput(MAX_DIAGNOSTIC, true);
         Thread stdoutReader = stdout.readFrom(process.getInputStream(), "dev-update-stdout");

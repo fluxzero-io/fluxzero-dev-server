@@ -10,7 +10,7 @@ import {sendCommand} from './dom-handlers';
     </button>
   }
   @if(error() || status()?.update?.error) {<small role="alert">{{error() || status()?.update?.error}}</small>}
-  <dialog #dialog class="maintenance-confirm" aria-labelledby="update-title" aria-describedby="update-versions update-description" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
+  <dialog #dialog class="maintenance-confirm" aria-labelledby="update-title" [attr.aria-describedby]="'update-versions update-description' + (status()?.update?.pinned === 'true' ? ' update-pin' : '')" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
     <h2 id="update-title">Update Devboard?</h2>
     <dl id="update-versions" class="update-versions">
       <dt>Current version:</dt><dd>{{status()?.versions?.devServer || status()?.update?.currentVersion || '—'}}</dd>
@@ -18,6 +18,10 @@ import {sendCommand} from './dom-handlers';
     </dl>
     <p id="update-description">This resets local app data and monitoring history. Startup commands run again.
       Your code and progress are kept.</p>
+    @if(status()?.update?.pinned === 'true') {
+      <p id="update-pin">This session was started with a pinned version. Updating changes this session only.
+        An explicit version setting can select the pinned version again on a future start.</p>
+    }
     <div class="dialog-actions">
       <button type="button" class="secondary-button dialog-cancel" (click)="dialog.close()" autofocus>Cancel</button>
       <button type="button" class="primary-button" [disabled]="disabled() || selected() !== status()?.update?.latestVersion" (click)="confirm()">Update & restart</button>

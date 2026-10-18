@@ -16,6 +16,8 @@ package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.io.TempDir;
 import java.net.URI;
 import java.time.Duration;
@@ -33,12 +35,51 @@ class DevServerUpdatesTest {
         System.clearProperty(DevServerUpdates.PHASE_PROPERTY);
     }
 
-    @Test void pinsNeverCheckOrPrepare() {
+    @Test void launchesWithoutUpdatePolicyNeverCheckOrPrepare() {
         try (var updates = new DevServerUpdates(false, args -> {fail("must not invoke CLI");return Map.of();}, false)) {
             updates.check();
             assertThrows(IllegalStateException.class, () -> updates.prepare("1.99.0"));
         }
     }
+    @ParameterizedTest
+    @CsvSource({"pinned,", "pinned,1.19.3", "latest,1.19.3"})
+    void pinnedLaunchesOfferAndPrepareAnExplicitUpdate(String policy, String pinnedVersion, @TempDir Path root)
+            throws Exception {
+        Path artifact = root.resolve("server.jar");
+        try (var jar = new java.util.jar.JarOutputStream(Files.newOutputStream(artifact))) {
+            jar.putNextEntry(new java.util.jar.JarEntry("io/fluxzero/devserver/DevServerBootstrapMain.class"));
+            jar.closeEntry();
+        }
+        var calls = new java.util.ArrayList<List<String>>();
+        try (var updates = new DevServerUpdates(policy, pinnedVersion, args -> {
+            calls.add(args);
+            return Map.of("status", "available", "latestVersion", "1.99.0", "artifact", artifact.toString());
+        }, false)) {
+            updates.check();
+            assertEquals("available", updates.status().get("status"));
+            assertEquals("true", updates.status().get("pinned"));
+            assertEquals(1, calls.size(), "A background check must not prepare or apply an update");
+            assertThrows(IllegalStateException.class, () -> updates.prepare("1.98.0"));
+            assertEquals(artifact, updates.prepare("1.99.0"));
+            assertEquals(List.of("check-update", "--current-version", DevServerVersion.current()), calls.getFirst());
+            assertEquals(List.of("prepare-update", "--current-version", DevServerVersion.current(),
+                                 "--dev-server-version", "1.99.0"), calls.getLast());
+        }
+    }
+
+    @Test void updateCommandsIgnoreOnlyTheVersionPinInTheirChildEnvironment(@TempDir Path root) throws Exception {
+        var command = fixtureCommand("update-environment");
+        var builder = new ProcessBuilder(command).directory(root.toFile());
+        builder.environment().put("FLUXZERO_DEV_SERVER_VERSION", "1.19.3");
+        builder.environment().put("UPDATE_FIXTURE_CONTEXT", "preserved");
+        assertEquals("unpinned:preserved", DevServerUpdates.runUpdateCommand(builder, Duration.ofSeconds(5)));
+
+        var regular = new ProcessBuilder(command).directory(root.toFile());
+        regular.environment().put("FLUXZERO_DEV_SERVER_VERSION", "1.19.3");
+        regular.environment().put("UPDATE_FIXTURE_CONTEXT", "preserved");
+        assertEquals("1.19.3:preserved", DevServerUpdates.run(regular, Duration.ofSeconds(5)));
+    }
+
     @Test void offlineChecksDoNotClaimAnUpdate() {
         try (var updates = new DevServerUpdates(true, args -> {throw new Exception("offline");}, false)) {
             updates.check(); assertEquals("unavailable", updates.status().get("status"));

@@ -21,7 +21,7 @@ export interface PreviewFrontend {id:string; path:string; state:string;}
 export interface Status {
   publicApplicationUrl?:string;
   frontends?: PreviewFrontend[];
-  update?: {status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; phase?:string; error?:string};
+  update?: {pinned?:string; status?:string; currentVersion?:string; latestVersion?:string; attemptId?:string; phase?:string; error?:string};
   progress?:ProjectProgress;
   versions?: {devServer?: string; fluxzero?: string};
   workspaceIssue?: string;

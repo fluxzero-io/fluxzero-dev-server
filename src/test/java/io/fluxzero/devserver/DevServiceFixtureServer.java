@@ -27,6 +27,11 @@ import java.util.concurrent.CountDownLatch;
 /** Child process used to verify managed support-service lifecycle and environment injection. */
 public class DevServiceFixtureServer {
     public static void main(String[] args) throws Exception {
+        if ("update-environment".equals(args[0])) {
+            System.out.print(System.getenv().getOrDefault("FLUXZERO_DEV_SERVER_VERSION", "unpinned")
+                             + ":" + System.getenv("UPDATE_FIXTURE_CONTEXT"));
+            return;
+        }
         if ("stop".equals(args[0])) {
             Files.writeString(Path.of(args[1]), "stopped");
             return;
