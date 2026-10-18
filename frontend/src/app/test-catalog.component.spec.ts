@@ -20,12 +20,32 @@ describe('Scenario catalog', () => {
     expect(fixture.nativeElement.querySelector('img')).toBeNull();
     expect(fixture.nativeElement.querySelector('.scenario-state').textContent).toBe('Passed');
     const filters=Array.from(fixture.nativeElement.querySelectorAll('.scenario-filters button') as NodeListOf<HTMLButtonElement>);
-    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Skipped','Output']);
+    expect(filters.map(b=>b.textContent?.trim().replace(/\d+$/, '').trim())).toEqual(['All','Passed','Failed','Pending','Skipped','Output']);
     expect(filters[0].getAttribute('aria-pressed')).toBe('true');
     filters[2].click();fixture.detectChanges();
     const request=http.expectOne(r=>r.url==='tests.json');expect(request.request.params.get('state')).toBe('failed');
     request.flush(empty);fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('No failed tests.');
+  });
+  it('opens pending tests from their blue tab count and retains the search filter', () => {
+    http.expectOne(r=>r.url==='tests.json').flush({...empty,counts:{passed:592,failed:0,pending:2,skipped:0}});
+    fixture.detectChanges();
+    const pending=fixture.nativeElement.querySelectorAll('.scenario-filters button')[3] as HTMLButtonElement;
+    expect(pending.textContent).toContain('Pending');
+    expect(pending.querySelector('.pending-count')?.textContent).toBe('2');
+    pending.click();fixture.detectChanges();
+    const request=http.expectOne(r=>r.url==='tests.json');
+    expect(request.request.params.get('state')).toBe('pending');
+    const item={key:'pending',project:'project',suite:'Diagnostics',name:'Still awaiting a result',state:'pending',source:'id'};
+    request.flush({...empty,total:1,counts:{passed:592,pending:2},items:[item]});fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.scenario-name').textContent).toContain('Still awaiting a result');
+    expect(fixture.nativeElement.querySelector('.scenario-state').textContent).toBe('Not completed');
+    const input=fixture.nativeElement.querySelector('input') as HTMLInputElement;
+    input.value='awaiting';input.dispatchEvent(new Event('input'));fixture.detectChanges();
+    const search=http.expectOne(r=>r.url==='tests.json');
+    expect(search.request.params.get('state')).toBe('pending');
+    expect(search.request.params.get('q')).toBe('awaiting');
+    search.flush(empty);
   });
   it('shows durations on the left, omits the default project and preserves named modules', () => {
     http.expectOne(r=>r.url==='tests.json').flush({...empty,total:3,items:[

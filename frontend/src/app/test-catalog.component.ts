@@ -12,7 +12,7 @@ export type {TestCase, TestPage} from './scenario-list.component';
     <div class="scenario-filters" role="group" aria-label="Filter test results">
       @for(option of filters; track option.key) {
         <button type="button" [class.output-tab]="option.key === 'output'" [class.selected]="filter() === option.key" [attr.aria-pressed]="filter() === option.key" (click)="select(option.key)">
-          {{option.label}}@if(option.key !== 'output' && counts(); as data) {<span>{{option.key === 'all' ? total() : data[option.key] || 0}}</span>}
+          {{option.label}}@if(option.key !== 'output' && counts(); as data) {<span [class.pending-count]="option.key === 'pending' && data[option.key] > 0">{{option.key === 'all' ? total() : data[option.key] || 0}}</span>}
         </button>
       }
     </div>
@@ -36,7 +36,7 @@ export type {TestCase, TestPage} from './scenario-list.component';
     .scenario-filters button.selected {border-bottom-color:var(--dashboard-active);color:var(--dashboard-active);}
     .scenario-filters button:hover {background:var(--dashboard-action-bg);color:var(--dashboard-active);}
     .scenario-filters span {display:inline-block;margin-left:6px;padding:1px 5px;border-radius:5px;font-size:11px;background:var(--dashboard-action-bg);font-variant-numeric:tabular-nums;}
-    .scenario-filters .selected span {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
+    .scenario-filters .pending-count,.scenario-filters .selected span {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
     @media(max-width:650px) {
       header {position:relative;min-height:138px;align-items:flex-start;gap:10px;}
       header.showing-output {min-height:86px;}
@@ -60,7 +60,7 @@ export class TestCatalogComponent {
   readonly total = computed(() => Object.values(this.counts() || {}).reduce((a,b)=>a+b,0));
   readonly filter = signal('all');
   readonly query = signal('');
-  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'skipped',label:'Skipped'},{key:'output',label:'Output'}];
+  readonly filters = [{key:'all',label:'All'},{key:'passed',label:'Passed'},{key:'failed',label:'Failed'},{key:'pending',label:'Pending'},{key:'skipped',label:'Skipped'},{key:'output',label:'Output'}];
   @ViewChild(ScenarioListComponent) list?:ScenarioListComponent;
   select(filter:string) {this.filter.set(filter);}
   search(event:Event) {this.query.set((event.target as HTMLInputElement).value);}

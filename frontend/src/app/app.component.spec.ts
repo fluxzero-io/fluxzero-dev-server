@@ -204,17 +204,17 @@ describe('Dev console navigation', () => {
     };
     const counts=()=>Array.from(root.querySelectorAll('.scenario-filters span')).map(e=>e.textContent);
     update(0,0,0);
-    expect(counts()).toEqual(['100','0','0','0']);
+    expect(counts()).toEqual(['100','0','0','100','0']);
     update(18,2,1);
-    expect(counts()).toEqual(['100','18','2','1']);
+    expect(counts()).toEqual(['100','18','2','79','1']);
     expect(root.querySelector('.nav-result-passed')?.textContent).toBe('18');
     expect(root.querySelector('.nav-result-pending')?.textContent).toBe('79');
     // An older HTTP response must not replace the more recent pushed counters.
     slowList.flush({items:[],total:0,offset:0,pageSize:50,counts:{passed:100,failed:0,skipped:0,pending:0}});
     fixture.detectChanges();
-    expect(counts()).toEqual(['100','18','2','1']);
+    expect(counts()).toEqual(['100','18','2','79','1']);
     openOutput();update(96,3,1,false);
-    expect(counts()).toEqual(['100','96','3','1']);
+    expect(counts()).toEqual(['100','96','3','0','1']);
     expect(root.querySelector('.nav-result-passed')?.textContent).toBe('96');
     http.expectNone(r=>r.url==='tests.json');
   });
