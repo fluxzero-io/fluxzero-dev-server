@@ -116,6 +116,19 @@ final class CompilePipeline {
     }
 
     private CompileResult compileFast(CompilePlan plan, MavenBuildIntrospection build) {
+        try {
+            // Fast compiles must supersede older test builds too: a Maven compiler may already have
+            // read the previous sources and can otherwise publish stale classes after a newer save.
+            return coordinator.withCompileLock(() -> compileFastLocked(plan, build));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return new CompileResult(false, null, "compile interrupted");
+        } catch (Exception e) {
+            return new CompileResult(false, null, BuildPublication.describe(e));
+        }
+    }
+
+    private CompileResult compileFastLocked(CompilePlan plan, MavenBuildIntrospection build) {
         BuildSnapshot base = activeSnapshot;
         if (base == null) {
             return compileMaven(new CompilePlan("maven-compile", List.of("compile"), true,
@@ -129,6 +142,11 @@ final class CompilePipeline {
             FastJavaCompiler.Result result = FastJavaCompiler.compile(
                     build.mainJavaSources(), build, classesDirectory, staging.resolve("generated-sources"));
             if (result.success()) {
+                // Maven's subsequent test lifecycle reads its ordinary output directory. Synchronize
+                // the successful output under the same lock instead of relying on source timestamps:
+                // an interrupted compiler's old output may have a timestamp newer than the edit.
+                copyDirectory(classesDirectory, build.classesDirectory());
+                copyDirectory(staging.resolve("generated-sources"), build.generatedSourcesDirectory());
                 CompileTiming timing = new CompileTiming(plan.mode(), result.millis());
                 List<ApplicationBuild> applications = base.applications().stream()
                         .map(application -> application.withLocations(

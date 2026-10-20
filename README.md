@@ -830,6 +830,16 @@ is highlighted. Theme preferences are saved in browser local storage for the cur
 Environment restart always opens a confirmation dialog. Cancel or Escape dismisses it without restarting.
 Confirmation cannot be disabled, including by preferences saved in earlier versions. Old Settings links redirect to Projects.
 
+### Fast compilation and test consistency
+
+Opt-in `fastCompiler` Java reloads compile the complete main source set using Maven-derived
+metadata. They share the build coordinator with Maven compilation and tests: an older running test
+build is interrupted before the fast compile starts. A successful fast compile also updates Maven's
+ordinary class and generated-source outputs while holding that lock, so the next test lifecycle
+sees the current bytecode even when an earlier compiler finished writing an old class after a save.
+Running applications retain their immutable build snapshots. Failed fast compilation still uses
+the existing Maven fallback; partial fast output is never copied into the test classpath.
+
 ### Live test progress and output
 
 **Tests** has its own sidebar page. Named scenarios and their latest outcomes appear in one card.

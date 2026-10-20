@@ -19,11 +19,19 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -91,6 +99,110 @@ class CompilePipelineTest {
         assertTrue(result.detail().contains("javac-fast"), result.detail());
         assertTrue(Files.isRegularFile(result.snapshot().classesDirectory().resolve("com/acme/OrderHandler.class")));
         assertFalse(Files.exists(projectDirectory.resolve("compile-runs.log")));
+    }
+
+    @Test
+    void fastCompileRefreshesNewerButStaleTestClasspath(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        CompilePipeline pipeline = fastPipeline(projectDirectory, ignored -> { });
+        Path source = writeSource(projectDirectory, "OrderHandler", """
+                package com.acme;
+                public class OrderHandler { }
+                """);
+        CompileResult baseline = pipeline.compile(Set.of(source));
+        assertTrue(baseline.success(), baseline.detail());
+        pipeline.activate(baseline.snapshot());
+        Path relative = Path.of("com/acme/OrderHandler.class");
+        Path testClasspath = projectDirectory.resolve("target/classes");
+        Files.createDirectories(testClasspath.resolve("com/acme"));
+        Files.copy(baseline.snapshot().classesDirectory().resolve(relative), testClasspath.resolve(relative),
+                   StandardCopyOption.REPLACE_EXISTING);
+        Files.writeString(testClasspath.resolve("application.properties"), "preserve=true");
+
+        // A compiler that read the old source can finish after this save. Maven's timestamp check then
+        // considers its stale output current; changing only an annotation does not change the Java API.
+        Files.writeString(source, """
+                package com.acme;
+                @Deprecated(since = "current")
+                public class OrderHandler { }
+                """);
+        Files.setLastModifiedTime(source, FileTime.fromMillis(1));
+        CompileResult current = pipeline.compile(Set.of(source));
+        assertTrue(current.success(), current.detail());
+        assertEquals("current", annotationVersion(current.snapshot().classesDirectory()));
+        assertEquals("current", annotationVersion(testClasspath));
+        assertNull(annotationVersion(baseline.snapshot().classesDirectory()), "active snapshots stay immutable");
+        assertEquals("preserve=true", Files.readString(testClasspath.resolve("application.properties")));
+        assertFalse(Files.exists(projectDirectory.resolve("compile-runs.log")));
+    }
+
+    @Test
+    void fastCompileCancelsAnOldTestBuildBeforePublishing(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        try (MavenBuildCoordinator coordinator = new MavenBuildCoordinator();
+             var executor = Executors.newSingleThreadExecutor()) {
+            CompilePipeline pipeline = fastPipeline(projectDirectory, coordinator, ignored -> { });
+            Path source = writeSource(projectDirectory, "OrderHandler", """
+                    package com.acme;
+                    public class OrderHandler { }
+                    """);
+            var ready = new CountDownLatch(1);
+            var oldTest = executor.submit(() -> coordinator.runTest(
+                    List.of(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                            "-cp", System.getProperty("java.class.path"), WaitingTestBuild.class.getName()),
+                    projectDirectory, Map.of(), line -> {
+                        if (line.equals("ready")) ready.countDown();
+                    }));
+            try {
+                assertTrue(ready.await(10, TimeUnit.SECONDS), "test build started");
+                CompileResult result = pipeline.compile(Set.of(source));
+                assertTrue(result.success(), result.detail());
+                assertTrue(oldTest.get(10, TimeUnit.SECONDS).cancelledByCompile());
+            } finally {
+                coordinator.close();
+            }
+        }
+    }
+
+    @Test
+    void failedFastCompileDoesNotPublishPartialTestOutput(@TempDir Path projectDirectory) throws Exception {
+        installFakeMaven(projectDirectory);
+        CompilePipeline pipeline = fastPipeline(projectDirectory, ignored -> { });
+        Path source = writeSource(projectDirectory, "OrderHandler", """
+                package com.acme;
+                @Deprecated(since = "baseline")
+                public class OrderHandler { }
+                """);
+        CompileResult baseline = pipeline.compile(Set.of(source));
+        assertTrue(baseline.success(), baseline.detail());
+        pipeline.activate(baseline.snapshot());
+        Files.writeString(source, """
+                package com.acme;
+                @Deprecated(since = "partial")
+                public class OrderHandler { }
+                """);
+        Path broken = writeSource(projectDirectory, "Broken", "not Java");
+        Files.writeString(projectDirectory.resolve("mvnw"), "#!/bin/sh\nexit 1\n");
+
+        CompileResult failed = pipeline.compile(Set.of(source, broken));
+        assertFalse(failed.success());
+        assertNull(failed.snapshot());
+        assertEquals("baseline", annotationVersion(projectDirectory.resolve("target/classes")));
+        assertEquals("baseline", annotationVersion(baseline.snapshot().classesDirectory()));
+    }
+
+    public static class WaitingTestBuild {
+        public static void main(String[] args) throws Exception {
+            System.out.println("ready");
+            new CountDownLatch(1).await();
+        }
+    }
+
+    private static String annotationVersion(Path directory) throws Exception {
+        try (var loader = new URLClassLoader(new URL[]{directory.toUri().toURL()}, null)) {
+            Deprecated annotation = loader.loadClass("com.acme.OrderHandler").getAnnotation(Deprecated.class);
+            return annotation == null ? null : annotation.since();
+        }
     }
 
     @Test
@@ -332,6 +444,11 @@ class CompilePipelineTest {
     }
 
     private static CompilePipeline fastPipeline(Path projectDirectory, Consumer<String> output) throws Exception {
+        return fastPipeline(projectDirectory, new MavenBuildCoordinator(), output);
+    }
+
+    private static CompilePipeline fastPipeline(Path projectDirectory, MavenBuildCoordinator coordinator,
+                                                Consumer<String> output) throws Exception {
         Path metadataDirectory = projectDirectory.resolve("target/fluxzero-dev");
         Files.createDirectories(metadataDirectory);
         Files.writeString(metadataDirectory.resolve("runtime-classpath.txt"), "");
@@ -339,7 +456,7 @@ class CompilePipelineTest {
         Path buildDirectory = projectDirectory.resolve(DevSessionStore.DEV_DIRECTORY).resolve("builds/baseline");
         Path classesDirectory = buildDirectory.resolve("classes");
         Files.createDirectories(classesDirectory);
-        CompilePipeline pipeline = new CompilePipeline(config(projectDirectory, true), output);
+        CompilePipeline pipeline = new CompilePipeline(config(projectDirectory, true), coordinator, output);
         pipeline.activate(new BuildSnapshot(0, buildDirectory, classesDirectory, List.of(), Instant.now()));
         return pipeline;
     }
