@@ -47,8 +47,8 @@ class MavenReactorTest {
         compileMain(project.resolve("app"), "com.acme.AppMain");
         compileMain(project.resolve("audit"), "com.acme.AuditMain");
         Files.createDirectories(project.resolve("core/target/classes"));
-        writeClasspath(project.resolve("app"), project.resolve("app-dependency.jar"));
-        writeClasspath(project.resolve("audit"), project.resolve("audit-dependency.jar"));
+        writeClasspath(project.resolve("app"), project.resolve("core/target/classes"), project.resolve("app-dependency.jar"));
+        writeClasspath(project.resolve("audit"), project.resolve("core/target/classes"), project.resolve("audit-dependency.jar"));
 
         List<ApplicationBuild> applications = MavenReactor.load(project).applications(config(project));
 
@@ -59,6 +59,67 @@ class MavenReactorTest {
                      app.classesDirectories());
         assertFalse(app.classesDirectories().contains(project.resolve("audit/target/classes")));
         assertEquals(List.of(project.resolve("app-dependency.jar")), app.runtimeClasspath());
+    }
+
+    @Test
+    void keepsTestOnlyReactorModelsOutOfTheApplicationRuntime(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>contracts</module><module>management</module><module>app</module></modules>
+                """));
+        writeModule(project, "contracts", "");
+        writeModule(project, "management", dependency("contracts"));
+        writeModule(project, "app", """
+                <dependencies>
+                  <dependency><groupId>com.acme</groupId><artifactId>contracts</artifactId><version>1</version></dependency>
+                  <dependency><groupId>com.acme</groupId><artifactId>management</artifactId><version>1</version><scope>test</scope></dependency>
+                </dependencies>
+                """);
+        compileMain(project.resolve("contracts"), "com.acme.SharedContract");
+        compileMain(project.resolve("management"), "com.acme.ManagementModel");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        compileTestMain(project.resolve("app"), "com.acme.TestApp");
+        writeClasspath(project.resolve("app"), project.resolve("contracts/target/classes"));
+        writeTestClasspath(project.resolve("app"), project.resolve("contracts/target/classes"),
+                           project.resolve("management/target/classes"));
+
+        MavenReactor reactor = MavenReactor.load(project);
+        ApplicationBuild application = reactor.applications(config(project, List.of("app"))).getFirst();
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("contracts/target/classes")),
+                     application.classesDirectories());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.SharedContract", true, loader));
+            assertThrows(ClassNotFoundException.class,
+                         () -> Class.forName("com.acme.ManagementModel", true, loader));
+        }
+        ApplicationBuild testApplication = reactor.applications(config(project, List.of("TestApp"))).getFirst();
+        try (URLClassLoader loader = classLoader(testApplication)) {
+            assertNotNull(Class.forName("com.acme.ManagementModel", true, loader));
+        }
+    }
+
+    @Test
+    void followsMavensResolvedTransitiveExclusions(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>optional</module><module>contracts</module><module>app</module></modules>
+                """));
+        writeModule(project, "optional", "");
+        writeModule(project, "contracts", dependency("optional"));
+        writeModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>contracts</artifactId><version>1</version>
+                  <exclusions><exclusion><groupId>com.acme</groupId><artifactId>optional</artifactId></exclusion></exclusions>
+                </dependency></dependencies>
+                """);
+        compileMain(project.resolve("optional"), "com.acme.OptionalModel");
+        compileMain(project.resolve("contracts"), "com.acme.SharedContract");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("contracts/target/classes"));
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("contracts/target/classes")),
+                     application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty(), "Reactor outputs must use the immutable staged copy");
     }
 
     @Test
@@ -256,6 +317,7 @@ class MavenReactorTest {
                 """);
         compileMain(project.resolve("common"), "com.acme.CommonMain");
         compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"));
 
         ApplicationBuild application = MavenReactor.load(project)
                 .applications(config(project, List.of("app"))).getFirst();
@@ -297,6 +359,7 @@ class MavenReactorTest {
                 """);
         compileMain(project.resolve("common"), "com.acme.CommonMain");
         compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"));
 
         ApplicationBuild application = MavenReactor.load(project)
                 .applications(config(project, List.of("app"))).getFirst();

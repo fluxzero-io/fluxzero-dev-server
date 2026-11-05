@@ -832,6 +832,12 @@ Confirmation cannot be disabled, including by preferences saved in earlier versi
 
 ### Fast compilation and test consistency
 
+For Maven reactors, each application uses Maven's resolved runtime classpath to select
+which local module outputs enter its immutable build snapshot. Test-only modules and
+excluded dependencies stay outside ordinary applications; explicitly selected test
+applications use the resolved test classpath. Matching uses the exact artifact identity
+or the same classes directory, including canonicalized workspace paths.
+
 Opt-in `fastCompiler` Java reloads compile the complete main source set using Maven-derived
 metadata. They share the build coordinator with Maven compilation and tests: an older running test
 build is interrupted before the fast compile starts. A successful fast compile also updates Maven's

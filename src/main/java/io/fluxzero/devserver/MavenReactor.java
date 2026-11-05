@@ -20,6 +20,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -121,7 +122,10 @@ final class MavenReactor {
             Set<String> usedNames = new LinkedHashSet<>();
             Map<Candidate, ApplicationBuild> discovered = new LinkedHashMap<>();
             for (Candidate candidate : activeCandidates) {
-                List<Module> reactorDependencies = dependencyClosure(candidate.module());
+                List<Path> runtimeClasspath = readClasspath(candidate.testApplication()
+                                                                     ? candidate.module().testClasspathFile()
+                                                                     : candidate.module().classpathFile());
+                List<Module> reactorDependencies = dependencyClosure(candidate.module(), runtimeClasspath);
                 List<Path> classes = reactorDependencies.stream()
                         .map(Module::classesDirectory).filter(Files::isDirectory).toList();
                 if (candidate.testApplication() && Files.isDirectory(candidate.module().testClassesDirectory())) {
@@ -135,9 +139,6 @@ final class MavenReactor {
                 String applicationName = single && !candidate.testApplication() ? config.applicationName()
                         : uniqueName(baseName, candidate.module().relativeName(), usedNames);
                 usedNames.add(applicationName);
-                List<Path> runtimeClasspath = readClasspath(candidate.testApplication()
-                                                                     ? candidate.module().testClasspathFile()
-                                                                     : candidate.module().classpathFile());
                 discovered.put(candidate, new ApplicationBuild(
                         applicationName, candidate.module().relativeName(), candidate.mainClass(), classes,
                         withoutReactorArtifacts(runtimeClasspath, reactorDependencies),
@@ -235,20 +236,22 @@ final class MavenReactor {
         return separator < 0 ? className : className.substring(separator + 1);
     }
 
-    private List<Module> dependencyClosure(Module application) {
+    private List<Module> dependencyClosure(Module application, List<Path> resolvedClasspath) {
         LinkedHashSet<Module> result = new LinkedHashSet<>();
-        collectDependencies(application, result);
+        collectDependencies(application, result, resolvedClasspath);
         return List.copyOf(result);
     }
 
-    private void collectDependencies(Module module, Set<Module> result) {
+    private void collectDependencies(Module module, Set<Module> result, List<Path> resolvedClasspath) {
         if (!result.add(module)) {
             return;
         }
         for (ArtifactKey dependency : module.dependencies()) {
             Module dependencyModule = modulesByArtifact.get(dependency);
-            if (dependencyModule != null) {
-                collectDependencies(dependencyModule, result);
+            // Maven already resolved scopes, optional dependencies and exclusions.
+            // Replace only artifacts actually present in this application's classpath.
+            if (dependencyModule != null && resolvedClasspath.stream().anyMatch(dependencyModule::matchesClasspathEntry)) {
+                collectDependencies(dependencyModule, result, resolvedClasspath);
             }
         }
     }
@@ -421,7 +424,7 @@ final class MavenReactor {
 
     private static List<Path> withoutReactorArtifacts(List<Path> classpath, List<Module> reactorModules) {
         return classpath.stream()
-                .filter(entry -> reactorModules.stream().noneMatch(module -> module.matchesMainArtifact(entry)))
+                .filter(entry -> reactorModules.stream().noneMatch(module -> module.matchesClasspathEntry(entry)))
                 .toList();
     }
 
@@ -464,6 +467,17 @@ final class MavenReactor {
         String relativeName() {
             String value = relativeDirectory.toString().replace('\\', '/');
             return value.isBlank() ? "." : value;
+        }
+
+        boolean matchesClasspathEntry(Path path) {
+            if (path == null) return false;
+            if (classesDirectory().equals(path.toAbsolutePath().normalize()) || matchesMainArtifact(path)) return true;
+            try {
+                // Maven may canonicalize a workspace reached through a symlink.
+                return Files.isDirectory(path) && Files.isSameFile(classesDirectory(), path);
+            } catch (IOException ignored) {
+                return false;
+            }
         }
 
         boolean matchesMainArtifact(Path path) {
