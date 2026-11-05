@@ -15,6 +15,8 @@
 package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
@@ -47,8 +49,8 @@ class MavenReactorTest {
         compileMain(project.resolve("app"), "com.acme.AppMain");
         compileMain(project.resolve("audit"), "com.acme.AuditMain");
         Files.createDirectories(project.resolve("core/target/classes"));
-        writeClasspath(project.resolve("app"), project.resolve("app-dependency.jar"));
-        writeClasspath(project.resolve("audit"), project.resolve("audit-dependency.jar"));
+        writeClasspath(project.resolve("app"), project.resolve("core/target/classes"), project.resolve("app-dependency.jar"));
+        writeClasspath(project.resolve("audit"), project.resolve("core/target/classes"), project.resolve("audit-dependency.jar"));
 
         List<ApplicationBuild> applications = MavenReactor.load(project).applications(config(project));
 
@@ -59,6 +61,126 @@ class MavenReactorTest {
                      app.classesDirectories());
         assertFalse(app.classesDirectories().contains(project.resolve("audit/target/classes")));
         assertEquals(List.of(project.resolve("app-dependency.jar")), app.runtimeClasspath());
+    }
+
+    @Test
+    void keepsTestOnlyReactorModelsOutOfTheApplicationRuntime(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>contracts</module><module>management</module><module>app</module></modules>
+                """));
+        writeModule(project, "contracts", "");
+        writeModule(project, "management", dependency("contracts"));
+        writeModule(project, "app", """
+                <dependencies>
+                  <dependency><groupId>com.acme</groupId><artifactId>contracts</artifactId><version>1</version></dependency>
+                  <dependency><groupId>com.acme</groupId><artifactId>management</artifactId><version>1</version><scope>test</scope></dependency>
+                </dependencies>
+                """);
+        compileMain(project.resolve("contracts"), "com.acme.SharedContract");
+        compileMain(project.resolve("management"), "com.acme.ManagementModel");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        compileTestMain(project.resolve("app"), "com.acme.TestApp");
+        writeClasspath(project.resolve("app"), project.resolve("contracts/target/classes"));
+        writeTestClasspath(project.resolve("app"), project.resolve("contracts/target/classes"),
+                           project.resolve("management/target/classes"));
+
+        MavenReactor reactor = MavenReactor.load(project);
+        ApplicationBuild application = reactor.applications(config(project, List.of("app"))).getFirst();
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("contracts/target/classes")),
+                     application.classesDirectories());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.SharedContract", true, loader));
+            assertThrows(ClassNotFoundException.class,
+                         () -> Class.forName("com.acme.ManagementModel", true, loader));
+        }
+        ApplicationBuild testApplication = reactor.applications(config(project, List.of("TestApp"))).getFirst();
+        try (URLClassLoader loader = classLoader(testApplication)) {
+            assertNotNull(Class.forName("com.acme.ManagementModel", true, loader));
+        }
+    }
+
+    @Test
+    void followsMavensResolvedTransitiveExclusions(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>optional</module><module>contracts</module><module>app</module></modules>
+                """));
+        writeModule(project, "optional", "");
+        writeModule(project, "contracts", dependency("optional"));
+        writeModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>contracts</artifactId><version>1</version>
+                  <exclusions><exclusion><groupId>com.acme</groupId><artifactId>optional</artifactId></exclusion></exclusions>
+                </dependency></dependencies>
+                """);
+        compileMain(project.resolve("optional"), "com.acme.OptionalModel");
+        compileMain(project.resolve("contracts"), "com.acme.SharedContract");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("contracts/target/classes"));
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("contracts/target/classes")),
+                     application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty(), "Reactor outputs must use the immutable staged copy");
+    }
+
+    @Test
+    void snapshotsResolvedModulesWithoutReconstructingPomDependencies(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>managed</module><module>profiled</module><module>app</module></modules>
+                <dependencyManagement><dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>managed</artifactId><version>1</version>
+                </dependency></dependencies></dependencyManagement>
+                """));
+        writeModule(project, "managed", "");
+        writeModule(project, "profiled", "");
+        writeInheritedModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>managed</artifactId>
+                </dependency></dependencies>
+                <profiles><profile><id>local</id><dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>profiled</artifactId><version>1</version>
+                </dependency></dependencies></profile></profiles>
+                """);
+        compileMain(project.resolve("managed"), "com.acme.Managed");
+        compileMain(project.resolve("profiled"), "com.acme.Profiled");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        // The resolved order, including a profile dependency, is Maven's decision.
+        writeClasspath(project.resolve("app"), project.resolve("profiled/target/classes"),
+                       project.resolve("managed/target/classes"));
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("profiled/target/classes"),
+                             project.resolve("managed/target/classes")), application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.Managed", true, loader));
+        }
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void snapshotsCanonicalReactorDirectoriesOnlyOnce(@TempDir Path directory) throws Exception {
+        Path project = Files.createDirectories(directory.resolve("workspace"));
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("common"));
+        compileMain(project.resolve("common"), "com.acme.Common");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path alias = Files.createSymbolicLink(directory.resolve("alias"), project);
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes").toRealPath(),
+                       alias.resolve("common/target/classes"));
+
+        ApplicationBuild application = MavenReactor.load(alias)
+                .applications(config(alias, List.of("app"))).getFirst();
+
+        assertEquals(List.of(alias.resolve("app/target/classes"), alias.resolve("common/target/classes")),
+                     application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty(), "No mutable directory may escape staging");
     }
 
     @Test
@@ -150,7 +272,7 @@ class MavenReactorTest {
     }
 
     @Test
-    void excludesInstalledReactorArtifactsFromTestApplicationClasspath(@TempDir Path project) throws Exception {
+    void preservesResolvedJarEvenWhenItsCoordinatesMatchALocalModule(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
                 <modules><module>core</module><module>app</module></modules>
                 """));
@@ -159,20 +281,23 @@ class MavenReactorTest {
         compileMain(project.resolve("core"), "com.acme.CurrentHandler");
         compileMain(project.resolve("app"), "com.acme.AppSupport");
         compileTestMain(project.resolve("app"), "com.acme.Rebound");
-        Path staleReactorArtifact = project.resolve("repository/com/acme/core/1/core-1.jar");
+        Path resolvedArtifact = project.resolve("repository/com/acme/core/1/core-1.jar");
         Path externalTestDependency = project.resolve("repository/com/external/testing/2/testing-2.jar");
-        Files.createDirectories(staleReactorArtifact.getParent());
-        Files.createDirectories(externalTestDependency.getParent());
-        Files.writeString(staleReactorArtifact, "stale reactor output");
-        Files.writeString(externalTestDependency, "external test dependency");
-        writeTestClasspath(project.resolve("app"), staleReactorArtifact, externalTestDependency);
+        writeJarWithClass(resolvedArtifact, "com.acme.ResolvedHandler");
+        writeJarWithClass(externalTestDependency, "com.external.TestSupport");
+        writeTestClasspath(project.resolve("app"), resolvedArtifact, externalTestDependency);
 
         ApplicationBuild rebound = MavenReactor.load(project)
                 .applications(config(project, List.of("rebound"))).getFirst();
 
-        assertEquals(List.of(project.resolve("app/target/test-classes"), project.resolve("app/target/classes"),
-                             project.resolve("core/target/classes")), rebound.classesDirectories());
-        assertEquals(List.of(externalTestDependency), rebound.runtimeClasspath());
+        assertEquals(List.of(project.resolve("app/target/test-classes"), project.resolve("app/target/classes")),
+                     rebound.classesDirectories());
+        assertEquals(List.of(resolvedArtifact, externalTestDependency), rebound.runtimeClasspath());
+        try (URLClassLoader loader = classLoader(rebound)) {
+            assertNotNull(Class.forName("com.acme.ResolvedHandler", true, loader));
+            assertNotNull(Class.forName("com.external.TestSupport", true, loader));
+            assertThrows(ClassNotFoundException.class, () -> Class.forName("com.acme.CurrentHandler", true, loader));
+        }
     }
 
     @Test
@@ -193,13 +318,10 @@ class MavenReactorTest {
                 """);
         compileMain(project.resolve("common"), "com.flowmaps.common.ReactorCommon");
         compileMain(project.resolve("app"), "com.flowmaps.AppMain");
-        Path installedReactorArtifact = project.resolve(
-                "repository/com/flowmaps/common/1/common-1.jar");
         Path externalSnapshot = project.resolve(
                 "repository/io/fluxzero/common/0-SNAPSHOT/common-0-SNAPSHOT.jar");
-        writeJarWithClass(installedReactorArtifact, "com.flowmaps.common.StaleCommon");
         writeJarWithClass(externalSnapshot, "io.fluxzero.common.ExternalCommon");
-        writeClasspath(project.resolve("app"), installedReactorArtifact, externalSnapshot);
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"), externalSnapshot);
 
         ApplicationBuild application = MavenReactor.load(project)
                 .applications(config(project, List.of("app"))).getFirst();
@@ -210,6 +332,47 @@ class MavenReactorTest {
         try (URLClassLoader classLoader = classLoader(application)) {
             assertNotNull(Class.forName("com.flowmaps.common.ReactorCommon", true, classLoader));
             assertNotNull(Class.forName("io.fluxzero.common.ExternalCommon", true, classLoader));
+        }
+    }
+
+    @Test
+    void keepsExternalArtifactWhenItsGroupOnlyEndsWithTheReactorGroup(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("org.com.acme", "common", null, null));
+        compileMain(project.resolve("common"), "com.acme.LocalModel");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path external = project.resolve("repository/org/com/acme/common/1/common-1.jar");
+        writeJarWithClass(external, "com.external.Library");
+        writeClasspath(project.resolve("app"), external);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes")), application.classesDirectories());
+        assertEquals(List.of(external), application.runtimeClasspath());
+    }
+
+    @Test
+    void retainsResolvedArtifactWhenTheLocalModuleHasNoClassesOutput(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("common"));
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path installed = project.resolve("repository/com/acme/common/1/common-1.jar");
+        writeJarWithClass(installed, "com.acme.Library");
+        writeClasspath(project.resolve("app"), installed);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(installed), application.runtimeClasspath());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.Library", true, loader));
         }
     }
 
@@ -256,6 +419,7 @@ class MavenReactorTest {
                 """);
         compileMain(project.resolve("common"), "com.acme.CommonMain");
         compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"));
 
         ApplicationBuild application = MavenReactor.load(project)
                 .applications(config(project, List.of("app"))).getFirst();
@@ -285,6 +449,57 @@ class MavenReactorTest {
     }
 
     @Test
+    void preservesClassifiersAndArtifactTypesAlongsideTheMainSnapshot(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("common"));
+        compileMain(project.resolve("common"), "com.acme.Current");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path mainJar = project.resolve("repository/com/acme/common/1/common-1.jar");
+        Path testJar = mainJar.resolveSibling("common-1-tests.jar");
+        Path zip = mainJar.resolveSibling("common-1.zip");
+        writeJarWithClass(testJar, "com.acme.TestSupport");
+        writeJarWithClass(zip, "com.acme.OtherType");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"), testJar, zip);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(testJar, zip), application.runtimeClasspath());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.Current", true, loader));
+            assertNotNull(Class.forName("com.acme.TestSupport", true, loader));
+            assertNotNull(Class.forName("com.acme.OtherType", true, loader));
+        }
+    }
+
+    @Test
+    void stagesResolvedTestJarDirectoryWithoutAddingItsMainClasses(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("com.acme", "common", "test-jar", "tests"));
+        compileMain(project.resolve("common"), "com.acme.MainOnly");
+        compileTestMain(project.resolve("common"), "com.acme.TestSupport");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/test-classes"));
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("common/target/test-classes")),
+                     application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.TestSupport", true, loader));
+            assertThrows(ClassNotFoundException.class, () -> Class.forName("com.acme.MainOnly", true, loader));
+        }
+    }
+
+    @Test
     void resolvesInheritedProjectGroupForReactorDependencies(@TempDir Path project) throws Exception {
         Files.writeString(project.resolve("pom.xml"), pom("com.acme", "root", "pom", """
                 <modules><module>common</module><module>app</module></modules>
@@ -297,6 +512,7 @@ class MavenReactorTest {
                 """);
         compileMain(project.resolve("common"), "com.acme.CommonMain");
         compileMain(project.resolve("app"), "com.acme.AppMain");
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes"));
 
         ApplicationBuild application = MavenReactor.load(project)
                 .applications(config(project, List.of("app"))).getFirst();

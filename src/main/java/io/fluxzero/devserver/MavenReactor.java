@@ -20,6 +20,7 @@ import org.w3c.dom.Node;
 import org.w3c.dom.NodeList;
 
 import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -29,22 +30,16 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 final class MavenReactor {
     static final Path CLASSPATH_FILE = Path.of("target/fluxzero-dev/runtime-classpath.txt");
     static final Path TEST_CLASSPATH_FILE = Path.of("target/fluxzero-dev/test-classpath.txt");
 
-    private final Path root;
     private final List<Module> modules;
-    private final Map<ArtifactKey, Module> modulesByArtifact;
 
-    private MavenReactor(Path root, List<Module> modules) {
-        this.root = root;
+    private MavenReactor(List<Module> modules) {
         this.modules = List.copyOf(modules);
-        Map<ArtifactKey, Module> byArtifact = new LinkedHashMap<>();
-        modules.stream().filter(module -> module.mainArtifact() != null)
-                .forEach(module -> byArtifact.putIfAbsent(module.mainArtifact(), module));
-        this.modulesByArtifact = Map.copyOf(byArtifact);
     }
 
     static MavenReactor load(Path root) {
@@ -55,10 +50,10 @@ final class MavenReactor {
             if (modules.isEmpty()) {
                 Path normalized = root.toAbsolutePath().normalize();
                 Path fileName = normalized.getFileName();
-                modules.add(new Module(normalized, Path.of(""), null,
-                                       fileName == null ? "app" : fileName.toString(), null, "jar", List.of(), null));
+                modules.add(new Module(normalized, Path.of(""),
+                                       fileName == null ? "app" : fileName.toString(), null));
             }
-            return new MavenReactor(root.toAbsolutePath().normalize(), modules);
+            return new MavenReactor(modules);
         } catch (Exception e) {
             throw new IllegalStateException("Could not inspect Maven reactor: " + e.getMessage(), e);
         }
@@ -121,26 +116,19 @@ final class MavenReactor {
             Set<String> usedNames = new LinkedHashSet<>();
             Map<Candidate, ApplicationBuild> discovered = new LinkedHashMap<>();
             for (Candidate candidate : activeCandidates) {
-                List<Module> reactorDependencies = dependencyClosure(candidate.module());
-                List<Path> classes = reactorDependencies.stream()
-                        .map(Module::classesDirectory).filter(Files::isDirectory).toList();
-                if (candidate.testApplication() && Files.isDirectory(candidate.module().testClassesDirectory())) {
-                    List<Path> testClasses = new ArrayList<>();
-                    testClasses.add(candidate.module().testClassesDirectory());
-                    testClasses.addAll(classes);
-                    classes = List.copyOf(testClasses);
-                }
+                List<Path> runtimeClasspath = readClasspath(candidate.testApplication()
+                                                                     ? candidate.module().testClasspathFile()
+                                                                     : candidate.module().classpathFile());
+                List<Path> classes = resolvedClasses(candidate, runtimeClasspath);
                 String baseName = candidate.testApplication() ? simpleName(candidate.mainClass())
                         : candidate.module().artifactId();
                 String applicationName = single && !candidate.testApplication() ? config.applicationName()
                         : uniqueName(baseName, candidate.module().relativeName(), usedNames);
                 usedNames.add(applicationName);
-                List<Path> runtimeClasspath = readClasspath(candidate.testApplication()
-                                                                     ? candidate.module().testClasspathFile()
-                                                                     : candidate.module().classpathFile());
                 discovered.put(candidate, new ApplicationBuild(
                         applicationName, candidate.module().relativeName(), candidate.mainClass(), classes,
-                        withoutReactorArtifacts(runtimeClasspath, reactorDependencies),
+                        runtimeClasspath.stream().filter(entry -> classes.stream()
+                                .noneMatch(output -> sameDirectory(output, entry))).toList(),
                         candidate.testApplication()));
             }
             List<ApplicationBuild> result = selectedCandidates.isEmpty()
@@ -235,21 +223,31 @@ final class MavenReactor {
         return separator < 0 ? className : className.substring(separator + 1);
     }
 
-    private List<Module> dependencyClosure(Module application) {
-        LinkedHashSet<Module> result = new LinkedHashSet<>();
-        collectDependencies(application, result);
-        return List.copyOf(result);
+    private List<Path> resolvedClasses(Candidate application, List<Path> resolvedClasspath) {
+        LinkedHashSet<Path> result = new LinkedHashSet<>();
+        if (application.testApplication()) {
+            result.add(application.module().testClassesDirectory());
+        }
+        result.add(application.module().classesDirectory());
+        List<Path> outputs = modules.stream().flatMap(module -> Stream.of(
+                module.classesDirectory(), module.testClassesDirectory())).filter(Files::isDirectory).toList();
+        // Maven selects the dependencies, including their versions, classifiers and scopes.
+        // Stage only the directories it resolved; a repository JAR must remain that exact artifact.
+        for (Path entry : resolvedClasspath) {
+            outputs.stream().filter(output -> sameDirectory(output, entry)).findFirst().ifPresent(result::add);
+        }
+        return result.stream().filter(Files::isDirectory).toList();
     }
 
-    private void collectDependencies(Module module, Set<Module> result) {
-        if (!result.add(module)) {
-            return;
+    private static boolean sameDirectory(Path output, Path entry) {
+        if (output.equals(entry.toAbsolutePath().normalize())) {
+            return true;
         }
-        for (ArtifactKey dependency : module.dependencies()) {
-            Module dependencyModule = modulesByArtifact.get(dependency);
-            if (dependencyModule != null) {
-                collectDependencies(dependencyModule, result);
-            }
+        try {
+            // Maven may canonicalize a workspace reached through a symlink.
+            return Files.isDirectory(entry) && Files.isSameFile(output, entry);
+        } catch (IOException ignored) {
+            return false;
         }
     }
 
@@ -278,15 +276,9 @@ final class MavenReactor {
             version = childText(parent, "version");
         }
         Map<String, String> properties = projectProperties(project, groupId, artifactId, version);
-        groupId = resolve(groupId, properties);
         artifactId = resolve(artifactId, properties);
-        version = resolve(version, properties);
-        String configuredPackaging = childText(project, "packaging");
-        String packaging = configuredPackaging == null ? "jar" : resolve(configuredPackaging, properties);
-        List<ArtifactKey> dependencies = dependencies(project, properties);
         String configuredMain = configuredMainClass(project);
-        Module module = new Module(normalized, root.relativize(normalized), groupId, artifactId, version, packaging,
-                                   dependencies, configuredMain);
+        Module module = new Module(normalized, root.relativize(normalized), artifactId, configuredMain);
         modules.add(module);
         Element modulesElement = child(project, "modules");
         if (modulesElement != null) {
@@ -294,28 +286,6 @@ final class MavenReactor {
                 readModule(root, normalized.resolve(moduleElement.getTextContent().strip()), modules, visited);
             }
         }
-    }
-
-    private static List<ArtifactKey> dependencies(Element project, Map<String, String> properties) {
-        Element dependencies = child(project, "dependencies");
-        if (dependencies == null) {
-            return List.of();
-        }
-        List<ArtifactKey> result = new ArrayList<>();
-        for (Element dependency : children(dependencies, "dependency")) {
-            String configuredType = childText(dependency, "type");
-            String configuredClassifier = childText(dependency, "classifier");
-            String type = configuredType == null ? "jar" : resolve(configuredType, properties);
-            String classifier = configuredClassifier == null ? null : resolve(configuredClassifier, properties);
-            ArtifactKey artifact = type == null || (configuredClassifier != null && classifier == null) ? null
-                    : ArtifactKey.of(resolve(childText(dependency, "groupId"), properties),
-                                     resolve(childText(dependency, "artifactId"), properties),
-                                     resolve(childText(dependency, "version"), properties), type, classifier);
-            if (artifact != null) {
-                result.add(artifact);
-            }
-        }
-        return List.copyOf(result);
     }
 
     private static Map<String, String> projectProperties(Element project, String groupId, String artifactId,
@@ -419,12 +389,6 @@ final class MavenReactor {
         }
     }
 
-    private static List<Path> withoutReactorArtifacts(List<Path> classpath, List<Module> reactorModules) {
-        return classpath.stream()
-                .filter(entry -> reactorModules.stream().noneMatch(module -> module.matchesMainArtifact(entry)))
-                .toList();
-    }
-
     private static String uniqueName(String artifactId, String relativeName, Set<String> usedNames) {
         String base = artifactId == null || artifactId.isBlank() ? relativeName.replace('/', '-') : artifactId;
         if (!usedNames.contains(base)) {
@@ -433,18 +397,7 @@ final class MavenReactor {
         return relativeName.replace('/', '-');
     }
 
-    record Module(Path directory, Path relativeDirectory, String groupId, String artifactId, String version,
-                  String packaging,
-                  List<ArtifactKey> dependencies, String configuredMainClass) {
-        Module {
-            packaging = packaging == null || packaging.isBlank() ? null : packaging.strip();
-            dependencies = List.copyOf(dependencies);
-        }
-
-        ArtifactKey mainArtifact() {
-            return packaging == null ? null : ArtifactKey.of(groupId, artifactId, version, packaging, null);
-        }
-
+    record Module(Path directory, Path relativeDirectory, String artifactId, String configuredMainClass) {
         Path classesDirectory() {
             return directory.resolve("target/classes");
         }
@@ -464,55 +417,6 @@ final class MavenReactor {
         String relativeName() {
             String value = relativeDirectory.toString().replace('\\', '/');
             return value.isBlank() ? "." : value;
-        }
-
-        boolean matchesMainArtifact(Path path) {
-            ArtifactKey artifact = mainArtifact();
-            if (artifact == null || path == null || path.getFileName() == null || path.getParent() == null
-                || path.getParent().getFileName() == null || path.getParent().getParent() == null
-                || path.getParent().getParent().getFileName() == null) {
-                return false;
-            }
-            String artifactVersion = path.getParent().getFileName().toString();
-            Path artifactDirectory = path.getParent().getParent();
-            return artifact.artifactId().equals(artifactDirectory.getFileName().toString())
-                   && groupMatches(artifactDirectory.getParent(), artifact.groupId())
-                   && artifact.version().equals(artifactVersion)
-                   && (artifact.artifactId() + "-" + artifactVersion + "." + artifact.extension())
-                    .equals(path.getFileName().toString());
-        }
-
-        private static boolean groupMatches(Path directory, String groupId) {
-            String[] segments = groupId.split("\\.");
-            Path current = directory;
-            for (int index = segments.length - 1; index >= 0; index--) {
-                if (current == null || current.getFileName() == null
-                    || !segments[index].equals(current.getFileName().toString())) {
-                    return false;
-                }
-                current = current.getParent();
-            }
-            return true;
-        }
-    }
-
-    record ArtifactKey(String groupId, String artifactId, String version, String type, String classifier) {
-        static ArtifactKey of(String groupId, String artifactId, String version, String type, String classifier) {
-            if (groupId == null || groupId.isBlank() || artifactId == null || artifactId.isBlank()
-                || version == null || version.isBlank()) {
-                return null;
-            }
-            String normalizedType = type == null || type.isBlank() ? "jar" : type.strip();
-            String normalizedClassifier = classifier == null || classifier.isBlank() ? null : classifier.strip();
-            return new ArtifactKey(groupId.strip(), artifactId.strip(), version.strip(), normalizedType,
-                                   normalizedClassifier);
-        }
-
-        String extension() {
-            return switch (type) {
-                case "bundle", "ejb", "maven-plugin", "test-jar" -> "jar";
-                default -> type;
-            };
         }
     }
 

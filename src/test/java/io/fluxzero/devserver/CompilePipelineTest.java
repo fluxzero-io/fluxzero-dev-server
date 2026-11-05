@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -420,6 +422,70 @@ class CompilePipelineTest {
         assertTrue(application.classesDirectories().stream().anyMatch(
                 path -> Files.isRegularFile(path.resolve("com/acme/core/TestConfiguration.class"))));
         assertFalse(Files.exists(projectDirectory.resolve("repository/com/acme/core/1/core-1.jar")));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void snapshotsCurrentReactorOutputDespitePreviouslyInstalledJar(boolean testJar, @TempDir Path projectDirectory)
+            throws Exception {
+        Path repository = projectDirectory.resolve("repository");
+        installRealMavenWrapper(projectDirectory, repository);
+        installTestApplicationReactor(projectDirectory);
+        Path core = projectDirectory.resolve("core");
+        Path source = core.resolve("src/main/java/com/acme/core/TestConfiguration.java");
+        if (testJar) {
+            Path testSource = core.resolve("src/test/java/com/acme/core/TestConfiguration.java");
+            Files.createDirectories(testSource.getParent());
+            Files.move(source, testSource);
+            source = testSource;
+            Path corePom = core.resolve("pom.xml");
+            Files.writeString(corePom, Files.readString(corePom).replace("</project>", """
+                    <build><plugins><plugin>
+                      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-jar-plugin</artifactId><version>3.4.2</version>
+                      <executions><execution><goals><goal>test-jar</goal></goals></execution></executions>
+                    </plugin></plugins></build></project>
+                    """));
+            Path appPom = projectDirectory.resolve("auth-engine/pom.xml");
+            Files.writeString(appPom, Files.readString(appPom).replace(
+                    "<scope>test</scope>", "<scope>test</scope><type>test-jar</type>"));
+        }
+        ProcessUtils.ProcessResult installed = ProcessUtils.run(
+                MavenCommand.command(projectDirectory, "install", "-DskipTests"),
+                projectDirectory, MavenCommand.environment(), ignored -> {});
+        assertTrue(installed.success(), String.join(System.lineSeparator(), installed.output()));
+        Path installedJar = repository.resolve("com/acme/core/1/core-1" + (testJar ? "-tests" : "") + ".jar");
+        assertTrue(Files.isRegularFile(installedJar));
+        Files.writeString(source, """
+                package com.acme.core;
+                @Deprecated(since = "current-reactor")
+                public final class TestConfiguration { }
+                """);
+        Files.setLastModifiedTime(source, FileTime.fromMillis(System.currentTimeMillis() + 2_000));
+        Path resource = core.resolve("src/" + (testJar ? "test" : "main") + "/resources/version.txt");
+        Files.createDirectories(resource.getParent());
+        Files.writeString(resource, "current-reactor");
+        DevServerConfig config = DevServerConfig.fromArgs(new String[]{
+                "--project-dir", projectDirectory.toString()
+        });
+
+        CompileResult result = new CompilePipeline(config, ignored -> {})
+                .compile(Set.of(projectDirectory.resolve("pom.xml")));
+
+        assertTrue(result.success(), result.detail());
+        assertNotNull(result.snapshot(), result.detail());
+        ApplicationBuild application = result.snapshot().applications().getFirst();
+        assertFalse(application.runtimeClasspath().contains(installedJar));
+        Path snapshot = application.classesDirectories().stream().filter(
+                path -> Files.isRegularFile(path.resolve("com/acme/core/TestConfiguration.class"))).findFirst().orElseThrow();
+        try (var loader = new URLClassLoader(new URL[]{snapshot.toUri().toURL()}, null)) {
+            assertEquals("current-reactor", loader.loadClass("com.acme.core.TestConfiguration")
+                    .getAnnotation(Deprecated.class).since());
+        }
+        Path output = core.resolve("target/" + (testJar ? "test-classes" : "classes"));
+        assertTrue(Files.readString(projectDirectory.resolve("auth-engine").resolve(MavenReactor.TEST_CLASSPATH_FILE))
+                           .contains(output.toRealPath().toString()));
+        Files.writeString(output.resolve("version.txt"), "later-build");
+        assertEquals("current-reactor", Files.readString(snapshot.resolve("version.txt")));
     }
 
     private static DevServerConfig config(Path projectDirectory) {
