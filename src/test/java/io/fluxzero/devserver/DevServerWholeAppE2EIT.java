@@ -239,6 +239,116 @@ class DevServerWholeAppE2EIT {
     }
 
     @Test
+    void mavenRuntimeSiblingReloadsWithoutLeakingTestModelsAndRecoversFromFailures(@TempDir Path directory)
+            throws Exception {
+        Path project = copyScopedReactor(directory);
+        List<Long> pids = new ArrayList<>();
+        try (DevServer ignored = new DevServer(scopedReactorConfig(project, false)).start()) {
+            DevSession first = waitForScopedReactor(project);
+            String url = first.gateway().url();
+            JsonNode v1 = waitForScope(url, "v1", false);
+            pids.add(v1.path("pid").asLong());
+
+            writeSiblingVersion(project, "v2");
+            JsonNode v2 = waitForScope(url, "v2", false);
+            pids.add(v2.path("pid").asLong());
+            assertNotEquals(pids.getFirst(), pids.getLast());
+            waitForSession(project, s -> "succeeded".equals(s.reload().state())
+                                        && pids.getLast().equals(s.app().pid()), "sibling replacement ready");
+
+            Path source = project.resolve("runtime/src/main/java/com/example/scope/RuntimeModel.java");
+            Files.writeString(source, Files.readString(source).replace("return \"v2\";", "return missingSymbol;"));
+            waitForSession(project, s -> "failed".equals(s.compile().state()), "sibling compile failure");
+            assertEquals(pids.getLast().longValue(), waitForScope(url, "v2", false).path("pid").asLong());
+
+            writeSiblingVersion(project, "v3");
+            JsonNode v3 = waitForScope(url, "v3", false);
+            assertNotEquals(pids.getLast().longValue(), v3.path("pid").asLong());
+            pids.add(v3.path("pid").asLong());
+            waitForSession(project, s -> "succeeded".equals(s.reload().state())
+                                        && pids.getLast().equals(s.app().pid()), "compile recovery");
+
+            writeSiblingVersion(project, "broken-start");
+            DevSession failed = waitForSession(project, s -> "failed".equals(s.reload().state()),
+                                                "sibling startup failure");
+            assertEquals("running", failed.app().state());
+            assertEquals(pids.getLast(), failed.app().pid());
+            assertEquals("broken-start", Files.readString(project.resolve("runtime/target/classes/runtime-version.txt")));
+            // Read a resource on every request, after Maven has overwritten target/classes.
+            // The surviving process must still use the old immutable sibling snapshot.
+            assertEquals(pids.getLast().longValue(), waitForScope(url, "v3", false).path("pid").asLong());
+
+            writeSiblingVersion(project, "v4");
+            JsonNode v4 = waitForScope(url, "v4", false);
+            assertNotEquals(pids.getLast().longValue(), v4.path("pid").asLong());
+            pids.add(v4.path("pid").asLong());
+            waitForSession(project, s -> "succeeded".equals(s.reload().state())
+                                        && pids.getLast().equals(s.app().pid()), "startup recovery");
+        }
+        assertTrue(pids.stream().noneMatch(ProcessUtils::isAlive), "All reactor application processes must stop");
+    }
+
+    @Test
+    void explicitMavenTestAppKeepsSupportModelsAndLibrariesAcrossReload(@TempDir Path directory) throws Exception {
+        Path project = copyScopedReactor(directory);
+        try (DevServer ignored = new DevServer(scopedReactorConfig(project, true)).start()) {
+            DevSession first = waitForScopedReactor(project);
+            JsonNode v1 = waitForScope(first.gateway().url(), "v1", true);
+            writeSiblingVersion(project, "v2");
+            JsonNode v2 = waitForScope(first.gateway().url(), "v2", true);
+            assertNotEquals(v1.path("pid").asLong(), v2.path("pid").asLong());
+        }
+    }
+
+    private static DevSession waitForScopedReactor(Path project) throws Exception {
+        DevSession session = waitForSession(project, s -> "running".equals(s.app().state())
+                                                        || "failed".equals(s.compile().state())
+                                                        || "failed".equals(s.reload().state()), "reactor startup");
+        assertEquals("running", session.app().state(), () -> session.compile() + " / " + session.reload());
+        return session;
+    }
+
+    private static Path copyScopedReactor(Path directory) throws Exception {
+        Path project = directory.resolve("maven-runtime");
+        copyTree(Path.of(DevServerWholeAppE2EIT.class.getResource("/e2e-fixtures/maven-runtime").toURI()), project);
+        copyMavenWrapper(devServerRepositoryRoot(), project);
+        Path pom = project.resolve("pom.xml");
+        Files.writeString(pom, Files.readString(pom).replace(
+                "@FLUXZERO_VERSION@", System.getProperty("fluxzero.project.version")), UTF_8);
+        return project;
+    }
+
+    private static DevServerConfig scopedReactorConfig(Path project, boolean testApp) {
+        return new DevServerConfig(
+                project, "com.example.scope." + (testApp ? "TestApp" : "App"), "scope-" + UUID.randomUUID(), null,
+                true, true, false, Duration.ofSeconds(35), Duration.ofSeconds(2), Duration.ofMillis(150),
+                FrontendConfig.none(), List.of(), false, "local", List.of(), 0, IdpMode.EXTERNAL);
+    }
+
+    private static void writeSiblingVersion(Path project, String version) throws Exception {
+        Path source = Path.of(DevServerWholeAppE2EIT.class.getResource(
+                "/e2e-fixtures/maven-runtime/runtime/src/main/java/com/example/scope/RuntimeModel.java").toURI());
+        Files.writeString(project.resolve("runtime/src/main/resources/runtime-version.txt"), version);
+        Files.writeString(project.resolve("runtime/src/main/java/com/example/scope/RuntimeModel.java"),
+                          Files.readString(source).replace("return \"v1\";", "return \"" + version + "\";"));
+    }
+
+    private static JsonNode waitForScope(String url, String version, boolean testApp) throws Exception {
+        JsonNode result = await("reactor behavior " + version, () -> {
+            HttpResponse<String> response = send(HttpRequest.newBuilder(URI.create(url + "/api/scope"))
+                                                        .timeout(Duration.ofSeconds(5)).GET().build());
+            if (response.statusCode() != 200) return null;
+            JsonNode body = objectMapper.readTree(response.body());
+            return version.equals(body.path("version").asText()) ? body : null;
+        });
+        assertEquals(version, result.path("resource").asText(), "Sibling resources must use the same build snapshot");
+        assertEquals(testApp, result.path("testLibrary").asBoolean());
+        assertEquals(objectMapper.valueToTree(testApp ? List.of("RuntimeModel", "SupportModel")
+                                                     : List.of("RuntimeModel")), result.path("models"));
+        return result;
+    }
+
+    @Test
     void namedFlavorsOfTheSameApplicationRollIndependentlyFromOneBuild(@TempDir Path tempDirectory)
             throws Exception {
         Path project = copyFixture(tempDirectory);

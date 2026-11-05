@@ -836,7 +836,9 @@ For Maven reactors, each application uses Maven's resolved runtime classpath to 
 which local module outputs enter its immutable build snapshot. Test-only modules and
 excluded dependencies stay outside ordinary applications; explicitly selected test
 applications use the resolved test classpath. Matching uses the exact artifact identity
-or the same classes directory, including canonicalized workspace paths.
+or the same classes directory, including canonicalized workspace paths. Dependency
+management, profiles and transitive selection remain Maven's responsibility; the server
+does not reconstruct a dependency graph from POM declarations.
 
 Opt-in `fastCompiler` Java reloads compile the complete main source set using Maven-derived
 metadata. They share the build coordinator with Maven compilation and tests: an older running test

@@ -15,6 +15,8 @@
 package io.fluxzero.devserver;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 import javax.tools.ToolProvider;
@@ -120,6 +122,67 @@ class MavenReactorTest {
         assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("contracts/target/classes")),
                      application.classesDirectories());
         assertTrue(application.runtimeClasspath().isEmpty(), "Reactor outputs must use the immutable staged copy");
+    }
+
+    @Test
+    void snapshotsResolvedModulesWithoutReconstructingPomDependencies(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>managed</module><module>profiled</module><module>app</module></modules>
+                <dependencyManagement><dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>managed</artifactId><version>1</version>
+                </dependency></dependencies></dependencyManagement>
+                """));
+        writeModule(project, "managed", "");
+        writeModule(project, "profiled", "");
+        writeInheritedModule(project, "app", """
+                <dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>managed</artifactId>
+                </dependency></dependencies>
+                <profiles><profile><id>local</id><dependencies><dependency>
+                  <groupId>com.acme</groupId><artifactId>profiled</artifactId><version>1</version>
+                </dependency></dependencies></profile></profiles>
+                """);
+        compileMain(project.resolve("managed"), "com.acme.Managed");
+        compileMain(project.resolve("profiled"), "com.acme.Profiled");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path installed = project.resolve("repository/com/acme/managed/1/managed-1.jar");
+        writeJarWithClass(installed, "com.acme.StaleManaged");
+        // The resolved order, including a profile dependency, is Maven's decision.
+        writeClasspath(project.resolve("app"), project.resolve("profiled/target/classes"), installed);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(project.resolve("app/target/classes"), project.resolve("profiled/target/classes"),
+                             project.resolve("managed/target/classes")), application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.Managed", true, loader));
+            assertThrows(ClassNotFoundException.class, () -> Class.forName("com.acme.StaleManaged", true, loader));
+        }
+    }
+
+    @Test
+    @EnabledOnOs({OS.MAC, OS.LINUX})
+    void snapshotsCanonicalReactorDirectoriesOnlyOnce(@TempDir Path directory) throws Exception {
+        Path project = Files.createDirectories(directory.resolve("workspace"));
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("common"));
+        compileMain(project.resolve("common"), "com.acme.Common");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path alias = Files.createSymbolicLink(directory.resolve("alias"), project);
+        writeClasspath(project.resolve("app"), project.resolve("common/target/classes").toRealPath(),
+                       alias.resolve("common/target/classes"));
+
+        ApplicationBuild application = MavenReactor.load(alias)
+                .applications(config(alias, List.of("app"))).getFirst();
+
+        assertEquals(List.of(alias.resolve("app/target/classes"), alias.resolve("common/target/classes")),
+                     application.classesDirectories());
+        assertTrue(application.runtimeClasspath().isEmpty(), "No mutable directory may escape staging");
     }
 
     @Test
@@ -344,6 +407,35 @@ class MavenReactorTest {
 
         assertEquals(List.of(project.resolve("app/target/classes")), application.classesDirectories());
         assertEquals(List.of(testJar), application.runtimeClasspath());
+    }
+
+    @Test
+    void preservesClassifiersAndArtifactTypesAlongsideTheMainSnapshot(@TempDir Path project) throws Exception {
+        Files.writeString(project.resolve("pom.xml"), pom("root", "pom", """
+                <modules><module>common</module><module>app</module></modules>
+                """));
+        writeModule(project, "common", "");
+        writeModule(project, "app", dependency("common"));
+        compileMain(project.resolve("common"), "com.acme.Current");
+        compileMain(project.resolve("app"), "com.acme.AppMain");
+        Path mainJar = project.resolve("repository/com/acme/common/1/common-1.jar");
+        Path testJar = mainJar.resolveSibling("common-1-tests.jar");
+        Path zip = mainJar.resolveSibling("common-1.zip");
+        writeJarWithClass(mainJar, "com.acme.Stale");
+        writeJarWithClass(testJar, "com.acme.TestSupport");
+        writeJarWithClass(zip, "com.acme.OtherType");
+        writeClasspath(project.resolve("app"), mainJar, testJar, zip);
+
+        ApplicationBuild application = MavenReactor.load(project)
+                .applications(config(project, List.of("app"))).getFirst();
+
+        assertEquals(List.of(testJar, zip), application.runtimeClasspath());
+        try (URLClassLoader loader = classLoader(application)) {
+            assertNotNull(Class.forName("com.acme.Current", true, loader));
+            assertNotNull(Class.forName("com.acme.TestSupport", true, loader));
+            assertNotNull(Class.forName("com.acme.OtherType", true, loader));
+            assertThrows(ClassNotFoundException.class, () -> Class.forName("com.acme.Stale", true, loader));
+        }
     }
 
     @Test
