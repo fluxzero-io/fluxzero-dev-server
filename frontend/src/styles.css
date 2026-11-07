@@ -338,7 +338,9 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .brand-title {font-size:18px;}.brand-title span {font-size:16px;}
 .sidebar-toggle {position:absolute;right:-8px;top:24px;flex-shrink:0;}
 .sidebar-resizer {position:sticky;top:0;height:100dvh;width:8px;margin-left:-4px;margin-right:-4px;flex:0 0 8px;padding:0;border:0;background:transparent;cursor:ew-resize;z-index:22;touch-action:none;}
-.sidebar-resizer:hover,.sidebar-resizer:focus-visible {background:var(--dashboard-active-soft);box-shadow:inset 2px 0 var(--dashboard-active);}
+.sidebar-resizer::after {content:"";position:absolute;inset:0 auto 0 50%;width:2px;transform:translateX(-50%);pointer-events:none;}
+.sidebar-resizer:hover::after,.sidebar-resizer:focus-visible::after,.sidebar-resizing .sidebar-resizer::after {background:var(--dashboard-active);}
+.sidebar-resizer:focus-visible {outline:none;}
 .sidebar-resizing {cursor:ew-resize;user-select:none;}.sidebar-resizing iframe {pointer-events:none;}
 .navigation-collapsed .dashboard-sidebar {position:fixed;left:0;transform:translateX(-100%);visibility:hidden;}
 .navigation-collapsed .dashboard-sidebar.open {transform:translateX(0);visibility:visible;box-shadow:12px 0 40px #0002;}
