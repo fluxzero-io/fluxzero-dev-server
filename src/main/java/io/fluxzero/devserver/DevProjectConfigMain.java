@@ -44,6 +44,12 @@ public final class DevProjectConfigMain {
             # fastCompiler: false
             # frontendOnly: false # true skips the local Test Server, proxy, IDP, applications, compilation and tests
 
+            # Environment overrides for the managed Test Server (including its embedded proxy).
+            # Changes require an explicit restart; the server never restarts it automatically.
+            # runtime:
+            #   env:
+            #     FLUXZERO_LOG_RETENTION: P2D
+
             # Auditlog is bundled and enabled by default for local backend environments.
             # Set monitoring: {enabled: false} to disable it in this project/profile.
             # Optional machine defaults: ~/.fluxzero/dev/monitoring.yaml (see docs/local-monitoring.md).

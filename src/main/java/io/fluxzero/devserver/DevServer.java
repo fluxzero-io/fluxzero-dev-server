@@ -2008,12 +2008,10 @@ public class DevServer implements AutoCloseable {
             return;
         }
         String ready = "Fluxzero dev server ready in " + CompileTiming.format(elapsedMillis(startupStartedNanos));
-        String target = config.frontends().isEmpty()
-                ? "Backend: " + publicUrl : "Open in browser: " + publicUrl;
+        String target = "Open in browser: " + devGateway.url() + DevConsole.ROOT;
         record(ready);
         record(target);
         terminalProgress.printReady(ready, target);
-        terminalProgress.println("  Dev console   " + devGateway.url() + DevConsole.ROOT);
     }
 
     private void announceStartupFailure(String source, String detail) {

@@ -49,6 +49,10 @@ public record DevSession(
         long heartbeatAt,
         long updatedAt
 ) {
+    public String consoleUrl() {
+        return consoleOrigin() == null ? null : consoleOrigin() + DevConsole.ROOT;
+    }
+
     /** Port retained when restarting the console, independently of the public ingress. */
     public Integer consolePort() {
         String origin = consoleOrigin();

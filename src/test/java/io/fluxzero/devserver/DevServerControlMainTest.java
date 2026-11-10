@@ -39,6 +39,18 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DevServerControlMainTest {
+    @Test
+    void startupAndAttachPointToConsoleInsteadOfPublicApplication(@TempDir Path directory) throws Exception {
+        var session = readyBackend(directory).withGateway(DevSession.ServiceStatus.running(
+                "gateway", "https://application.example", 443, null, null).withMetadata(
+                java.util.Map.of("consoleOrigin", "http://localhost:12347")));
+        for (Class<?> owner : java.util.List.of(DevServerControlMain.class, DevTerminalAttachment.class)) {
+            var method = owner.getDeclaredMethod("publicUrl", DevSession.class);
+            method.setAccessible(true);
+            assertEquals(java.util.Optional.of("http://localhost:12347" + DevConsole.ROOT), method.invoke(null, session));
+        }
+    }
+
 
     @Test
     void backendOnlyStartupCompletesWithTheDevboardGatewayRunning(@TempDir Path projectDirectory)

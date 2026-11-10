@@ -180,7 +180,7 @@ final class VersionAlignedTestServer implements AutoCloseable {
             command.add(config.namespace());
         }
         try {
-            process = ProcessUtils.startWithStreams(command, config.projectDirectory(), Map.of(), this::processOutput);
+            process = ProcessUtils.startWithStreams(command, config.projectDirectory(), config.runtime().env(), this::processOutput);
             Process started = process;
             started.onExit().thenAccept(ignored -> {
                 if (!closed.get()) {
