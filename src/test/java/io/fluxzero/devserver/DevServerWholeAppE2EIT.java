@@ -118,7 +118,8 @@ class DevServerWholeAppE2EIT {
                        || output.contains("Fluxzero dev could not start") ? output : null;
             });
             assertTrue(startupOutput.contains("Fluxzero dev server ready"), startupOutput);
-            assertTrue(startupOutput.contains("Backend       http://localhost:"), startupOutput);
+            assertTrue(startupOutput.matches("(?s).*Open in browser http://localhost:\\d+/_fluxzero/dev/.*"),
+                       startupOutput);
             assertFalse(startupOutput.contains("Fluxzero dev could not start"), startupOutput);
             assertEquals("failed", waitForCommand(project, "optional.json", "failed").state());
 
