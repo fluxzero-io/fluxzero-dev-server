@@ -77,7 +77,8 @@ public record DevServerConfig(
         List<DevBuildProject> projects,
         Map<String, DevServiceConfig> services,
         boolean backendEnabled,
-        DevIngressConfig ingress
+        DevIngressConfig ingress,
+        DevRuntimeConfig runtime
 ) {
     public static final Duration DEFAULT_STARTUP_TIMEOUT = Duration.ofSeconds(20);
     public static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
@@ -85,6 +86,7 @@ public record DevServerConfig(
     public static final Duration DEFAULT_IDLE_TIMEOUT = Duration.ofHours(24);
 
     public DevServerConfig {
+        runtime = runtime == null ? new DevRuntimeConfig(Map.of()) : runtime;
         projectDirectory = projectDirectory == null
                 ? Path.of("").toAbsolutePath().normalize()
                 : projectDirectory.toAbsolutePath().normalize();
@@ -142,6 +144,39 @@ public record DevServerConfig(
         if (!backendEnabled && frontends.isEmpty()) {
             throw new IllegalArgumentException("A frontend-only dev environment requires a frontend");
         }
+    }
+
+    public DevServerConfig(
+        Path projectDirectory,
+        String mainClass,
+        String applicationName,
+        String namespace,
+        boolean watch,
+        boolean compileOnStart,
+        boolean testsEnabled,
+        Duration startupTimeout,
+        Duration gracefulShutdownTimeout,
+        Duration debounce,
+        FrontendConfig frontend,
+        List<String> appArgs,
+        boolean fastCompilerEnabled,
+        String environment,
+        List<String> applications,
+        int gatewayPort,
+        IdpMode idpMode,
+        Map<String, DevApplicationConfig> applicationConfig,
+        Duration idleTimeout,
+        String profile,
+        List<RoutedFrontend> frontends,
+        List<DevBuildProject> projects,
+        Map<String, DevServiceConfig> services,
+        boolean backendEnabled,
+        DevIngressConfig ingress
+    ) {
+        this(projectDirectory, mainClass, applicationName, namespace, watch, compileOnStart, testsEnabled,
+             startupTimeout, gracefulShutdownTimeout, debounce, frontend, appArgs, fastCompilerEnabled, environment,
+             applications, gatewayPort, idpMode, applicationConfig, idleTimeout, profile, frontends, projects,
+             services, backendEnabled, ingress, null);
     }
 
     public DevServerConfig(
@@ -505,7 +540,7 @@ public record DevServerConfig(
                 configuredServices(project.services()),
                 backendEnabled, project.publicIngress() == null ? null : new DevIngressConfig(
                         project.publicIngress(), project.gateway() == null ? null : project.gateway().host(),
-                        project.gateway() == null ? null : project.gateway().bindAddress()));
+                        project.gateway() == null ? null : project.gateway().bindAddress()), project.runtime());
     }
 
     List<ApplicationSelection> applicationSelections() {
@@ -529,7 +564,7 @@ public record DevServerConfig(
                 watch, compileOnStart, testsEnabled, startupTimeout, gracefulShutdownTimeout, debounce,
                 environmentRoot ? frontend : FrontendConfig.none(), appArgs, project.fastCompilerEnabled(),
                 environment, project.applications(), 0, idpMode, project.applicationConfig(), idleTimeout, profile,
-                environmentRoot ? frontends : List.of(), List.of(project), services, true);
+                environmentRoot ? frontends : List.of(), List.of(project), services, true, null, runtime);
     }
 
     private static List<DevBuildProject> configuredProjects(

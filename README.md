@@ -1021,3 +1021,21 @@ their own routing. The stub derives its public redirects and cookie paths direct
 from the supplied issuer, including `/_fluxzero`; the dev server does not rewrite
 these IDP redirects. The local stub covers public-client PKCE, not production
 private-key client policy, account management or backchannel delivery.
+
+## Test Server environment
+
+Configure environment overrides for the managed SDK Test Server and its embedded proxy in `.fluxzero/dev.yaml`:
+
+```yaml
+runtime:
+  env:
+    FLUXZERO_LOG_RETENTION: P2D
+```
+
+`runtime.env` accepts arbitrary environment variables and overrides inherited values only for that process.
+The Test Server interprets them; for example, `P2D` retains its logs for two days. Application and support-service
+`env` settings remain separate. The same block is supported inside a named profile. Values are not printed in
+configuration summaries; do not commit credentials. Changes take effect only after an explicit Dev Server restart,
+which clears in-memory Test Server data. They do not automatically restart the environment.
+
+Startup and terminal attachment links open Devboard, where App preview opens the application.

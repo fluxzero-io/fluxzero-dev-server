@@ -439,10 +439,7 @@ final class DevTerminalAttachment {
     }
 
     private static Optional<String> publicUrl(DevSession session) {
-        if ("running".equals(session.gateway().state()) && session.gateway().url() != null) {
-            return Optional.of(session.gateway().url());
-        }
-        return Optional.ofNullable(session.proxy().url());
+        return Optional.ofNullable(session.consoleUrl());
     }
 
     private enum Action {

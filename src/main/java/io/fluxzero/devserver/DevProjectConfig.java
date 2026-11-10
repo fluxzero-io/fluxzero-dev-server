@@ -53,12 +53,16 @@ record DevProjectConfig(
         Map<String, Profile> profiles,
         DevMonitoringConfig monitoring,
         String publicIngress,
-        Gateway gateway
+        Gateway gateway,
+        DevRuntimeConfig runtime
 ) {
     static final Path FILE = Path.of(".fluxzero", "dev.yaml");
     private static final ObjectMapper MAPPER = new ObjectMapper(new YAMLFactory());
 
     DevProjectConfig {
+        if (runtime != null && Boolean.TRUE.equals(frontendOnly)) {
+            throw new IllegalArgumentException("runtime requires a local backend");
+        }
         apps = apps == null ? List.of() : List.copyOf(apps);
         applicationConfig = applicationConfig == null ? Map.of() : Map.copyOf(applicationConfig);
         projects = projects == null ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(projects));
@@ -98,7 +102,7 @@ record DevProjectConfig(
                 throw new IllegalArgumentException("defaultProfile requires profiles");
             }
         } else {
-            if (monitoring != null || publicIngress != null || gateway != null || legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
+            if (runtime != null || monitoring != null || publicIngress != null || gateway != null || legacyConfigurationPresent(mainClass, applicationName, namespace, environment, apps,
                                            applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                            backendPaths,
                                            frontend, frontends, services, lifecycle, commandDefaults,
@@ -134,7 +138,7 @@ record DevProjectConfig(
 
     private static DevProjectConfig empty() {
         return new DevProjectConfig(1, null, null, null, null, List.of(), Map.of(), Map.of(), null, null, null, null,
-                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of(), null, null, null);
+                                    null, null, Map.of(), Map.of(), null, null, Map.of(), null, Map.of(), null, null, null, null);
     }
 
     Selection select(String requestedProfile) {
@@ -363,7 +367,8 @@ record DevProjectConfig(
             @JsonDeserialize(using = DevCommandsDeserializer.class) Map<String, DevCommandConfig> commands,
             DevMonitoringConfig monitoring,
             String publicIngress,
-            Gateway gateway
+            Gateway gateway,
+            DevRuntimeConfig runtime
     ) {
         Profile {
             apps = apps == null ? List.of() : List.copyOf(apps);
@@ -396,7 +401,7 @@ record DevProjectConfig(
                                         applicationConfig, projects, port, idp, fastCompiler, frontendOnly,
                                         backendPaths,
                                         frontend, frontends, services, lifecycle, commandDefaults, commands,
-                                        null, Map.of(), monitoring, publicIngress, gateway);
+                                        null, Map.of(), monitoring, publicIngress, gateway, runtime);
         }
     }
 
