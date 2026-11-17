@@ -22,7 +22,7 @@ import ch.qos.logback.core.spi.FilterReply;
 public final class McpConsoleFilter extends Filter<ILoggingEvent> {
     @Override
     public FilterReply decide(ILoggingEvent event) {
-        return EmbeddedLogCapture.expectedClientDisconnect(event.getLoggerName(), event.getFormattedMessage())
+        return EmbeddedLogCapture.expectedClientDisconnect(event)
                 ? FilterReply.DENY : FilterReply.NEUTRAL;
     }
 }

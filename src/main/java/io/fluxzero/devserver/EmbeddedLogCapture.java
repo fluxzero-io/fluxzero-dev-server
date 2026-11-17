@@ -18,6 +18,7 @@ import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.spi.ILoggingEvent;
+import ch.qos.logback.classic.spi.IThrowableProxy;
 import ch.qos.logback.classic.spi.LoggerContextListener;
 import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.AppenderBase;
@@ -78,7 +79,7 @@ final class EmbeddedLogCapture implements AutoCloseable {
             if (event.getThrowableProxy() != null) {
                 message += System.lineSeparator() + ThrowableProxyUtil.asString(event.getThrowableProxy());
             }
-            DevLogEvent.Level level = expectedClientDisconnect(event.getLoggerName(), event.getFormattedMessage())
+            DevLogEvent.Level level = expectedClientDisconnect(event)
                     ? DevLogEvent.Level.INFO : level(event.getLevel());
             if (mcpLibraryLogger(event.getLoggerName())) {
                 // The SDK logs per-client transport failures. DevMcpServer owns global MCP lifecycle health.
@@ -121,6 +122,21 @@ final class EmbeddedLogCapture implements AutoCloseable {
                 default -> DevLogEvent.Level.INFO;
             };
         }
+    }
+
+    static boolean expectedClientDisconnect(ILoggingEvent event) {
+        String message = event.getFormattedMessage();
+        if (expectedClientDisconnect(event.getLoggerName(), message)) return true;
+        if (!CaptureAppender.mcpLibraryLogger(event.getLoggerName()) || message == null
+                || !message.startsWith("Failed to notify session ") || !message.contains(" of resource update for ")) {
+            return false;
+        }
+        for (IThrowableProxy cause = event.getThrowableProxy(); cause != null; cause = cause.getCause()) {
+            if ("java.io.IOException".equals(cause.getClassName()) && "Client disconnected".equals(cause.getMessage())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static boolean expectedClientDisconnect(String logger, String message) {
