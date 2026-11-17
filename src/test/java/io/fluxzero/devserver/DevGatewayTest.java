@@ -57,6 +57,32 @@ public class DevGatewayTest {
             .connectTimeout(Duration.ofSeconds(2)).build();
 
     @Test
+    void accountActionsRequireConsoleOriginAndAccountFailureDoesNotInterruptTheApp(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String originalIssuer = System.getProperty("fluxzero.account.issuer");
+        System.setProperty("fluxzero.account.issuer", "invalid-account-configuration");
+        var console = new DevConsole(() -> java.util.Map.of("project", "example"), null,
+                new DevEnvironmentRegistry(directory.resolve("registry")));
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                     "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "account/status";
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(url, null, true).statusCode());
+            assertEquals(403, projectPost(url, "https://untrusted.example.test", true).statusCode());
+            assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+            var failure = projectPost(url, gateway.url(), true);
+            assertEquals(200, failure.statusCode());
+            assertTrue(failure.body().contains("You can keep working locally"));
+            assertFalse(failure.body().contains("invalid-account-configuration"));
+            assertEquals(200, request(gateway.url() + "/api/orders", "application/json", null).statusCode());
+        } finally {
+            console.close();
+            if (originalIssuer == null) System.clearProperty("fluxzero.account.issuer");
+            else System.setProperty("fluxzero.account.issuer", originalIssuer);
+        }
+    }
+
+    @Test
     void isolatesManagedIdpRoutesFromApplicationDiscovery() throws Exception {
         try (TestUpstream backend = TestUpstream.start("backend")) {
             for (boolean managed : List.of(true, false)) {

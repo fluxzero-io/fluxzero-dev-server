@@ -40,6 +40,7 @@ final class DevConsole implements AutoCloseable {
     private final DevEnvironmentRegistry environments;
     private final FolderOpener folderOpener;
     private final DevConsoleProjectStarter projectStarter;
+    private final DevAccount account = new DevAccount();
     private final DevConsoleProjects projects;
     private java.util.function.Function<String, Runnable> maintenance;
     private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
@@ -77,8 +78,9 @@ final class DevConsole implements AutoCloseable {
     }
 
     void start() { updates.start(); }
-    @Override public void close() { updates.close(); projectStarter.close();
-        projects.close(); }
+    @Override public void close() {
+        account.close(); updates.close(); projectStarter.close(); projects.close();
+    }
 
     boolean isApi(Request request) {
         String path = request.getHttpURI().getPath();
@@ -92,6 +94,7 @@ final class DevConsole implements AutoCloseable {
             return false;
         }
         if (isApi(request)) return false;
+        if (path.startsWith(ROOT + "account/")) return accountAction(path, request, response, callback);
         if (path.equals(ROOT + "startup-command.json")) {
             if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
             if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Requires the local console.");
@@ -173,6 +176,19 @@ final class DevConsole implements AutoCloseable {
         response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
         response.getHeaders().put("X-Content-Type-Options", "nosniff");
         response.write(true, request.getMethod().equals("HEAD") ? null : ByteBuffer.wrap(content), callback);
+        return true;
+    }
+
+    private boolean accountAction(String path, Request request, Response response, Callback callback) throws Exception {
+        if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST for account actions.");
+        if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Open account features from Devboard.");
+        String action = path.substring((ROOT + "account/").length());
+        if (!java.util.Set.of("status", "login", "cancel", "logout", "refresh").contains(action))
+            return actionResult(response, callback, 404, "This account action is unavailable.");
+        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+        response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
+        response.getHeaders().put("X-Content-Type-Options", "nosniff");
+        response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(account.call(action))), callback);
         return true;
     }
 

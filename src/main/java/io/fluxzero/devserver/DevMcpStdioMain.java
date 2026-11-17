@@ -75,6 +75,7 @@ public final class DevMcpStdioMain {
         private final McpSyncServer localServer;
         private final DevMcpWorkspace workspace;
         private final CountDownLatch disconnected;
+        private final DevAccount account;
         private final AtomicBoolean closed = new AtomicBoolean();
 
         static StdioBridge start(Path directory, InputStream input, OutputStream output) {
@@ -95,8 +96,10 @@ public final class DevMcpStdioMain {
             CountDownLatch disconnected = new CountDownLatch(1);
             ObjectMapper mapper = new ObjectMapper();
             var workspace = new DevMcpWorkspace(directory, selected, docs, mapper);
+            var account = new DevAccount();
             try {
                 var tools = new ArrayList<>(DevMcpTools.tools(request -> workspace.current().project().call(request)));
+                tools.addAll(AccountTools.tools(account, mapper));
                 tools.addAll(MonitoringTools.tools(request -> workspace.current().project().call(request)));
                 tools.addAll(ProgressTools.tools(() -> workspace.current().directory(), mapper));
                 tools.add(AgentWorkflows.tool(mapper, request -> workspace.current().project().workflow(request)));
@@ -164,22 +167,25 @@ public final class DevMcpStdioMain {
                         .build();
                 workspace.onResourceChange(uri -> server.getAsyncServer().notifyResourcesUpdated(
                         new McpSchema.ResourcesUpdatedNotification(uri)).onErrorComplete().subscribe());
-                return new StdioBridge(server, workspace, disconnected);
+                return new StdioBridge(server, workspace, disconnected, account);
             } catch (RuntimeException e) {
+                account.close();
                 workspace.close();
                 throw e;
             }
         }
 
-        private StdioBridge(McpSyncServer localServer, DevMcpWorkspace workspace, CountDownLatch disconnected) {
+        private StdioBridge(McpSyncServer localServer, DevMcpWorkspace workspace, CountDownLatch disconnected, DevAccount account) {
             this.localServer = localServer;
             this.workspace = workspace;
             this.disconnected = disconnected;
+            this.account = account;
         }
 
         @Override
         public void close() {
             if (!closed.compareAndSet(false, true)) return;
+            account.close();
             disconnected.countDown();
             workspace.close();
             try { localServer.getAsyncServer().closeGracefully().block(Duration.ofSeconds(3)); }

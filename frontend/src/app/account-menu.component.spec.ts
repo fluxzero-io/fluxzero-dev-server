@@ -1,0 +1,103 @@
+import {ComponentFixture, TestBed} from '@angular/core/testing';
+import {provideHttpClient} from '@angular/common/http';
+import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
+import {AccountMenuComponent} from './account-menu.component';
+
+describe('Optional Fluxzero account', () => {
+  let fixture: ComponentFixture<AccountMenuComponent>;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({imports: [AccountMenuComponent], providers: [provideHttpClient(), provideHttpClientTesting()]});
+    fixture = TestBed.createComponent(AccountMenuComponent);
+    http = TestBed.inject(HttpTestingController);
+    fixture.detectChanges();
+    http.expectOne('account/status').flush({account: {state: 'signed_out'}});
+  });
+  afterEach(() => { fixture.destroy(); http.verify(); });
+
+  async function open() {
+    fixture.componentInstance.toggle();
+    http.expectOne('account/status').flush({account: {state: 'signed_out'}});
+    await fixture.whenStable(); fixture.detectChanges();
+  }
+
+  it('offers quiet sign-in and does not start login on opening', async () => {
+    await open();
+    expect(fixture.nativeElement.textContent).not.toContain('Your Fluxzero account');
+    expect(fixture.nativeElement.textContent).not.toContain('Local development is always available');
+    expect(fixture.nativeElement.querySelector('.account-trigger').textContent.trim()).toBe('');
+    expect(fixture.nativeElement.querySelector('.account-trigger .bi-person')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.account-trigger').title).toBe('Sign in to Fluxzero');
+    expect(fixture.nativeElement.textContent).toContain('Sign in');
+    http.expectNone('account/login');
+    http.expectNone('account/refresh');
+  });
+
+  it('keeps account failures inside the account panel', async () => {
+    await open();
+    const action = fixture.componentInstance.act('login');
+    const request = http.expectOne('account/login');
+    expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    request.flush({error: {code: 'offline', message: 'Cloud cannot be reached. You can keep working locally.'}});
+    await action; fixture.detectChanges();
+    expect(fixture.componentInstance.open()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('You can keep working locally');
+    expect(fixture.nativeElement.querySelector('.error-banner')).toBeNull();
+  });
+
+  it('shows the shared identity and makes logout scope clear', async () => {
+    await open();
+    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty', email: 'marty@example.test', accountUrl: 'https://login.example.test/account'});
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Marty');
+    expect(fixture.nativeElement.querySelector('.account-trigger .bi-person-fill')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.account-trigger').getAttribute('aria-label')).toContain('Marty');
+    expect(fixture.nativeElement.textContent).toContain('Profile');
+    expect(fixture.nativeElement.textContent).toContain('Sign out on this computer');
+    const link: HTMLAnchorElement = fixture.nativeElement.querySelector('a');
+    expect(link.rel).toContain('noopener');
+    fixture.componentInstance.account.set({state: 'signed_in', accountUrl: 'javascript:alert(1)'});
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a')).toBeNull();
+  });
+
+  it('supports menu navigation and closes on Tab without invoking an action', async () => {
+    await open();
+    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty', accountUrl: 'https://login.example.test/account'});
+    fixture.detectChanges();
+    const items: HTMLElement[] = Array.from(fixture.nativeElement.querySelectorAll('[role="menuitem"]'));
+    items[0].focus();
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'ArrowDown'}));
+    expect(document.activeElement).toBe(items[1]);
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'Home'}));
+    expect(document.activeElement).toBe(items[0]);
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'End'}));
+    expect(document.activeElement).toBe(items[1]);
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'Tab'}));
+    expect(fixture.componentInstance.open()).toBeFalse();
+    http.expectNone('account/login');http.expectNone('account/logout');
+  });
+
+  it('keeps a remembered account filled during a Cloud failure and opens storage only on intent', async () => {
+    await open();
+    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty'});
+    fixture.detectChanges();
+    const action = fixture.componentInstance.act('refresh');
+    http.expectOne('account/refresh').flush({error: {code: 'storage_locked', message: 'Unlock secure storage to continue.'}});
+    await action;fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.bi-person-fill')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('Unlock secure storage');
+    expect(fixture.componentInstance.signedIn()).toBeTrue();
+    http.expectNone('account/login');
+  });
+
+  it('closes with Escape and restores focus without signing out', async () => {
+    await open();
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'Escape'}));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.open()).toBeFalse();
+    expect(document.activeElement).toBe(fixture.nativeElement.querySelector('.account-trigger'));
+    http.expectNone('account/logout');
+  });
+});

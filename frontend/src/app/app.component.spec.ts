@@ -29,6 +29,7 @@ describe('Dev console navigation', () => {
     fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    http.expectOne('account/status').flush({account: {state: 'signed_out'}});
     const status: Status = {resourceHistory: [], project: 'repair-cafe', projectDirectory: '/projects/repair-cafe', state: 'running',
       runtime: 'running', applications: 'running', tests: 'passed', frontend: 'stopped', monitoring: {enabled: false},
       maintenance: {busy: false, stopSupported: true, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},

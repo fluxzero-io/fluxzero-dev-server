@@ -25,6 +25,24 @@ replacing the MCP session. Non-empty directories without a build root remain inv
 For independent full suites and dependency changes while using a frontend watcher, see
 [external verification and build isolation](docs/external-verification.md).
 
+## Optional account connection
+
+The profile icon beside **Connected** opens a compact account menu. Its outline means signed out; the filled
+icon means a remembered sign-in. Sign in opens the browser, Profile opens account settings, and Sign out on
+this computer signs out the CLI and Devboards sharing that account configuration. Connected describes the
+local Dev Server connection separately. Account actions keep the current page and App preview in place.
+
+Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
+when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.
+The local MCP tools `get_account`, `start_login` and `logout` are also available without a running application.
+They return account status and customer-safe outcomes, never tokens or keys.
+
+The shared `io.fluxzero.tools:fluxzero-local-account` artifact owns the account lifecycle and macOS Keychain
+integration. CLI and Dev Server must use the same user-level `FLUXZERO_ACCOUNT_*` configuration; local and
+production environments have separate credentials. Cloud authorization remains a separate server-side check.
+
+## Devboard
+
 The dashboard's dev server selector only links to sessions whose gateway advertises
 `metadata.devConsoleVersion: "1"` in `.fluxzero/dev/session.json`. Older servers remain
 listed with a dashboard-unavailable message instead of routing into the customer app.

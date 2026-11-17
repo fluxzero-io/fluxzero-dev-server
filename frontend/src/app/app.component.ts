@@ -1,4 +1,5 @@
 import {ServerUpdateComponent} from './server-update.component';
+import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
 import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
@@ -18,7 +19,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {

@@ -60,6 +60,7 @@ final class DevMcpServer implements AutoCloseable {
     private final Path tokenFile;
     private final String token;
     private final HttpLifecycle httpLifecycle;
+    private final DevAccount account;
 
     static DevMcpServer start(Path projectDirectory, AgentQueryService queryService, DevLogStore logStore) {
         return start(projectDirectory, queryService, logStore, ignored -> {
@@ -72,6 +73,7 @@ final class DevMcpServer implements AutoCloseable {
         McpSyncServer mcpServer = null;
         Server server = null;
         HttpLifecycle httpLifecycle = new HttpLifecycle(unexpectedFailure);
+        DevAccount account = new DevAccount();
         try {
             String token = createToken(tokenFile);
             ObjectMapper objectMapper = new ObjectMapper();
@@ -92,6 +94,7 @@ final class DevMcpServer implements AutoCloseable {
                                           .resources(true, false)
                                           .build())
                     .tools(DevMcpTools.tools(queryService, objectMapper))
+                    .tools(AccountTools.tools(account, objectMapper))
                     .tools(AgentWorkflows.tool(objectMapper, null))
                     .tools(ProgressTools.tools(() -> projectDirectory, objectMapper))
                     .tools(MonitoringTools.tools(new MonitoringQueryService(() -> queryService.getStatus().session()), objectMapper))
@@ -117,7 +120,7 @@ final class DevMcpServer implements AutoCloseable {
                     .notifyResourcesUpdated(new McpSchema.ResourcesUpdatedNotification(DIAGNOSTICS_RESOURCE))
                     .onErrorComplete()
                     .subscribe());
-            return new DevMcpServer(server, mcpServer, registration, tokenFile, token, httpLifecycle);
+            return new DevMcpServer(server, mcpServer, registration, tokenFile, token, httpLifecycle, account);
         } catch (Exception e) {
             httpLifecycle.beginManagedShutdown();
             stopAfterFailedStart(server, mcpServer, tokenFile);
@@ -144,13 +147,14 @@ final class DevMcpServer implements AutoCloseable {
     }
 
     private DevMcpServer(Server server, McpSyncServer mcpServer, AutoCloseable diagnosticsRegistration,
-                         Path tokenFile, String token, HttpLifecycle httpLifecycle) {
+                         Path tokenFile, String token, HttpLifecycle httpLifecycle, DevAccount account) {
         this.server = server;
         this.mcpServer = mcpServer;
         this.diagnosticsRegistration = diagnosticsRegistration;
         this.tokenFile = tokenFile;
         this.token = token;
         this.httpLifecycle = httpLifecycle;
+        this.account = account;
     }
 
     String url() {
@@ -219,6 +223,7 @@ final class DevMcpServer implements AutoCloseable {
 
     @Override
     public void close() {
+        account.close();
         httpLifecycle.beginManagedShutdown();
         try {
             diagnosticsRegistration.close();

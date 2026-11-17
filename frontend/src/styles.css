@@ -41,6 +41,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 @media (prefers-reduced-motion:reduce) {.spinner-border {animation-duration:1.5s;}}
 main { min-width: 0; flex: 1; }
 .connection { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+.sidebar-footer .connection {margin-right:auto;}
 .connection i {font-size:16px;color:var(--dashboard-muted);}
 .connection.connected i {color:var(--dashboard-success-icon);}
 .page { max-width: 1600px; padding: 32px; }
