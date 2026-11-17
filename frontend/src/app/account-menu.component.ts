@@ -24,7 +24,7 @@ export type {AccountStatus} from './account-connection';
           <button type="button" class="switch-account" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>
         </div>
         @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>}
-        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('refresh')">Unlock secure storage</button>}
+        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Unlock secure storage</button>}
         @if(signingOutEverywhere()) {
           <p class="account-progress" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Confirm sign-out in your browser…</span></p>
         }

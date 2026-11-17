@@ -7,6 +7,7 @@ export type AccountStatus = {
   displayName?: string; email?: string; accountUrl?: string; environment?: string;
   expiresAt?: number; renewable?: boolean; operationId?: string; message?: string;
   dashboardUrl?: string; sessionsUrl?: string; pendingAction?: 'sign_out_everywhere';
+  issue?: string;
 };
 export type AccountAction = 'login' | 'login-another' | 'logout' | 'cancel' | 'refresh' | 'logout-everywhere' | 'cancel-browser' | 'check' | 'check-interactive';
 type Reply = {account?: AccountStatus; error?: {code: string; message: string}};
@@ -67,7 +68,7 @@ export class AccountConnection {
       if(reply.account) this.account.set(reply.account);
       else if(reply.error && !this.account()) this.account.set({state:'unavailable'});
       this.message.set(reply.error?.message || '');
-      this.issue.set(reply.error?.code || '');
+      this.issue.set(reply.error?.code || reply.account?.issue || '');
     } catch {
       if(!this.destroyed && request === this.request) {
         this.message.set('Account features are unavailable. Try again shortly.');

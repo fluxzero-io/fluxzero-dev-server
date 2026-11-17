@@ -95,6 +95,18 @@ describe('Optional Fluxzero account', () => {
     http.expectNone('account/login');
   });
 
+  it('offers explicit secure storage recovery from shared background status', async () => {
+    await open();
+    const loading=fixture.componentInstance.connection.load();
+    http.expectOne('account/status').flush({account:{state:'signed_in',issue:'storage_locked',message:'Unlock secure storage to finish signing out.'}});
+    await loading;fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Unlock secure storage');
+    const action=fixture.componentInstance.act('check-interactive');
+    http.expectOne('account/check-interactive').flush({account:{state:'signed_out'}});
+    await action;fixture.detectChanges();
+    expect(fixture.componentInstance.signedIn()).toBeFalse();
+  });
+
   it('keeps global sign-out behind its own button and preserves the account while the browser confirms', async () => {
     await open();
     fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty'});
