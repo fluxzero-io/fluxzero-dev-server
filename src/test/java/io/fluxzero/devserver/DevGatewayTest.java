@@ -1075,8 +1075,8 @@ public class DevGatewayTest {
         @Override
         public void onWebSocketClose(int statusCode, String reason,
                                      org.eclipse.jetty.websocket.api.Callback callback) {
-            websocketCloses.add(new CloseFrame(statusCode, reason));
             activeWebsocket.compareAndSet(session, null);
+            websocketCloses.add(new CloseFrame(statusCode, reason));
             callback.succeed();
         }
     }

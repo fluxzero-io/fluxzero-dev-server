@@ -26,6 +26,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,13 +61,16 @@ class DevServerCompileLifecycleTest {
     void oneCloseInterruptsAnActiveCompileWithoutPublishingAStartupFailure(@TempDir Path projectDirectory)
             throws Exception {
         installBlockingFakeMaven(projectDirectory);
+        // Keep the timed close assertion focused on compile cancellation, not managed IDP shutdown.
         DevServerConfig config = new DevServerConfig(
                 projectDirectory, null, "dev-test-app", null,
                 false, false, false,
                 DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
                 DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
                 DevServerConfig.DEFAULT_DEBOUNCE,
-                FrontendConfig.none(), null);
+                FrontendConfig.none(), null,
+                false, "local", List.of(), 0, IdpMode.EXTERNAL, Map.of(),
+                DevServerConfig.DEFAULT_IDLE_TIMEOUT);
         ByteArrayOutputStream terminalBytes = new ByteArrayOutputStream();
         DevServer devServer = new DevServer(
                 config, ignored -> true,
