@@ -1,0 +1,57 @@
+<section class="cloud-page" aria-labelledby="cloud-title">
+  <header><div><span class="eyebrow">Fluxzero Cloud</span><h1 id="cloud-title" tabindex="-1">{{page().label}}</h1></div>
+    @if(account.signedIn() && dashboardUrl();as url){<a class="secondary-button" [href]="url" target="_blank" rel="noopener noreferrer">Dashboard<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+  </header>
+  @if(projectName()) {
+    <div class="local-project" aria-label="Local project">
+      <i class="bi bi-folder2" aria-hidden="true"></i><div><span>Local project</span><strong>{{projectName()}}</strong></div>
+      <a class="quiet-link" href="#application" (click)="navigate($event,'application')"><i class="bi bi-arrow-left" aria-hidden="true"></i>App preview</a>
+    </div>
+  }
+  @if(notice()) {<p class="cloud-notice" role="status">{{notice()}}</p>}
+  @if(account.account() === undefined) {
+    <div class="cloud-card recovery" role="status" aria-busy="true"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><h2>Loading account…</h2></div>
+  } @else if(account.account()?.state === 'unavailable') {
+    <div class="cloud-card recovery"><i class="bi bi-cloud-slash cloud-symbol" aria-hidden="true"></i><h2>Account temporarily unavailable</h2>
+      <button type="button" class="secondary-button" [disabled]="account.busy()" (click)="account.load()">Try again</button>
+    </div>
+  } @else if(account.account()?.state === 'signing_in') {
+    <div class="cloud-card recovery"><div class="progress-label" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><h2>Finish signing in</h2></div>
+      <p>Continue in your browser.</p><button type="button" class="secondary-button" [disabled]="account.busy()" (click)="account.act('cancel')">Cancel sign-in</button>
+    </div>
+  } @else if(!account.signedIn()) {
+    <div class="cloud-card recovery"><i class="bi bi-cloud cloud-symbol" aria-hidden="true"></i><h2>{{signInRequired() ? 'Sign in again' : 'Sign in to Fluxzero Cloud'}}</h2>
+      <p>{{signInRequired() ? 'Reconnect your account to continue in Cloud.' : 'Manage your organizations, applications and clusters.'}}</p>
+      <button type="button" class="primary-button" [disabled]="account.busy()" (click)="account.act('login')">{{account.busy() ? 'Opening sign-in…' : signInRequired() ? 'Sign in again' : 'Sign in'}}</button>
+    </div>
+  } @else if(account.account()?.pendingAction === 'sign_out_everywhere') {
+    <div class="cloud-card recovery"><div class="progress-label" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><h2>Confirm sign-out in your browser…</h2></div></div>
+  } @else if(storageLocked()) {
+    <div class="cloud-card recovery"><i class="bi bi-lock cloud-symbol" aria-hidden="true"></i><h2>Unlock secure storage</h2><p>Allow access to your saved sign-in to continue.</p>
+      <button type="button" class="primary-button" [disabled]="account.busy()" [attr.aria-busy]="account.busy()" (click)="account.act('check-interactive')">{{account.busy() ? 'Waiting for access…' : 'Unlock secure storage'}}</button>
+    </div>
+  } @else {
+    <div class="account-summary"><i class="bi bi-person-check" aria-hidden="true"></i><span>Signed in as <strong>{{account.account()?.displayName || account.account()?.email || 'Fluxzero account'}}</strong></span>
+      @if(profileUrl();as url){<a class="quiet-link" [href]="url" target="_blank" rel="noopener noreferrer">Profile<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+    </div>
+    @if(section() === 'overview') {
+      <div class="cloud-grid">
+        <div class="cloud-card organization-card"><i class="bi bi-buildings cloud-symbol" aria-hidden="true"></i><h2>Organization & plan</h2><p>Choose an organization in Dashboard to view its plan and resources.</p>
+          @if(dashboardUrl();as url){<a class="primary-button" [href]="url" target="_blank" rel="noopener noreferrer">Choose organization<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+          @else{<p class="configuration-note">Dashboard is unavailable for this connection.</p>}
+        </div>
+        <div class="cloud-card journey-card"><h2>From development to deployment</h2><ul>
+          @for(step of journey;track step.key){<li><a [href]="'#cloud/' + step.key" (click)="navigate($event,'cloud/' + step.key)"><i [class]="'bi bi-' + step.icon" aria-hidden="true"></i><span><strong>{{step.label}}</strong><small>{{step.description}}</small></span><i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>}
+        </ul></div>
+      </div>
+    } @else {
+      <div class="cloud-card resource-card"><i [class]="'bi bi-' + page().icon + ' cloud-symbol'" aria-hidden="true"></i><h2>{{resource().title}}</h2><p>{{resource().description}}</p>
+        <div class="resource-actions">
+          @if(section() === 'integrations' && githubUrl();as url){<a class="primary-button" [href]="url" target="_blank" rel="noopener noreferrer">GitHub connections<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+          @if(dashboardUrl();as url){<a [class]="section() === 'integrations' ? 'secondary-button' : 'primary-button'" [href]="url" target="_blank" rel="noopener noreferrer">{{section() === 'integrations' ? 'Organization integrations' : 'Open organizations'}}<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+          @else{<p class="configuration-note">Dashboard is unavailable for this connection.</p>}
+        </div>
+      </div>
+    }
+  }
+</section>

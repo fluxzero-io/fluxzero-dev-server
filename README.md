@@ -47,7 +47,12 @@ does not access credentials or Cloud. Network failures preserve the remembered a
 **Fluxzero Cloud** offers Overview, Applications, Clusters and Integrations with links to the configured
 Dashboard. The Cloud section sits below local navigation, aligned to the bottom when space permits and separated
 by its logo and a muted blue-grey divider. Organization and plan selection will use authorized Cloud context; the current overview does not
-infer memberships or plan details from a local login. Monitoring starts collapsed unless you saved a preference.
+infer memberships or plan details from a local login. The overview keeps the local project visible and offers
+Git & CI, cluster and application entry points. GitHub connections open their existing Dashboard route; organization
+resources first open the organization overview. Links never include the local project name, path or preview URL.
+**App preview** returns to the same local frame. Expired sign-ins and locked secure storage have explicit recovery
+actions within Cloud; opening Cloud pages does not contact Cloud or unlock credentials.
+Monitoring starts collapsed unless you saved a preference.
 
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
 when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.

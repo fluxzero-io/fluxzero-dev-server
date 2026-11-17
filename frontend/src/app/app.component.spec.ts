@@ -57,7 +57,7 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
-  it('opens each Cloud page through navigation and retains the local preview frame', () => {
+  it('opens each Cloud page through navigation and retains the local preview frame', async () => {
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
     const frame = root.querySelector('iframe[name="dev-application"]');
@@ -65,11 +65,15 @@ describe('Dev console navigation', () => {
       (root.querySelector(`nav a[href="#cloud/${page}"]`) as HTMLAnchorElement).click();fixture.detectChanges();
       expect(fixture.componentInstance.route()).toBe('cloud/' + page);
       expect(root.querySelector('dev-cloud-page')).not.toBeNull();
+      expect(root.querySelector('.local-project')?.textContent).toContain('repair-cafe');
       expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
     }
-    (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    (root.querySelector('.local-project a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
     expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
     expect(root.querySelector('.application-page')?.hasAttribute('hidden')).toBeFalse();
+    await fixture.whenStable();
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+    expect(document.activeElement).toBe(root.querySelector('.application-page'));
   });
   it('rebases an initially selected frontend when the ingress restarts on a different port', () => {
     const app=fixture.componentInstance;

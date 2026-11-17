@@ -269,6 +269,13 @@ export class AppComponent implements OnInit, OnDestroy {
     this.readRoute();
     this.menuOpen.set(false);
   }
+  navigateFromCloud(route:string) {
+    this.navigate(route);
+    setTimeout(()=>{
+      if(this.route() !== route) return;
+      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1')?.focus();
+    });
+  }
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {
     const url = environmentConsoleUrl(environment);
     if (!url) return;
