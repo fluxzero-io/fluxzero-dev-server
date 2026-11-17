@@ -7,12 +7,13 @@ describe('Optional Fluxzero account', () => {
   let fixture: ComponentFixture<AccountMenuComponent>;
   let http: HttpTestingController;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     TestBed.configureTestingModule({imports: [AccountMenuComponent], providers: [provideHttpClient(), provideHttpClientTesting()]});
     fixture = TestBed.createComponent(AccountMenuComponent);
     http = TestBed.inject(HttpTestingController);
     fixture.detectChanges();
     http.expectOne('account/status').flush({account: {state: 'signed_out'}});
+    await fixture.whenStable();
   });
   afterEach(() => { fixture.destroy(); http.verify(); });
 
@@ -73,7 +74,7 @@ describe('Optional Fluxzero account', () => {
     fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'Home'}));
     expect(document.activeElement).toBe(items[0]);
     fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'End'}));
-    expect(document.activeElement).toBe(items[1]);
+    expect(document.activeElement).toBe(items[items.length - 1]);
     fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key: 'Tab'}));
     expect(fixture.componentInstance.open()).toBeFalse();
     http.expectNone('account/login');http.expectNone('account/logout');
@@ -90,6 +91,44 @@ describe('Optional Fluxzero account', () => {
     expect(fixture.nativeElement.textContent).toContain('Unlock secure storage');
     expect(fixture.componentInstance.signedIn()).toBeTrue();
     http.expectNone('account/login');
+  });
+
+  it('keeps global sign-out behind its own button and preserves the account while the browser confirms', async () => {
+    await open();
+    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty'});
+    fixture.detectChanges();
+    const more: HTMLButtonElement = fixture.nativeElement.querySelector('.more-signout');
+    more.click();fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Sign out everywhere…');
+    http.expectNone('account/logout');http.expectNone('account/logout-everywhere');
+    fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key:'Escape'}));fixture.detectChanges();
+    expect(fixture.componentInstance.open()).toBeTrue();
+    expect(document.activeElement).toBe(more);
+    more.click();fixture.detectChanges();
+    const action=fixture.componentInstance.act('logout-everywhere');
+    http.expectOne('account/logout-everywhere').flush({account:{state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'}});
+    await action;fixture.detectChanges();
+    expect(fixture.componentInstance.signedIn()).toBeTrue();
+    expect(fixture.nativeElement.textContent).toContain('Check sign-out');
+    http.expectNone('account/logout');
+    const cancel=fixture.componentInstance.act('cancel-browser');
+    http.expectOne('account/cancel-browser').flush({account:{state:'signed_in',displayName:'Marty'}});
+    await cancel;fixture.detectChanges();
+    expect(fixture.componentInstance.signedIn()).toBeTrue();
+    expect(fixture.nativeElement.textContent).not.toContain('Check sign-out');
+  });
+
+  it('checks only an explicitly pending browser action on return and updates all account surfaces', async () => {
+    await open();
+    fixture.componentInstance.account.set({state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'});
+    const returned=fixture.componentInstance.connection.load(true);
+    http.expectOne('account/status').flush({account:{state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'}});
+    await Promise.resolve();await Promise.resolve();
+    http.expectOne('account/check').flush({account:{state:'signed_out'}});
+    await returned;fixture.detectChanges();
+    expect(fixture.componentInstance.signedIn()).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.bi-person')).not.toBeNull();
+    http.expectNone('account/logout');
   });
 
   it('closes with Escape and restores focus without signing out', async () => {

@@ -30,13 +30,17 @@ final class AccountTools {
 
     private static McpServerFeatures.SyncToolSpecification tool(String name, String description, String action,
                                                                boolean readOnly, DevAccount account, ObjectMapper mapper) {
-        var definition = McpSchema.Tool.builder(name, Map.of("type", "object", "properties", Map.of(), "additionalProperties", false))
+        var definition = McpSchema.Tool.builder(name, Map.of("type", "object", "properties",
+                "start_login".equals(name) ? Map.of("useAnotherAccount", Map.of("type", "boolean", "description",
+                        "Request a fresh sign-in after the user chooses another account.")) : Map.of(), "additionalProperties", false))
                 .description(description).annotations(McpSchema.ToolAnnotations.builder().readOnlyHint(readOnly)
                         .destructiveHint("logout".equals(name)).idempotentHint(readOnly || "logout".equals(name)).openWorldHint(!readOnly).build()).build();
         return new McpServerFeatures.SyncToolSpecification(definition, (exchange, request) -> {
-            if (request.arguments() != null && !request.arguments().isEmpty())
-                return McpSchema.CallToolResult.builder().isError(true).addTextContent("This account action takes no arguments.").build();
-            return DevMcpTools.result(account.call(action), mapper);
+            var arguments = request.arguments() == null ? Map.<String, Object>of() : request.arguments();
+            if (!arguments.isEmpty() && (!"start_login".equals(name) || !arguments.keySet().equals(java.util.Set.of("useAnotherAccount"))
+                    || !(arguments.get("useAnotherAccount") instanceof Boolean)))
+                return McpSchema.CallToolResult.builder().isError(true).addTextContent("Use only the supported account options.").build();
+            return DevMcpTools.result(account.call(Boolean.TRUE.equals(arguments.get("useAnotherAccount")) ? "login-another" : action), mapper);
         });
     }
 }

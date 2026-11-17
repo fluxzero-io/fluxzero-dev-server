@@ -32,6 +32,16 @@ icon means a remembered sign-in. Sign in opens the browser, Profile opens accoun
 this computer signs out the CLI and Devboards sharing that account configuration. Connected describes the
 local Dev Server connection separately. Account actions keep the current page and App preview in place.
 
+Use another account requests a fresh browser sign-in. The three-dot action beside local sign-out opens
+**Sign out everywhere…** in the existing account session manager. Confirm there, then return to Devboard;
+**Check sign-out** verifies whether this Devboard's own session has ended. **Stop waiting** stops this local
+check without undoing a sign-out already confirmed in the browser. Network failures preserve the remembered
+account and remain scoped to account features.
+
+**Fluxzero Cloud** offers Overview, Applications, Clusters and Integrations with links to the configured
+Dashboard. Organization and plan selection will use authorized Cloud context; the current overview does not
+infer memberships or plan details from a local login. Monitoring starts collapsed unless you saved a preference.
+
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
 when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.
 The local MCP tools `get_account`, `start_login` and `logout` are also available without a running application.
@@ -40,6 +50,9 @@ They return account status and customer-safe outcomes, never tokens or keys.
 The shared `io.fluxzero.tools:fluxzero-local-account` artifact owns the account lifecycle and macOS Keychain
 integration. CLI and Dev Server must use the same user-level `FLUXZERO_ACCOUNT_*` configuration; local and
 production environments have separate credentials. Cloud authorization remains a separate server-side check.
+`FLUXZERO_ACCOUNT_ACCOUNT_URL` defaults to the issuer's `/account`, `FLUXZERO_ACCOUNT_SESSIONS_URL` to its
+`/account/sessions`, and `FLUXZERO_ACCOUNT_DASHBOARD_URL` to `https://dashboard.fluxzero.io`.
+Set an explicit local Dashboard URL when testing a local chain. These links never come from project configuration.
 
 ## Devboard
 

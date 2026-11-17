@@ -34,6 +34,11 @@ final class DevAccount implements AutoCloseable {
             AccountStatus status = switch (action) {
                 case "status" -> service().status();
                 case "login" -> service().startLogin();
+                case "login-another" -> service().startLogin(true);
+                case "logout-everywhere" -> service().startLogoutEverywhere();
+                case "cancel-browser" -> service().cancelBrowserAction();
+                case "check" -> service().checkSession(false);
+                case "check-interactive" -> service().checkSession(true);
                 case "cancel" -> service().cancelLogin();
                 case "logout" -> service().logout();
                 case "refresh" -> service().refresh();

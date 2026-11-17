@@ -16,7 +16,7 @@ describe('Dev console navigation', () => {
   const originalConfirmation = localStorage.getItem('devConfirmTruncate');
   const originalRestartScope = localStorage.getItem('devRestartScope');
   const originalTheme = localStorage.getItem('dashboardTheme');
-  const navigationKeys=['devboard.monitoringExpanded','devboard.sidebarCollapsed','devboard.sidebarWidth'];
+  const navigationKeys=['devboard.cloudExpanded','devboard.monitoringExpanded','devboard.sidebarCollapsed','devboard.sidebarWidth'];
   const navigationPreferences=navigationKeys.map(key=>localStorage.getItem(key));
   beforeEach(async () => {
     localStorage.removeItem('devRestartScope');
@@ -56,6 +56,20 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', originalLocation);
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
+  });
+  it('opens each Cloud page through navigation and retains the local preview frame', () => {
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    const frame = root.querySelector('iframe[name="dev-application"]');
+    for(const page of ['overview', 'applications', 'clusters', 'integrations']) {
+      (root.querySelector(`nav a[href="#cloud/${page}"]`) as HTMLAnchorElement).click();fixture.detectChanges();
+      expect(fixture.componentInstance.route()).toBe('cloud/' + page);
+      expect(root.querySelector('dev-cloud-page')).not.toBeNull();
+      expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    }
+    (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    expect(root.querySelector('.application-page')?.hasAttribute('hidden')).toBeFalse();
   });
   it('rebases an initially selected frontend when the ingress restarts on a different port', () => {
     const app=fixture.componentInstance;
@@ -342,16 +356,16 @@ describe('Dev console navigation', () => {
   });
   it('restores Monitoring and pinned navigation choices after recreating the UI', () => {
     const app=fixture.componentInstance;
-    expect(app.monitoringExpanded()).toBeTrue();
+    expect(app.monitoringExpanded()).toBeFalse();
     app.toggleMonitoring();app.togglePinnedNavigation();
     app.resizeNavigationWithKeyboard(new KeyboardEvent('keydown',{key:'End'}));
     const restored=TestBed.createComponent(AppComponent);
-    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    expect(restored.componentInstance.monitoringExpanded()).toBeTrue();
     expect(restored.componentInstance.sidebarCollapsed()).toBeTrue();
     expect(restored.componentInstance.sidebarWidth()).toBe(520);
     history.replaceState(null,'','#monitoring/logs');
     restored.componentInstance.readRoute();
-    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    expect(restored.componentInstance.monitoringExpanded()).toBeTrue();
     restored.destroy();
   });
   it('opens a temporary drawer without changing the saved pinned state and closes on Escape', () => {
@@ -863,7 +877,7 @@ describe('Dev console navigation', () => {
     expect((dialog.querySelector('.dialog-actions .primary-button') as HTMLButtonElement).disabled).toBeTrue();
     http.expectNone('projects/create');
     (dialog.querySelector('.dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(dialog.textContent).toContain('Manage projects');
+    expect(dialog.textContent).toContain('Manage local projects');
   });
 
   it('renames the current project and keeps a rejected draft available', async () => {

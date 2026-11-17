@@ -1,13 +1,6 @@
-import {ChangeDetectorRef, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, computed, inject, signal} from '@angular/core';
-import {HttpClient} from '@angular/common/http';
-import {firstValueFrom, timeout} from 'rxjs';
-
-export type AccountStatus = {
-  state: 'signed_out' | 'signing_in' | 'signed_in' | 'sign_in_required' | 'unavailable';
-  displayName?: string; email?: string; accountUrl?: string; environment?: string;
-  expiresAt?: number; renewable?: boolean; operationId?: string; message?: string;
-};
-type Reply = {account?: AccountStatus; error?: {code: string; message: string}};
+import {ChangeDetectorRef, Component, ElementRef, HostListener, OnInit, ViewChild, computed, inject, signal} from '@angular/core';
+import {AccountConnection, AccountAction, accountLink} from './account-connection';
+export type {AccountStatus} from './account-connection';
 
 @Component({selector: 'dev-account-menu', standalone: true, template: `
   <button #trigger class="icon-button account-trigger" type="button" [attr.aria-label]="label()" [title]="tooltip()"
@@ -27,8 +20,20 @@ type Reply = {account?: AccountStatus; error?: {code: string; message: string}};
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel')">Cancel sign-in</button>
       } @else if(signedIn()) {
         @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
-        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('refresh')">Unlock secure storage</button>}
-        <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout')"><i class="bi bi-box-arrow-right" aria-hidden="true"></i>Sign out on this computer</button>
+        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act(account()?.pendingAction ? 'check-interactive' : 'refresh')">Unlock secure storage</button>}
+        <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('login-another')"><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Use another account</button>
+        @if(account()?.pendingAction === 'sign_out_everywhere') {
+          <p class="account-message" role="status">Finish signing out in your browser.</p>
+          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Check sign-out</button>
+          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel-browser')">Stop waiting</button>
+        }
+        <div class="signout-actions" role="group" aria-label="Sign-out options">
+          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout')"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Sign out on this computer</span></button>
+          <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy()" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
+        </div>
+        @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu">
+          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout-everywhere')">Sign out everywhere…</button>
+        </div>}
       } @else {
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('login')"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>{{busy() ? 'Opening sign-in…' : account()?.state === 'sign_in_required' ? 'Sign in again' : 'Sign in'}}</button>
       }
@@ -39,7 +44,7 @@ type Reply = {account?: AccountStatus; error?: {code: string; message: string}};
   :host {display:block;position:relative;flex-shrink:0;}
   .account-trigger {font-size:20px;}
   .account-trigger[aria-expanded=true] {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
-  .account-menu {position:absolute;z-index:60;bottom:calc(100% + 10px);left:0;width:min(270px,calc(100vw - 48px));
+  .account-menu {position:absolute;z-index:60;bottom:calc(100% + 10px);left:0;width:min(300px,calc(var(--sidebar-width,300px) - 44px),calc(100vw - 48px));
     box-sizing:border-box;padding:6px;display:flex;flex-direction:column;gap:4px;color:var(--dashboard-text);
     background:var(--dashboard-popover-bg);border:1px solid var(--dashboard-border);border-radius:10px;
     box-shadow:var(--dashboard-popover-shadow);font-size:14px;line-height:1.5;}
@@ -49,102 +54,70 @@ type Reply = {account?: AccountStatus; error?: {code: string; message: string}};
   .account-message {margin:0;padding:8px 10px;font-size:13px;}
   [role=menuitem] {display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:38px;padding:8px 10px;
     color:var(--dashboard-text);background:transparent;border:0;border-radius:5px;text-decoration:none;text-align:left;font:inherit;font-size:13px;}
+  .signout-actions {display:flex;align-items:stretch;}
+  .signout-actions > button:first-child {flex:1;min-width:0;}
+  .signout-actions .more-signout {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
+  .more-signout-menu {border-top:1px solid var(--dashboard-border);padding-top:4px;}
   [role=menuitem]:hover {background:var(--dashboard-panel-soft);}
   [role=menuitem] span {flex:1;}
   [role=menuitem] i {font-size:16px;}
   button:focus-visible,a:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
   button:disabled {opacity:.65;cursor:wait;}
-  @media(pointer:coarse) {.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
+  @media(pointer:coarse) {.signout-actions .more-signout {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
 `})
-export class AccountMenuComponent implements OnInit, OnDestroy {
+export class AccountMenuComponent implements OnInit {
   readonly open = signal(false);
-  readonly account = signal<AccountStatus | undefined>(undefined);
-  readonly message = signal('');
-  readonly issue = signal('');
-  readonly busy = signal(false);
-  readonly signedIn = computed(() => this.account()?.state === 'signed_in');
+  readonly more = signal(false);
+  readonly connection = inject(AccountConnection);
+  readonly account = this.connection.account;
+  readonly message = this.connection.message;
+  readonly issue = this.connection.issue;
+  readonly busy = this.connection.busy;
+  readonly signedIn = this.connection.signedIn;
   readonly label = computed(() => 'Fluxzero account — ' + (this.signedIn() ? this.account()?.displayName || 'signed in' : this.account()?.state === 'signing_in' ? 'signing in' : 'signed out'));
   readonly tooltip = computed(() => this.signedIn() ? (this.account()?.displayName || 'Signed in') + ' — Fluxzero account' : this.account()?.state === 'signing_in' ? 'Signing in to Fluxzero' : 'Sign in to Fluxzero');
-  private readonly http = inject(HttpClient);
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly changeDetector = inject(ChangeDetectorRef);
   @ViewChild('trigger') trigger?: ElementRef<HTMLButtonElement>;
+  @ViewChild('moreTrigger') moreTrigger?: ElementRef<HTMLButtonElement>;
   @ViewChild('panel') panel?: ElementRef<HTMLElement>;
-  private timer?: ReturnType<typeof setTimeout>;
-  private destroyed = false;
-  private request = 0;
 
-  ngOnInit() { void this.load(); }
-  ngOnDestroy() { this.destroyed = true; clearTimeout(this.timer); }
-
+  ngOnInit() {this.connection.initialize();}
   toggle() {
     if(this.open()) this.close();
-    else {
-      this.open.set(true);
-      void this.load();
-      this.changeDetector.detectChanges();
-      this.items()[0]?.focus();
-    }
+    else {this.open.set(true);void this.load();this.changeDetector.detectChanges();this.items()[0]?.focus();}
   }
-
-  accountUrl(): string | undefined {
-    try {
-      const url = new URL(this.account()?.accountUrl || '');
-      const local = url.hostname === 'localhost' || url.hostname.endsWith('.localhost') || url.hostname === '127.0.0.1' || url.hostname === '[::1]';
-      return !url.username && !url.password && (url.protocol === 'https:' || url.protocol === 'http:' && local) ? url.href : undefined;
-    } catch { return undefined; }
+  toggleMore() {
+    this.more.update(value => !value);
+    this.changeDetector.detectChanges();
+    if(this.more()) this.panel?.nativeElement.querySelector<HTMLElement>('#more-signout-menu [role=menuitem]')?.focus();
   }
-
-  @HostListener('window:focus') async load() { if(!this.busy()) await this.call('status'); }
-  async act(action: 'login' | 'logout' | 'cancel' | 'refresh') {
-    if(this.busy()) return;
-    this.busy.set(true);
-    try { await this.call(action); } finally {
-      this.busy.set(false);
-      if(!this.destroyed && this.open()) {this.changeDetector.detectChanges();this.items()[0]?.focus();}
-    }
+  accountUrl() {return accountLink(this.account()?.accountUrl);}
+  async load() {await this.connection.load();this.retainFocus();}
+  async act(action: AccountAction) {await this.connection.act(action);this.more.set(false);this.retainFocus();}
+  private retainFocus() {
+    if(!this.open()) return;
+    this.changeDetector.detectChanges();
+    if(!this.panel?.nativeElement.contains(document.activeElement)) this.items()[0]?.focus();
   }
-
-  private async call(action: string) {
-    const request = ++this.request;
-    clearTimeout(this.timer);
-    try {
-      const reply = await firstValueFrom(this.http.post<Reply>(`account/${action}`, {}, {headers: {'X-Fluxzero-Console': '1'}})
-        .pipe(timeout(action === 'status' ? 3000 : 15000)));
-      if(this.destroyed || request !== this.request) return;
-      const focused = this.panel?.nativeElement.contains(document.activeElement);
-      if(reply.account) this.account.set(reply.account);
-      this.message.set(reply.error?.message || '');
-      this.issue.set(reply.error?.code || '');
-      if(focused && this.open()) {
-        this.changeDetector.detectChanges();
-        if(!this.panel?.nativeElement.contains(document.activeElement)) this.items()[0]?.focus();
-      }
-    } catch {
-      if(!this.destroyed && request === this.request && this.open())
-        this.message.set('Account features are unavailable. Try again shortly.');
-    }
-    if(!this.destroyed && request === this.request && this.account()?.state === 'signing_in')
-      this.timer = setTimeout(() => void this.load(), 1000);
-  }
-
   @HostListener('document:click', ['$event'])
   @HostListener('document:focusin', ['$event'])
-  dismissOutside(event: Event) {
-    if(!this.element.nativeElement.contains(event.target as Node)) this.close();
-  }
-  close(restoreFocus = false) {this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
+  dismissOutside(event: Event) {if(!this.element.nativeElement.contains(event.target as Node)) this.close();}
+  close(restoreFocus = false) {this.more.set(false);this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
   private items() {return Array.from(this.panel?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') || []);}
   @HostListener('keydown', ['$event']) onKeydown(event: KeyboardEvent) {
     if(event.key === 'Tab') {if(this.open()) this.close(true);return;}
     if(event.key === 'Escape' && this.open()) {
-      event.preventDefault(); event.stopPropagation(); this.close(true);return;
+      event.preventDefault();event.stopPropagation();
+      if(this.more()) {this.more.set(false);this.changeDetector.detectChanges();this.moreTrigger?.nativeElement.focus();}
+      else this.close(true);
+      return;
     }
     if(!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
     event.preventDefault();
     if(!this.open()) {this.toggle();return;}
-    const items = this.items(), current = items.indexOf(document.activeElement as HTMLElement);
-    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1 : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    const items=this.items(),current=items.indexOf(document.activeElement as HTMLElement);
+    const next=event.key==='Home'?0:event.key==='End'?items.length-1:(current+(event.key==='ArrowDown'?1:-1)+items.length)%items.length;
     items[next]?.focus();
   }
 }

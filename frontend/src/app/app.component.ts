@@ -1,4 +1,5 @@
 import {ServerUpdateComponent} from './server-update.component';
+import {CloudPageComponent, cloudPages} from './cloud-page.component';
 import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
@@ -19,7 +20,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -112,7 +113,12 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemTheme = matchMedia('(prefers-color-scheme: dark)');
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
-  readonly monitoringExpanded = signal(this.preference('devboard.monitoringExpanded') !== 'false');
+  readonly cloudPages = cloudPages;
+  readonly cloudExpanded = signal(this.preference('devboard.cloudExpanded') !== 'false');
+  toggleCloud() {this.cloudExpanded.update(value=>!value);this.savePreference('devboard.cloudExpanded',String(this.cloudExpanded()));}
+  cloudSection() {return this.route().substring('cloud/'.length);}
+  isCloud() {return this.route().startsWith('cloud/');}
+  readonly monitoringExpanded = signal(this.preference('devboard.monitoringExpanded') === 'true');
   readonly sidebarCollapsed = signal(this.preference('devboard.sidebarCollapsed') === 'true');
   readonly sidebarWidth = signal(Math.max(260, Math.min(520, Number(this.preference('devboard.sidebarWidth')) || 300)));
   readonly mobileNavigation = signal(matchMedia('(max-width: 650px)').matches);
@@ -257,7 +263,8 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!path) return;
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
-    } else if (!['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) return;
+    } else if (!cloudPages.some(page => 'cloud/' + page.key === route)
+      && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
@@ -362,7 +369,7 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     if (route === 'monitoring') route = 'monitoring/messages';
     if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
+    if (!route.startsWith('monitoring/') && !cloudPages.some(page=>'cloud/'+page.key===route) && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
     this.route.set(route);
     if (route !== 'application') this.previewExpanded.set(false);
     if (route === 'application') this.applicationOpened.set(true);

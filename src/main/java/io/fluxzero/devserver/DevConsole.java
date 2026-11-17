@@ -183,7 +183,7 @@ final class DevConsole implements AutoCloseable {
         if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST for account actions.");
         if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Open account features from Devboard.");
         String action = path.substring((ROOT + "account/").length());
-        if (!java.util.Set.of("status", "login", "cancel", "logout", "refresh").contains(action))
+        if (!java.util.Set.of("status", "login", "login-another", "cancel", "logout", "refresh", "logout-everywhere", "cancel-browser", "check", "check-interactive").contains(action))
             return actionResult(response, callback, 404, "This account action is unavailable.");
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
         response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
