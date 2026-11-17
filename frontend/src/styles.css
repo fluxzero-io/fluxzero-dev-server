@@ -19,8 +19,8 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .dashboard-sidebar > nav {display:flex;flex-direction:column;min-height:0;}
 .dashboard-sidebar > nav > * {flex-shrink:0;}
-.dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-active);}
-.cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-active-foreground);}
+.dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-cloud-divider);}
+.cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);}
 .cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }

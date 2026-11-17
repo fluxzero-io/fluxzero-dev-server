@@ -40,7 +40,8 @@ final class AccountTools {
             if (!arguments.isEmpty() && (!"start_login".equals(name) || !arguments.keySet().equals(java.util.Set.of("useAnotherAccount"))
                     || !(arguments.get("useAnotherAccount") instanceof Boolean)))
                 return McpSchema.CallToolResult.builder().isError(true).addTextContent("Use only the supported account options.").build();
-            return DevMcpTools.result(account.call(Boolean.TRUE.equals(arguments.get("useAnotherAccount")) ? "login-another" : action), mapper);
+            return DevMcpTools.result(account.call(Boolean.TRUE.equals(arguments.get("useAnotherAccount")) ? "login-another" : action,
+                    io.fluxzero.tools.account.AccountBrowserContext.agent()), mapper);
         });
     }
 }

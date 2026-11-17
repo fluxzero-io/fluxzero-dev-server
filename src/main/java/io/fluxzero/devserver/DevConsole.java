@@ -185,11 +185,34 @@ final class DevConsole implements AutoCloseable {
         String action = path.substring((ROOT + "account/").length());
         if (!java.util.Set.of("status", "login", "login-another", "cancel", "logout", "refresh", "logout-everywhere", "cancel-browser", "check", "check-interactive").contains(action))
             return actionResult(response, callback, 404, "This account action is unavailable.");
+        var context = io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        if (java.util.Set.of("login", "login-another", "logout-everywhere").contains(action)) {
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(8193);
+                if (body.length > 8192) return actionResult(response, callback, 413, "Open account actions from your local Devboard.");
+                context = accountBrowserContext(request.getHeaders().get("Origin"), body);
+            } catch (java.io.IOException | IllegalArgumentException failure) {
+                return actionResult(response, callback, 400, "Open account actions from your local Devboard.");
+            }
+        }
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
         response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
         response.getHeaders().put("X-Content-Type-Options", "nosniff");
-        response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(account.call(action))), callback);
+        response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(account.call(action, context))), callback);
         return true;
+    }
+
+    static io.fluxzero.tools.account.AccountBrowserContext accountBrowserContext(String origin, byte[] body) throws java.io.IOException {
+        if (body.length == 0) return io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        var json = new ObjectMapper().readTree(body);
+        if (json == null || !json.isObject() || json.size() > 1 || json.size() == 1 && !json.has("returnTo")) throw new IllegalArgumentException();
+        if (!json.has("returnTo")) return io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        if (!json.path("returnTo").isTextual()) throw new IllegalArgumentException();
+        var target = java.net.URI.create(json.path("returnTo").asText());
+        var source = java.net.URI.create(origin);
+        if (!java.util.Objects.equals(target.getScheme(), source.getScheme())
+                || !java.util.Objects.equals(target.getRawAuthority(), source.getRawAuthority())) throw new IllegalArgumentException();
+        return io.fluxzero.tools.account.AccountBrowserContext.devboard(target);
     }
 
     private boolean maintenanceAction(String path, Request request, Response response, Callback callback) throws Exception {

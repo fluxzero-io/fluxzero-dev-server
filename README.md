@@ -32,6 +32,11 @@ icon means a remembered sign-in. Sign in opens the browser, Profile opens accoun
 this computer signs out the CLI and Devboards sharing that account configuration. Connected describes the
 local Dev Server connection separately. Account actions keep the current page and App preview in place.
 
+Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
+include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.
+The destination is validated against this Devboard's origin, stays in memory and is never sent to the IDP.
+CLI and local MCP actions show terminal- or agent-specific return guidance; agent-host deep links are not inferred.
+
 The switch icon beside Profile requests a fresh browser sign-in; Dashboard opens the configured Cloud dashboard.
 The three-dot action beside local sign-out opens a small submenu on hover, click or keyboard activation.
 **Sign out everywhere…** opens a focused IDP confirmation using the existing authenticated logout-all action.
@@ -41,7 +46,7 @@ does not access credentials or Cloud. Network failures preserve the remembered a
 
 **Fluxzero Cloud** offers Overview, Applications, Clusters and Integrations with links to the configured
 Dashboard. The Cloud section sits below local navigation, aligned to the bottom when space permits and separated
-by its logo and a blue divider. Organization and plan selection will use authorized Cloud context; the current overview does not
+by its logo and a muted blue-grey divider. Organization and plan selection will use authorized Cloud context; the current overview does not
 infer memberships or plan details from a local login. Monitoring starts collapsed unless you saved a preference.
 
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or

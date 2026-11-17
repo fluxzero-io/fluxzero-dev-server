@@ -10,6 +10,7 @@
 package io.fluxzero.devserver;
 
 import io.fluxzero.tools.account.AccountException;
+import io.fluxzero.tools.account.AccountBrowserContext;
 import io.fluxzero.tools.account.AccountStatus;
 import io.fluxzero.tools.account.LocalAccountService;
 
@@ -30,12 +31,16 @@ final class DevAccount implements AutoCloseable {
     }
 
     Object call(String action) {
+        return call(action, AccountBrowserContext.terminal());
+    }
+
+    Object call(String action, AccountBrowserContext context) {
         try {
             AccountStatus status = switch (action) {
                 case "status" -> service().status();
-                case "login" -> service().startLogin();
-                case "login-another" -> service().startLogin(true);
-                case "logout-everywhere" -> service().startLogoutEverywhere();
+                case "login" -> service().startLogin(false, context);
+                case "login-another" -> service().startLogin(true, context);
+                case "logout-everywhere" -> service().startLogoutEverywhere(context);
                 case "cancel-browser" -> service().cancelBrowserAction();
                 case "check" -> service().checkSession(false);
                 case "check-interactive" -> service().checkSession(true);

@@ -7,6 +7,7 @@
   --dashboard-text: #12233d;
   --dashboard-muted: #6b7890;
   --dashboard-border: #d9e2ef;
+  --dashboard-cloud-divider: #b6cbd8;
   --dashboard-active: #0d6efd;
   --dashboard-active-foreground: var(--dashboard-active);
   --dashboard-active-soft: #e8f1ff;
@@ -77,6 +78,7 @@
   --dashboard-text: #f7fbff;
   --dashboard-muted: #b6c4d9;
   --dashboard-border: rgba(151, 174, 205, 0.24);
+  --dashboard-cloud-divider: #425b73;
   --dashboard-active: #8bc5ff;
   --dashboard-active-foreground: #ffffff;
   --dashboard-active-soft: rgba(139, 197, 255, 0.16);

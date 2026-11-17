@@ -62,7 +62,9 @@ export class AccountConnection {
     const request = ++this.request;
     clearTimeout(this.timer);
     try {
-      const reply = await firstValueFrom(this.http.post<Reply>(`account/${action}`, {}, {headers: {'X-Fluxzero-Console': '1'}})
+      const body = ['login','login-another','logout-everywhere'].includes(action)
+        ? {returnTo: location.origin + location.pathname + location.hash} : {};
+      const reply = await firstValueFrom(this.http.post<Reply>(`account/${action}`, body, {headers: {'X-Fluxzero-Console': '1'}})
         .pipe(timeout(action === 'status' ? 3000 : 25000)));
       if(this.destroyed || request !== this.request) return;
       if(reply.account) this.account.set(reply.account);

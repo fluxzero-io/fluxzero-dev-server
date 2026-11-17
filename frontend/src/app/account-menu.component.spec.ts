@@ -40,6 +40,7 @@ describe('Optional Fluxzero account', () => {
     const action = fixture.componentInstance.act('login');
     const request = http.expectOne('account/login');
     expect(request.request.headers.get('X-Fluxzero-Console')).toBe('1');
+    expect(request.request.body).toEqual({returnTo:location.origin+location.pathname+location.hash});
     request.flush({error: {code: 'offline', message: 'Cloud cannot be reached. You can keep working locally.'}});
     await action; fixture.detectChanges();
     expect(fixture.componentInstance.open()).toBeTrue();
