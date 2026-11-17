@@ -17,6 +17,11 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid 
 .brand-title { color: var(--dashboard-text); font-size: 20px; font-weight: 600; line-height: 1.25; }
 .brand-title span { display: block; font-size: 18px; font-weight: 500; }
 nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
+.dashboard-sidebar > nav {display:flex;flex-direction:column;min-height:0;}
+.dashboard-sidebar > nav > * {flex-shrink:0;}
+.dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-active);}
+.cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-active-foreground);}
+.cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }
 .dashboard-nav-link { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 6px; color: var(--dashboard-link-text); font-size: 15px; font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; border: 0; background: transparent; width: 100%; text-align: left; }

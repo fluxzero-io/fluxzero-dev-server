@@ -26,6 +26,7 @@ export class AccountConnection {
   readonly message = signal('');
   readonly issue = signal('');
   readonly busy = signal(false);
+  readonly activeAction = signal<AccountAction | undefined>(undefined);
   readonly signedIn = computed(() => this.account()?.state === 'signed_in');
   private readonly http = inject(HttpClient);
   private timer?: ReturnType<typeof setTimeout>;
@@ -49,12 +50,12 @@ export class AccountConnection {
     if(this.busy() || this.destroyed) return;
     const pending = this.statusRequest ||= this.call('status');
     try {await pending;} finally {if(this.statusRequest === pending) this.statusRequest = undefined;}
-    if(checkPending && this.account()?.pendingAction === 'sign_out_everywhere' && !this.busy()) await this.act('check');
   }
   async act(action: AccountAction) {
     if(this.busy() || this.destroyed) return;
     this.busy.set(true);
-    try {await this.call(action);} finally {this.busy.set(false);}
+    this.activeAction.set(action);
+    try {await this.call(action);} finally {this.busy.set(false);this.activeAction.set(undefined);}
   }
   private async call(action: string) {
     const request = ++this.request;
@@ -73,7 +74,7 @@ export class AccountConnection {
         if(!this.account()) this.account.set({state:'unavailable'});
       }
     }
-    if(!this.destroyed && request === this.request && this.account()?.state === 'signing_in')
+    if(!this.destroyed && request === this.request && (this.account()?.state === 'signing_in' || this.account()?.pendingAction === 'sign_out_everywhere'))
       this.timer = setTimeout(() => void this.load(), 1000);
   }
 }

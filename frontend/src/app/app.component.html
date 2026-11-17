@@ -34,15 +34,15 @@
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge split-result" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">@for(segment of badge.segments; track segment.state) {<span [class]="'nav-result-segment nav-result-' + segment.state" aria-hidden="true">{{segment.value}}</span>}</span>}</a>
       <a class="dashboard-nav-link" href="#startup" (click)="link($event, 'startup')" [class.active]="route() === 'startup'" [attr.aria-current]="route() === 'startup' ? 'page' : null"><i class="bi bi-database-check"></i><span>Startup</span>@if(startupBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
       <div class="dashboard-nav-section">
-        <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleCloud()" [attr.aria-expanded]="cloudExpanded()" aria-controls="cloud-menu"><span>Fluxzero Cloud</span><i class="bi bi-chevron-right" [class.expanded]="cloudExpanded()" aria-hidden="true"></i></button>
-        <div id="cloud-menu" class="dashboard-section-items" [hidden]="!cloudExpanded()">
-          @for(page of cloudPages;track page.key){<a class="dashboard-nav-link" [href]="'#cloud/' + page.key" (click)="link($event,'cloud/' + page.key)" [class.active]="isCloud() && cloudSection() === page.key" [attr.aria-current]="isCloud() && cloudSection() === page.key ? 'page' : null"><i [class]="'bi bi-' + page.icon" aria-hidden="true"></i><span>{{page.label}}</span></a>}
-        </div>
-      </div>
-      <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleMonitoring()" [title]="monitoringExpanded() ? 'Collapse Monitoring' : 'Expand Monitoring'" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
         <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
           @for(view of views; track view.key) {<a class="dashboard-nav-link" [href]="'#monitoring/' + view.key" (click)="link($event, 'monitoring/' + view.key)" [class.active]="isMonitoring() && activeView() === view.key" [attr.aria-current]="isMonitoring() && activeView() === view.key ? 'page' : null"><i [class]="'bi bi-' + view.icon"></i><span>{{view.label}}</span></a>}
+        </div>
+      </div>
+      <div class="dashboard-nav-section cloud-navigation">
+        <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleCloud()" [attr.aria-expanded]="cloudExpanded()" aria-controls="cloud-menu"><span class="cloud-nav-title"><img src="assets/fluxzero-logo.svg" alt="" aria-hidden="true">Fluxzero Cloud</span><i class="bi bi-chevron-right" [class.expanded]="cloudExpanded()" aria-hidden="true"></i></button>
+        <div id="cloud-menu" class="dashboard-section-items" [hidden]="!cloudExpanded()">
+          @for(page of cloudPages;track page.key){<a class="dashboard-nav-link" [href]="'#cloud/' + page.key" (click)="link($event,'cloud/' + page.key)" [class.active]="isCloud() && cloudSection() === page.key" [attr.aria-current]="isCloud() && cloudSection() === page.key ? 'page' : null"><i [class]="'bi bi-' + page.icon" aria-hidden="true"></i><span>{{page.label}}</span></a>}
         </div>
       </div>
     </nav>

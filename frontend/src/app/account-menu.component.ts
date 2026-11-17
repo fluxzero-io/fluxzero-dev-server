@@ -1,4 +1,4 @@
-import {ChangeDetectorRef, Component, ElementRef, HostListener, OnInit, ViewChild, computed, inject, signal} from '@angular/core';
+import {ChangeDetectorRef, Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, computed, inject, signal} from '@angular/core';
 import {AccountConnection, AccountAction, accountLink} from './account-connection';
 export type {AccountStatus} from './account-connection';
 
@@ -14,26 +14,30 @@ export type {AccountStatus} from './account-connection';
           @if(account()?.email) {<span>{{account()?.email}}</span>}
         </div>
       }
-      @if(message() || account()?.message) {<p class="account-message" role="status">{{message() || account()?.message}}</p>}
+      @if(message() || account()?.message && !signingOutEverywhere()) {<p class="account-message" role="status">{{message() || account()?.message}}</p>}
       @if(account()?.state === 'signing_in') {
         <p class="account-message" role="status">Finish signing in in your browser.</p>
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel')">Cancel sign-in</button>
       } @else if(signedIn()) {
-        @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
-        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act(account()?.pendingAction ? 'check-interactive' : 'refresh')">Unlock secure storage</button>}
-        <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('login-another')"><i class="bi bi-arrow-repeat" aria-hidden="true"></i>Use another account</button>
-        @if(account()?.pendingAction === 'sign_out_everywhere') {
-          <p class="account-message" role="status">Finish signing out in your browser.</p>
-          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Check sign-out</button>
-          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel-browser')">Stop waiting</button>
-        }
-        <div class="signout-actions" role="group" aria-label="Sign-out options">
-          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout')"><i class="bi bi-box-arrow-right" aria-hidden="true"></i><span>Sign out on this computer</span></button>
-          <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy()" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
+        <div class="profile-actions" role="group" aria-label="Profile actions">
+          @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
+          <button type="button" class="switch-account" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>
         </div>
-        @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu">
-          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout-everywhere')">Sign out everywhere…</button>
-        </div>}
+        @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>}
+        @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('refresh')">Unlock secure storage</button>}
+        @if(signingOutEverywhere()) {
+          <p class="account-progress" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Confirm sign-out in your browser…</span></p>
+        }
+        <div class="signout-actions" role="group" aria-label="Sign-out options" (pointerleave)="leaveMore()" (pointerenter)="keepMore()">
+          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" [attr.aria-busy]="connection.activeAction() === 'logout' ? 'true' : null" (click)="act('logout')">
+            @if(connection.activeAction() === 'logout') {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>} @else {<i class="bi bi-box-arrow-right" aria-hidden="true"></i>}
+            <span>{{connection.activeAction() === 'logout' ? 'Signing out…' : 'Sign out on this computer'}}</span>
+          </button>
+          <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy() || signingOutEverywhere()" (pointerenter)="hoverMore($event)" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
+          @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu" (pointerenter)="keepMore()">
+            <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout-everywhere')"><i class="bi bi-globe" aria-hidden="true"></i>Sign out everywhere…</button>
+          </div>}
+        </div>
       } @else {
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('login')"><i class="bi bi-box-arrow-in-right" aria-hidden="true"></i>{{busy() ? 'Opening sign-in…' : account()?.state === 'sign_in_required' ? 'Sign in again' : 'Sign in'}}</button>
       }
@@ -54,18 +58,25 @@ export type {AccountStatus} from './account-connection';
   .account-message {margin:0;padding:8px 10px;font-size:13px;}
   [role=menuitem] {display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:38px;padding:8px 10px;
     color:var(--dashboard-text);background:transparent;border:0;border-radius:5px;text-decoration:none;text-align:left;font:inherit;font-size:13px;}
-  .signout-actions {display:flex;align-items:stretch;}
+  .profile-actions,.signout-actions {display:flex;align-items:stretch;position:relative;}
+  .profile-actions > a {flex:1;min-width:0;}
+  .profile-actions .switch-account {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
+  .account-progress {display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;color:var(--dashboard-muted);font-size:13px;}
+  .account-progress .spinner-border {flex-shrink:0;}
   .signout-actions > button:first-child {flex:1;min-width:0;}
   .signout-actions .more-signout {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
-  .more-signout-menu {border-top:1px solid var(--dashboard-border);padding-top:4px;}
+  .more-signout-menu {position:absolute;bottom:calc(100% + 6px);right:0;z-index:1;width:230px;max-width:100%;padding:6px;
+    background:var(--dashboard-popover-bg);border:1px solid var(--dashboard-border);border-radius:8px;box-shadow:var(--dashboard-popover-shadow);}
+  .more-signout-menu::after {content:"";position:absolute;left:0;right:0;bottom:-8px;height:8px;}
+  .more-signout[aria-expanded=true] {background:var(--dashboard-active-soft);}
   [role=menuitem]:hover {background:var(--dashboard-panel-soft);}
   [role=menuitem] span {flex:1;}
   [role=menuitem] i {font-size:16px;}
   button:focus-visible,a:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
   button:disabled {opacity:.65;cursor:wait;}
-  @media(pointer:coarse) {.signout-actions .more-signout {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
+  @media(pointer:coarse) {.signout-actions .more-signout,.profile-actions .switch-account {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
 `})
-export class AccountMenuComponent implements OnInit {
+export class AccountMenuComponent implements OnInit, OnDestroy {
   readonly open = signal(false);
   readonly more = signal(false);
   readonly connection = inject(AccountConnection);
@@ -74,6 +85,8 @@ export class AccountMenuComponent implements OnInit {
   readonly issue = this.connection.issue;
   readonly busy = this.connection.busy;
   readonly signedIn = this.connection.signedIn;
+  readonly signingOutEverywhere = computed(() => this.account()?.pendingAction === 'sign_out_everywhere');
+  private hoverTimer?: ReturnType<typeof setTimeout>;
   readonly label = computed(() => 'Fluxzero account — ' + (this.signedIn() ? this.account()?.displayName || 'signed in' : this.account()?.state === 'signing_in' ? 'signing in' : 'signed out'));
   readonly tooltip = computed(() => this.signedIn() ? (this.account()?.displayName || 'Signed in') + ' — Fluxzero account' : this.account()?.state === 'signing_in' ? 'Signing in to Fluxzero' : 'Sign in to Fluxzero');
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -87,12 +100,18 @@ export class AccountMenuComponent implements OnInit {
     if(this.open()) this.close();
     else {this.open.set(true);void this.load();this.changeDetector.detectChanges();this.items()[0]?.focus();}
   }
+  ngOnDestroy() {clearTimeout(this.hoverTimer);}
+  keepMore() {clearTimeout(this.hoverTimer);}
+  leaveMore() {this.hoverTimer=setTimeout(() => {if(!this.panel?.nativeElement.querySelector('#more-signout-menu')?.contains(document.activeElement)) this.more.set(false);},150);}
+  hoverMore(event: PointerEvent) {if(event.pointerType === 'mouse' && !this.busy() && !this.signingOutEverywhere()) {this.keepMore();this.more.set(true);}}
   toggleMore() {
-    this.more.update(value => !value);
+    this.keepMore();
+    this.more.set(true);
     this.changeDetector.detectChanges();
     if(this.more()) this.panel?.nativeElement.querySelector<HTMLElement>('#more-signout-menu [role=menuitem]')?.focus();
   }
   accountUrl() {return accountLink(this.account()?.accountUrl);}
+  dashboardUrl() {return accountLink(this.account()?.dashboardUrl);}
   async load() {await this.connection.load();this.retainFocus();}
   async act(action: AccountAction) {await this.connection.act(action);this.more.set(false);this.retainFocus();}
   private retainFocus() {
@@ -103,7 +122,7 @@ export class AccountMenuComponent implements OnInit {
   @HostListener('document:click', ['$event'])
   @HostListener('document:focusin', ['$event'])
   dismissOutside(event: Event) {if(!this.element.nativeElement.contains(event.target as Node)) this.close();}
-  close(restoreFocus = false) {this.more.set(false);this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
+  close(restoreFocus = false) {this.keepMore();this.more.set(false);this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
   private items() {return Array.from(this.panel?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') || []);}
   @HostListener('keydown', ['$event']) onKeydown(event: KeyboardEvent) {
     if(event.key === 'Tab') {if(this.open()) this.close(true);return;}

@@ -49,8 +49,10 @@ describe('Optional Fluxzero account', () => {
 
   it('shows the shared identity and makes logout scope clear', async () => {
     await open();
-    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty', email: 'marty@example.test', accountUrl: 'https://login.example.test/account'});
+    fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty', email: 'marty@example.test', accountUrl: 'https://login.example.test/account', dashboardUrl:'https://cloud.example.test'});
     fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.profile-actions .switch-account').getAttribute('aria-label')).toBe('Use another account');
+    expect(fixture.nativeElement.querySelector('a[href="https://cloud.example.test/"]')?.textContent).toContain('Dashboard');
     expect(fixture.nativeElement.textContent).toContain('Marty');
     expect(fixture.nativeElement.querySelector('.account-trigger .bi-person-fill')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.account-trigger').getAttribute('aria-label')).toContain('Marty');
@@ -98,6 +100,8 @@ describe('Optional Fluxzero account', () => {
     fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty'});
     fixture.detectChanges();
     const more: HTMLButtonElement = fixture.nativeElement.querySelector('.more-signout');
+    more.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));fixture.detectChanges();
+    expect(document.activeElement).not.toBe(fixture.nativeElement.querySelector('#more-signout-menu button'));
     more.click();fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Sign out everywhere…');
     http.expectNone('account/logout');http.expectNone('account/logout-everywhere');
@@ -106,10 +110,14 @@ describe('Optional Fluxzero account', () => {
     expect(document.activeElement).toBe(more);
     more.click();fixture.detectChanges();
     const action=fixture.componentInstance.act('logout-everywhere');
-    http.expectOne('account/logout-everywhere').flush({account:{state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'}});
+    http.expectOne('account/logout-everywhere').flush({account:{state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere',message:'Sign-out cancelled.'}});
     await action;fixture.detectChanges();
     expect(fixture.componentInstance.signedIn()).toBeTrue();
-    expect(fixture.nativeElement.textContent).toContain('Check sign-out');
+    expect(fixture.nativeElement.textContent).toContain('Confirm sign-out in your browser');
+    expect(fixture.nativeElement.textContent).not.toContain('Check sign-out');
+    expect(fixture.nativeElement.textContent).not.toContain('Stop waiting');
+    expect(fixture.nativeElement.textContent).not.toContain('Sign-out cancelled.');
+    expect(fixture.nativeElement.querySelector('[role=status] .spinner-border')).not.toBeNull();
     http.expectNone('account/logout');
     const cancel=fixture.componentInstance.act('cancel-browser');
     http.expectOne('account/cancel-browser').flush({account:{state:'signed_in',displayName:'Marty'}});
@@ -118,14 +126,16 @@ describe('Optional Fluxzero account', () => {
     expect(fixture.nativeElement.textContent).not.toContain('Check sign-out');
   });
 
-  it('checks only an explicitly pending browser action on return and updates all account surfaces', async () => {
+  it('observes explicit browser completion without a manual check or background credential access', async () => {
     await open();
     fixture.componentInstance.account.set({state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'});
     const returned=fixture.componentInstance.connection.load(true);
     http.expectOne('account/status').flush({account:{state:'signed_in',displayName:'Marty',pendingAction:'sign_out_everywhere'}});
-    await Promise.resolve();await Promise.resolve();
-    http.expectOne('account/check').flush({account:{state:'signed_out'}});
-    await returned;fixture.detectChanges();
+    await returned;
+    http.expectNone('account/check');
+    const completed=fixture.componentInstance.connection.load();
+    http.expectOne('account/status').flush({account:{state:'signed_out'}});
+    await completed;fixture.detectChanges();
     expect(fixture.componentInstance.signedIn()).toBeFalse();
     expect(fixture.nativeElement.querySelector('.bi-person')).not.toBeNull();
     http.expectNone('account/logout');
