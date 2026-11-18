@@ -10,9 +10,10 @@ FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standal
   --project-dir=/path/to/local/project --port=4743 --no-tests
 ```
 
-Open the advertised Devboard URL and choose Fluxzero Cloud. Scenario selection resets only process-local fixture
+Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation has one
+entry; the scenario toolbar stays inside the Cloud page. Open the advertised Devboard URL and choose Fluxzero Cloud. Scenario selection resets only process-local fixture
 state; browser refresh preserves it until the process stops. Local app state and files are independent. This does
-not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, prices, image digests,
+not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, image digests,
 URLs and account identities are illustrative. The application preview is a local dialog; no example hostname is
 opened. Test email is an in-memory preview, with no delivery attempt.
 
@@ -31,10 +32,11 @@ published production API or an authenticated Cloud-MCP implementation.
 | `sign-in`, `sign-out`, `unlock`, `recover` | — | Simulated account/recovery actions |
 | `create-organization`, `select-organization` | `name` / `organizationId` | Choose a fixture organization |
 | `join-organization` | — | Accept the example invitation |
-| `choose-plan` | — | Include a plan change in the proposal; no activation yet |
+| `choose-plan` | — | Legacy fixture proposal for a plan change |
+| `confirm-plan` | — | Simulate returning from a completed Dashboard plan review; no real activation |
 | `connect-github`, `cancel-github` | — | Simulate browser authorization completion/cancellation |
 | `select-source` | `repository`, `branch` | Select an allowed repository and immutable source context |
-| `configure` | `application`, `environment`, `cluster` (`existing`/`new`) | Prepare a destination |
+| `configure` | `application`, `cluster` (`existing`/`new`); legacy optional `environment` | Prepare a destination |
 | `review` | — | Create a revision- and expiry-bound proposal |
 | `deploy` | `proposalId` | Apply that proposal once and start a simulated operation |
 | `configure-domains` | `applicationDomain`, `authDomain`, `emailDomain` | Prepare example DNS records |
@@ -66,3 +68,32 @@ CI retains its existing Integration/workload identity. Local project paths stay 
 an explicit choice. A live adapter must use the shared native account boundary and Cloud-side authorization;
 simulated booleans, role strings, prices, readiness or success messages cannot establish production rights or outcomes.
 A future MCP adapter can expose the same domain operations; MCP transport details do not belong in customer screens.
+
+## Compact journey and ownership
+
+The first Cloud target is one Fluxzero application, including its frontend. A standalone frontend is supported
+in the local Workspace overview; deploying it independently is outside this Cloud journey. Use a real Maven/SDK
+fixture with a managed Test Server to review the first deployment route, rather than a frontend-only process.
+
+The route is organization → GitHub source/CI → destination → reviewed deployment → progress and checked URL.
+New organizations in this fixture use Starter capacity, a default team and a proposed new cluster. Starter exists
+in Dashboard's versioned capacity catalog with one Starter app and cluster; the catalog entry is not activated.
+The fixture asserts no live offer, price, billing activation or provisioned capacity. Existing targets are reused.
+
+Dashboard owns organization, plan, membership, Integration and shared domain/sign-in/email management. A plan or
+shared-service action is an explicitly simulated browser handoff, followed by an updated summary here. Domains
+are not separate app-owned setup wizards. Teams contain clusters; clusters contain applications. Integrations
+are system user profiles associated with an organization and authorized for the target. There is no required
+Cloud Production/Staging entity: the legacy fixture environment field is retained only for protocol compatibility.
+
+The GitHub setup disclosure shows a deploy-job fragment based on the public jwt-action v2 and deploy-action v1
+inputs. It retains the project's existing immutable build/publication, requests GitHub OIDC, and uses deploy-token
+for deployment. Repository variables carry cluster name, application name and image name; github.sha must match
+the published tag. A live implementation must discover the actual workflow, its ref/environment claims, selected
+Integration and published image identity before reporting CI as ready. Nothing here creates a workflow, variable,
+GitHub permission or Integration. The Cloud adapter must produce a reviewable patch or instructions and verified
+provider evidence before starting a real pipeline.
+
+Workspace status adds optional per-application sdkVersion/sdkVersionSource fields for versions detected from the
+project build. These differ from the Test Server version and are omitted for overrides or unknown/fallback builds.
+Test Server memory is displayed separately; other-dev-services totals exclude it, including resource graphs.

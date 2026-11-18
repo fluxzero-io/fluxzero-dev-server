@@ -16,16 +16,14 @@ export class CloudDemoComponent {
   readonly repository=signal('acme/parcel-service');
   readonly branch=signal('main');
   readonly application=signal('parcel-service');
-  readonly environment=signal('Production');
   readonly cluster=signal('existing');
-  readonly applicationDomain=signal('app.acme.example');
-  readonly authDomain=signal('login.acme.example');
-  readonly emailDomain=signal('mail.acme.example');
   readonly editingDestination=signal(false);
   readonly reviewing=signal(false);
   readonly appPreview=signal(false);
   readonly provider=signal(false);
   readonly copied=signal('');
+  readonly dashboardHandoff=signal<'plan'|'domains'|null>(null);
+  readonly organizationServicesReady=computed(()=>this.data()?.domains.every(d=>d.status==='ready') || false);
   readonly groups=['Start','Delivery','Domains','Recovery'];
   private returnFocus?:HTMLElement;
   private destinationOrganization?:string;
@@ -39,15 +37,32 @@ export class CloudDemoComponent {
       }
     });
   }
+  readonly workflowSnippet = `# Keep your existing build and immutable image publication steps.
+# .github/workflows/deploy.yml — deploy job / steps
+permissions:
+  contents: read
+  id-token: write
+steps:
+  - uses: fluxzero-io/fluxzero-jwt-action@v2
+    id: fluxzero
+    with:
+      mode: oidc
+  - uses: fluxzero-io/fluxzero-deploy-action@v1
+    with:
+      token: \${{ steps.fluxzero.outputs.deploy-token }}
+      cluster-name: \${{ vars.FLUXZERO_CLUSTER_NAME }}
+      application-name: \${{ vars.FLUXZERO_APPLICATION_NAME }}
+      image-name: \${{ vars.FLUXZERO_IMAGE_NAME }}
+      version: \${{ github.sha }}`;
   value(event:Event) {return (event.target as HTMLInputElement).value;}
   async scenario(value:string) {
     this.closeDialog();this.editingDestination.set(false);
     await this.cloud.call({action:'scenario',scenario:value});
-    const data=this.data();if(data) {this.application.set(data.application);this.environment.set(data.environment);this.repository.set(data.repository || 'acme/parcel-service');this.branch.set(data.branch);}
+    const data=this.data();if(data) {this.application.set(data.application);this.repository.set(data.repository || 'acme/parcel-service');this.branch.set(data.branch);}
   }
   async selectSource() {await this.cloud.call({action:'select-source',repository:this.repository(),branch:this.branch()});}
   async configure() {
-    await this.cloud.call({action:'configure',application:this.application(),environment:this.environment(),cluster:this.cluster()});
+    await this.cloud.call({action:'configure',application:this.application(),cluster:this.cluster()});
     if(!this.cloud.error()) {this.editingDestination.set(false);this.pageChanged.emit('cloud/overview');}
   }
   async review() {
@@ -60,8 +75,23 @@ export class CloudDemoComponent {
     await this.cloud.call({action:'deploy',proposalId:proposal.id});
     if(!this.cloud.error()) {this.reviewing.set(false);this.pageChanged.emit('cloud/overview');}
   }
-  async configureDomains() {
-    await this.cloud.call({action:'configure-domains',applicationDomain:this.applicationDomain(),authDomain:this.authDomain(),emailDomain:this.emailDomain()});
+  openDashboard(area:'plan'|'domains') {
+    this.returnFocus=document.activeElement as HTMLElement;this.dashboardHandoff.set(area);
+    setTimeout(()=>document.querySelector<HTMLElement>('.dashboard-handoff .dialog-cancel')?.focus());
+  }
+  async returnFromDashboard() {
+    if(this.dashboardHandoff()==='plan') await this.cloud.call({action:'confirm-plan'});
+    else {
+      const domains=this.data()?.domains || [];
+      if(domains.some(d=>d.status==='not_configured')) {
+        await this.cloud.call({action:'configure-domains',applicationDomain:domains.find(d=>d.kind==='application')?.hostname || 'app.acme.example',
+          authDomain:domains.find(d=>d.kind==='auth')?.hostname || 'auth.acme.example',emailDomain:domains.find(d=>d.kind==='email')?.hostname || 'mail.acme.example'});
+      }
+      for(const domain of this.data()?.domains || []) {
+        if(domain.status!=='ready' && !this.cloud.error()) await this.cloud.call({action:'check-domain',kind:domain.kind});
+      }
+    }
+    if(!this.cloud.error()) this.closeDialog();
   }
   async copy(value:string) {
     try {await navigator.clipboard.writeText(value);this.copied.set(value);} catch {this.copied.set('');}
@@ -70,7 +100,7 @@ export class CloudDemoComponent {
     if(event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();this.pageChanged.emit(page);
   }
-  closeDialog() {this.reviewing.set(false);this.appPreview.set(false);this.provider.set(false);this.returnFocus?.focus();}
+  closeDialog() {this.reviewing.set(false);this.appPreview.set(false);this.provider.set(false);this.dashboardHandoff.set(null);this.returnFocus?.focus();}
   openProvider() {
     this.returnFocus=document.activeElement as HTMLElement;this.provider.set(true);
     setTimeout(()=>document.querySelector<HTMLElement>('.provider-dialog .dialog-cancel')?.focus());
@@ -82,14 +112,14 @@ export class CloudDemoComponent {
     setTimeout(()=>document.querySelector<HTMLElement>('.app-demo .dialog-cancel')?.focus());
   }
   @HostListener('document:keydown',['$event']) trapFocus(event:KeyboardEvent) {
-    if(event.key!=='Tab' || !this.reviewing() && !this.appPreview() && !this.provider()) return;
-    const dialog=document.querySelector<HTMLElement>('.cloud-proposal,.app-demo,.provider-dialog');
+    if(event.key!=='Tab' || !this.reviewing() && !this.appPreview() && !this.provider() && !this.dashboardHandoff()) return;
+    const dialog=document.querySelector<HTMLElement>('.cloud-proposal,.app-demo,.provider-dialog,.dashboard-handoff');
     const items=Array.from(dialog?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input:not(:disabled),select:not(:disabled)') || []);
     if(!items.length) {event.preventDefault();dialog?.focus();return;}
     if(event.shiftKey && document.activeElement===items[0]) {event.preventDefault();items.at(-1)?.focus();}
     else if(!event.shiftKey && document.activeElement===items.at(-1)) {event.preventDefault();items[0].focus();}
   }
   @HostListener('document:keydown.escape',['$event']) escape(event:Event) {
-    if((this.reviewing() || this.appPreview() || this.provider()) && !this.cloud.busy()) {event.preventDefault();this.closeDialog();}
+    if((this.reviewing() || this.appPreview() || this.provider() || this.dashboardHandoff()) && !this.cloud.busy()) {event.preventDefault();this.closeDialog();}
   }
 }

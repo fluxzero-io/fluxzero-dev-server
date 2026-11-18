@@ -1,3 +1,4 @@
+import {AccountConnection} from './account-connection';
 import {TestBed, ComponentFixture} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
@@ -57,7 +58,27 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  it('reveals Cloud only after login without replacing the local preview', () => {
+    const root:HTMLElement=fixture.nativeElement;
+    fixture.componentInstance.navigate('application');fixture.detectChanges();
+    const frame=root.querySelector('iframe[name="dev-application"]');
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex'});fixture.detectChanges();
+    expect(root.querySelector('.cloud-navigation')).not.toBeNull();
+    expect(fixture.componentInstance.route()).toBe('application');
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    TestBed.inject(AccountConnection).account.set({state:'signed_out'});fixture.detectChanges();
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+  });
+  it('shows the application build SDK beside the separate Test Server version', () => {
+    fixture.componentInstance.status.update(s=>s ? {...s,components:s.components!.map(c=>c.application ? {...c,sdkVersion:'2.29.1'} : c.id==='testserver' ? {...c,version:'2.29.2'} : c)} : s);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.application-overview').textContent).toContain('Fluxzero SDK 2.29.1');
+    expect(fixture.nativeElement.querySelector('.infrastructure-section').textContent).toContain('Fluxzero Test Server 2.29.2');
+  });
   it('opens each Cloud page through navigation and retains the local preview frame', async () => {
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex'});fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
     const frame = root.querySelector('iframe[name="dev-application"]');
@@ -74,6 +95,21 @@ describe('Dev console navigation', () => {
     await fixture.whenStable();
     await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     expect(document.activeElement).toBe(root.querySelector('.application-page'));
+  });
+  it('shows standalone frontends as local applications without counting their resources twice', () => {
+    const app=fixture.componentInstance;
+    app.status.update(s=>s ? {...s,components:[
+      {id:'devserver',name:'Fluxzero Dev Server',state:'running',application:false,memoryBytes:20*1048576},
+      {id:'frontend-store',name:'Store frontend',state:'running',application:true,memoryBytes:10*1048576},
+      {id:'frontend-admin',name:'Admin frontend',state:'stopped',application:true,memoryBytes:null}
+    ]} : s);
+    fixture.detectChanges();
+    const workspace=fixture.debugElement.query(By.directive(EnvironmentComponent)).componentInstance as EnvironmentComponent;
+    expect(workspace.applications().map(c=>c.name)).toEqual(['Store frontend','Admin frontend']);
+    expect(workspace.infrastructure().components.map(c=>c.id)).toEqual(['devserver']);
+    expect(workspace.infrastructure().memoryBytes).toBe(20*1048576);
+    expect(fixture.nativeElement.querySelector('.applications-empty')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.applications-section').textContent).toContain('Store frontend');
   });
   it('rebases an initially selected frontend when the ingress restarts on a different port', () => {
     const app=fixture.componentInstance;
@@ -924,7 +960,8 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.applications-section')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
     expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
     expect(root.querySelector('.application-actions .application-link')).toBeNull();
-    expect(root.querySelector('.infrastructure-section .component-table')?.textContent).toContain('120.0 MiB');
+    expect(root.querySelectorAll('.infrastructure-section .component-table')[0]?.textContent).toContain('100.0 MiB');
+    expect(root.querySelectorAll('.infrastructure-section .component-table')[1]?.textContent).toContain('20.0 MiB');
     const componentRows = root.querySelectorAll('.component-table tbody tr');
     expect(componentRows[0].querySelector('.component-restart')).toBeNull();
     expect(root.querySelector('.workspace-actions .restart-action')?.getAttribute('aria-label')).toBe('Restart apps');
@@ -977,14 +1014,14 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.applications-empty').textContent).toContain('No applications configured');
     expect(fixture.nativeElement.querySelectorAll('.environment-tests').length).toBe(0);
   });
-  it('keeps preview available for a frontend-only environment without a backend card', () => {
+  it('shows a standalone frontend as a local app and keeps its preview available', () => {
     fixture.componentInstance.status.update(s => s ? {...s, frontend:'running', components:[
       {id:'frontend-store',name:'Frontend (store)',state:'running',application:true,memoryBytes:4194304,url:location.origin + '/'}
     ]} : s);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(1);
     expect(fixture.nativeElement.querySelector('nav a[href="#application"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB');
+    expect(fixture.nativeElement.querySelector('.application-overview .resource-value').textContent).toBe('4.0 MiB');
   });
   it('restarts only the selected backend app without a separate data reset action', async () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:[
@@ -1053,7 +1090,7 @@ describe('Dev console navigation', () => {
   });
   it('keeps resource columns equal while adapting to longer formatted values', () => {
     const root: HTMLElement = fixture.nativeElement;
-    const cells = root.querySelector('.infrastructure-section .component-table tbody tr')!.children;
+    const cells = root.querySelector('.infrastructure-section .component-table tbody tr:not(.testserver-component)')!.children;
     const initialWidth = cells[2].getBoundingClientRect().width;
     expect(initialWidth).toBeGreaterThan(0);
     expect(cells[3].getBoundingClientRect().width).toBe(initialWidth);
@@ -1219,14 +1256,15 @@ describe('Dev console navigation', () => {
       ]} : s);
     fixture.detectChanges();
     const rows = root.querySelectorAll('.component-table tbody tr');
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     expect(rows[0].querySelector('th')?.textContent).toContain('fluxzero-dev-server-monitoring');
     expect(rows[0].querySelector('.badge')?.textContent).toBe('stopped');
     expect(rows[0].querySelector('dev-resource-detail')).toBeNull();
     expect(rows[0].querySelector('.application-link')).toBeNull();
     expect((root.querySelector('[aria-label="Restart apps"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(rows[1].querySelector('.badge')?.textContent).toBe('running');
-    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB');
+    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('100.0 MiB');
+    expect(rows[2].querySelector('.component-memory')?.textContent).toBe('20.0 MiB');
   });
   it('groups processes and exposes component counts and memory in tooltips', () => {
     const root: HTMLElement = fixture.nativeElement;

@@ -2,6 +2,7 @@ import {ServerUpdateComponent} from './server-update.component';
 import {CloudPageComponent, cloudPages} from './cloud-page.component';
 import {CloudDemoComponent} from './cloud-demo.component';
 import {CLOUD_DEMO_ENABLED} from './cloud-api';
+import {AccountConnection} from './account-connection';
 import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
@@ -118,6 +119,11 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly menuOpen = signal(false);
   readonly cloudPages = cloudPages;
   readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
+  readonly accountConnection = inject(AccountConnection);
+  readonly cloudVisible = computed(() => {
+    const account=this.accountConnection.account();
+    return account?.state === 'signed_in' || account?.state === 'sign_in_required';
+  });
   readonly cloudExpanded = signal(this.preference('devboard.cloudExpanded') !== 'false');
   toggleCloud() {this.cloudExpanded.update(value=>!value);this.savePreference('devboard.cloudExpanded',String(this.cloudExpanded()));}
   cloudSection() {return this.route().substring('cloud/'.length);}

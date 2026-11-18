@@ -9,13 +9,13 @@ export type CloudCommand = {action:string; [key:string]:string};
 export interface CloudOrganization {id:string;name:string;plan:string;applications:number;limit:number;role:string;}
 export interface CloudDomain {kind:string;hostname:string;status:string;records:{type:string;name:string;value:string}[];}
 export interface CloudProposal {
-  id:string;revision:number;expiresAt:number;organization:string;plan:string;cluster:string;application:string;
+  id:string;revision:number;expiresAt:number;organization:string;team?:string;plan:string;cluster:string;application:string;
   environment:string;repository:string;branch:string;commit:string;change:string;planImpact:string;
 }
 export interface CloudState {
   version:1;mode:'demo';revision:number;scenario:string;scenarios:{id:string;label:string;group:string}[];
   account:'signed_out'|'signed_in'|'expired'|'locked';accountName:string;availability:'available'|'offline'|'forbidden';
-  organizations:CloudOrganization[];organizationId:string;plannedPlan:string;canDeploy:boolean;capacityAvailable:boolean;
+  organizations:CloudOrganization[];organizationId:string;team?:string;plannedPlan:string;canDeploy:boolean;capacityAvailable:boolean;
   githubConnected:boolean;repositories:string[];repository:string;branch:string;integration:string;
   availableClusters:string[];cluster:string;application:string;environment:string;proposal:CloudProposal|null;
   deployment:{id:string;state:'running'|'failed'|'healthy';commit:string;artifact:string;url:string;steps:{name:string;state:string}[]}|null;

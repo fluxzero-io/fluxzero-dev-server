@@ -27,12 +27,12 @@ final class CloudDemo {
     record Domain(String kind, String hostname, String status, List<DnsRecord> records) {}
     record Step(String name, String state) {}
     record Deployment(String id, String state, String commit, String artifact, String url, List<Step> steps) {}
-    record Proposal(String id, long revision, long expiresAt, String organization, String plan, String cluster,
+    record Proposal(String id, long revision, long expiresAt, String organization, String team, String plan, String cluster,
                     String application, String environment, String repository, String branch, String commit,
                     String change, String planImpact) {}
     record Snapshot(int version, String mode, long revision, String scenario, List<Scenario> scenarios,
                     String account, String accountName, String availability, List<Organization> organizations,
-                    String organizationId, String plannedPlan, boolean canDeploy, boolean capacityAvailable, boolean githubConnected,
+                    String organizationId, String team, String plannedPlan, boolean canDeploy, boolean capacityAvailable, boolean githubConnected,
                     List<String> repositories, String repository, String branch, String integration,
                     List<String> availableClusters, String cluster, String application, String environment, Proposal proposal, Deployment deployment,
                     List<Domain> domains, Map<String, String> emailPreview, boolean authTested, String message) {}
@@ -113,13 +113,19 @@ final class CloudDemo {
             organizationId = "invited-acme";
             var copy = new ArrayList<>(organizations);
             if (copy.stream().noneMatch(o -> o.id().equals(organizationId)))
-                copy.add(new Organization(organizationId, "Acme Studio", "Team", 1, 3, "Developer"));
+                copy.add(new Organization(organizationId, "Acme Studio", "Pro", 1, 3, "Developer"));
             organizations = List.copyOf(copy); clearDestination();
         } else {
             require(!fault.equals("forbidden"), "Your access to this organization has changed. Choose another organization.");
             require(organization() != null, "Choose an organization first.");
             require(!organization().role().equals("Viewer"), "You can view this organization. Ask an administrator for deployment access.");
             switch (action) {
+                case "confirm-plan" -> {
+                    String selected = organizationId;
+                    organizations = organizations.stream().map(o -> o.id().equals(selected)
+                            ? new Organization(o.id(), o.name(), "Pro", o.applications(), 5, o.role()) : o).toList();
+                    planChanged = false; fault = ""; message = "Organization plan updated in Dashboard.";
+                }
                 case "choose-plan" -> {
                     planChanged = true;
                 }
@@ -143,16 +149,16 @@ final class CloudDemo {
                     String env = text(request, "environment", "Production");
                     require(Set.of("Production", "Staging").contains(env), "Choose Production or Staging.");
                     application = name; environment = env;
-                    cluster = destination.equals("existing") ? availableClusters().getFirst() : "Europe · new cluster";
+                    cluster = destination.equals("existing") ? availableClusters().getFirst() : application + "-01";
                 }
                 case "review" -> {
                     require(!repository.isEmpty() && !cluster.isEmpty(), "Choose a source and deployment destination first.");
                     require(capacity(), "Your plan has no application slots left. Review your plan first.");
                     revision++;
                     proposal = new Proposal(UUID.randomUUID().toString(), revision, clock.get().plusSeconds(300).getEpochSecond(),
-                            organization().name(), planChanged ? "Team" : organization().plan(), cluster, application, environment, repository, branch, "4e72ab1",
-                            cluster.contains("new") ? "Create cluster and application" : "Deploy application to existing cluster",
-                            planChanged ? "Team plan · €25/month (example price)" : "Within the current plan · no plan change");
+                            organization().name(), "default", planChanged ? "Pro" : organization().plan(), cluster, application, environment, repository, branch, "4e72ab1",
+                            !availableClusters().contains(cluster) ? "Create cluster and application" : "Deploy application to existing cluster",
+                            planChanged ? "Pro plan · review pricing in Dashboard" : "Within the current plan · no plan change");
                     return snapshot();
                 }
                 case "deploy" -> {
@@ -164,7 +170,7 @@ final class CloudDemo {
                     if (planChanged) {
                         String selected = organizationId;
                         organizations = organizations.stream().map(o -> o.id().equals(selected)
-                                ? new Organization(o.id(), o.name(), "Team", o.applications(), 5, o.role()) : o).toList();
+                                ? new Organization(o.id(), o.name(), "Pro", o.applications(), 5, o.role()) : o).toList();
                         planChanged = false;
                     }
                     if (!application.equals(deployedApplication)) {
@@ -173,14 +179,13 @@ final class CloudDemo {
                                 ? new Organization(o.id(), o.name(), o.plan(), o.applications() + 1, o.limit(), o.role()) : o).toList();
                         deployedApplication = application;
                     }
-                    if (cluster.contains("new cluster")) cluster = "Europe · " + application + "-01";
                     clusters.put(organizationId, cluster);
                     acceptedProposal = id; operation = UUID.randomUUID().toString(); started = clock.get(); fault = ""; proposal = null;
                 }
                 case "configure-domains" -> {
                     require(live(), "Wait for the application check to finish before connecting domains.");
                     String app = hostname(request, "applicationDomain", "app.acme.example");
-                    String auth = hostname(request, "authDomain", "login.acme.example");
+                    String auth = hostname(request, "authDomain", "auth.acme.example");
                     String email = hostname(request, "emailDomain", "mail.acme.example");
                     require(!app.equals(auth) && !app.equals(email) && !auth.equals(email), "Use a separate hostname for application, sign-in and email.");
                     domains = List.of(domain("application", app, "pending"), domain("auth", auth, "pending"), domain("email", email, "pending"));
@@ -212,25 +217,25 @@ final class CloudDemo {
     private void reset(String id) {
         require(SCENARIOS.stream().anyMatch(s -> s.id().equals(id)), "Choose an available scenario.");
         scenario = id; revision++; fault = id; message = "";
-        clusters.clear(); clusters.put("acme", "Europe · shared-01");
+        clusters.clear(); clusters.put("acme", "shared-01");
         account = id.equals("local") ? "signed_out" : id.equals("expired") ? "expired" : id.equals("locked") ? "locked" : "signed_in";
         organizations = Set.of("local", "first-organization").contains(id) ? List.of() : List.of(
-                new Organization("acme", "Acme Studio", id.equals("capacity") ? "Starter" : "Team", 1, id.equals("capacity") ? 1 : 3, id.equals("read-only") ? "Viewer" : "Owner"),
+                new Organization("acme", "Acme Studio", id.equals("capacity") ? "Starter" : "Pro", 1, id.equals("capacity") ? 1 : 3, id.equals("read-only") ? "Viewer" : "Owner"),
                 new Organization("personal", "Personal projects", "Starter", 0, 1, "Owner"));
         organizationId = organizations.isEmpty() || id.equals("choose-organization") ? "" : "acme";
         githubConnected = !Set.of("local", "first-organization", "choose-organization", "github-required", "github-cancelled").contains(id);
         repository = githubConnected ? REPOSITORIES.getFirst() : "";
-        cluster = repository.isEmpty() ? "" : "Europe · shared-01";
+        cluster = repository.isEmpty() ? "" : "shared-01";
         application = "parcel-service"; environment = "Production"; branch = "main";
         proposal = null; acceptedProposal = null; operation = null; started = null; deployedApplication = "";
         planChanged = false; authTested = false; emailPreview = Map.of();
-        domains = List.of(domain("application", "app.acme.example", "not_configured"), domain("auth", "login.acme.example", "not_configured"), domain("email", "mail.acme.example", "not_configured"));
+        domains = List.of(domain("application", "app.acme.example", "not_configured"), domain("auth", "auth.acme.example", "not_configured"), domain("email", "mail.acme.example", "not_configured"));
         if (Set.of("deploying", "live", "dns-pending", "email-pending", "build-failed", "rollout-failed").contains(id)) {
             operation = UUID.randomUUID().toString(); deployedApplication = application; started = clock.get().minusSeconds(id.equals("deploying") ? 0 : 30);
         }
         if (Set.of("live", "dns-pending", "email-pending").contains(id)) {
             domains = List.of(domain("application", "app.acme.example", id.equals("dns-pending") ? "pending" : "ready"),
-                    domain("auth", "login.acme.example", id.equals("dns-pending") ? "pending" : "ready"),
+                    domain("auth", "auth.acme.example", id.equals("dns-pending") ? "pending" : "ready"),
                     domain("email", "mail.acme.example", id.equals("live") ? "ready" : "pending"));
             authTested = id.equals("live");
         }
@@ -249,7 +254,7 @@ final class CloudDemo {
     private boolean live() {return operation != null && !Set.of("build-failed", "rollout-failed").contains(fault) && clock.get().getEpochSecond() - started.getEpochSecond() >= 10;}
     private Snapshot snapshot() {
         return new Snapshot(1, "demo", revision, scenario, SCENARIOS, account, "Alex Morgan", fault.equals("offline") ? "offline" : fault.equals("forbidden") ? "forbidden" : "available",
-                organizations, organizationId, planChanged ? "Team" : "", organization() != null && !organization().role().equals("Viewer") && !fault.equals("forbidden"), capacity(), githubConnected,
+                organizations, organizationId, "default", planChanged ? "Pro" : "", organization() != null && !organization().role().equals("Viewer") && !fault.equals("forbidden"), capacity(), githubConnected,
                 REPOSITORIES, repository, branch, repository.isEmpty() ? "" : "GitHub Actions · existing Integration", availableClusters(), cluster, application, environment,
                 proposal, deployment(), domains, emailPreview, authTested, message);
     }

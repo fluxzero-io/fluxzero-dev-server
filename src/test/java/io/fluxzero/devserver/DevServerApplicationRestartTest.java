@@ -50,7 +50,10 @@ class DevServerApplicationRestartTest {
 
     @Test
     void restartsOnlySelectedAppAndRetainsOtherProcessesOnFailure(@TempDir Path project) throws Exception {
-        Files.writeString(project.resolve("pom.xml"), "<project/>");
+        Files.writeString(project.resolve("pom.xml"), """
+                <project><dependencies><dependency><groupId>io.fluxzero</groupId><artifactId>sdk</artifactId>
+                <version>%s</version></dependency></dependencies></project>
+                """.formatted(DevServerVersion.sdkVersion()));
         Files.createDirectories(project.resolve(".fluxzero"));
         Files.writeString(project.resolve(".fluxzero/dev.yaml"), """
                 version: 1
@@ -87,6 +90,9 @@ class DevServerApplicationRestartTest {
             String base = server.session().gateway().url();
             JsonNode before = awaitStatus(http, base, status -> pid(status, "app-orders") > 0 && pid(status, "app-billing") > 0);
             long orders = pid(before, "app-orders"), billing = pid(before, "app-billing");
+            // Both apps belong to the root build project, whose id differs from their launch ids.
+            assertEquals(List.of(DevServerVersion.sdkVersion(), DevServerVersion.sdkVersion()),
+                         before.path("components").findValuesAsText("sdkVersion"));
             long runtimePid = server.session().runtime().pid();
             assertEquals(409, restart(http, base, "app-missing"));
             assertEquals(400, restart(http, base, "frontend-ui"));

@@ -22,7 +22,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-cloud-divider);}
 .cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);}
 .cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
-.cloud-demo-marker {font-size:9px;font-weight:500;border:1px solid var(--dashboard-border);border-radius:4px;padding:2px 4px;text-transform:none;}
+.cloud-entry{justify-content:space-between;}.cloud-entry>.bi-chevron-right{font-size:12px;}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }
 .dashboard-nav-link { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 6px; color: var(--dashboard-link-text); font-size: 15px; font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; border: 0; background: transparent; width: 100%; text-align: left; }
@@ -412,3 +412,10 @@ body:has(.preview-expanded) {overflow:hidden;}
 .preview-frontend-item .frontend-state.ready {color:var(--dashboard-success-icon);font-size:7px;}
 .preview-frontend-item .frontend-state.failed {color:var(--dashboard-danger-text);}
 @media(max-width:650px) {.preview-frontend-item {min-height:44px;}}
+
+.cloud-navigation{animation:cloud-reveal .2s ease-out}
+@keyframes cloud-reveal{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.cloud-navigation{animation:none}}
+.component-sdk{display:block;margin-top:.3rem;font-size:.8rem;font-weight:400;color:var(--dashboard-muted)}
+
+.infrastructure-section .component-table-scroll + .component-table-scroll{margin-top:12px}

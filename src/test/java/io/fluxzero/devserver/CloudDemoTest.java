@@ -34,8 +34,13 @@ class CloudDemoTest {
         var proposal = call("{\"action\":\"review\"}").proposal();
         assertEquals("release", proposal.branch());
         assertEquals("My studio", proposal.organization());
+        assertEquals("Starter", proposal.plan());
+        assertEquals("default", proposal.team());
+        assertEquals("parcels-01", proposal.cluster());
+        assertEquals("Create cluster and application", proposal.change());
         var deployment = call("{\"action\":\"deploy\",\"proposalId\":\"" + proposal.id() + "\"}").deployment();
         assertEquals("running", deployment.state());
+        assertEquals(proposal.cluster(), call("{}").cluster());
         assertEquals(1, call("{}").organizations().getFirst().applications());
         assertEquals(deployment.id(), call("{\"action\":\"deploy\",\"proposalId\":\"" + proposal.id() + "\"}").deployment().id());
         now.set(now.get().plusSeconds(12));
@@ -62,9 +67,9 @@ class CloudDemoTest {
     @Test void enforcesCapacityAndPermissionsAndRejectsUnrelatedInputs() throws Exception {
         call("{\"action\":\"scenario\",\"scenario\":\"capacity\"}");
         assertThrows(IllegalArgumentException.class, () -> call("{\"action\":\"review\"}"));
-        var planned = call("{\"action\":\"choose-plan\"}");
-        assertEquals("Starter", planned.organizations().getFirst().plan());
-        assertEquals("Team", planned.plannedPlan());
+        var confirmed = call("{\"action\":\"confirm-plan\"}");
+        assertEquals("Pro", confirmed.organizations().getFirst().plan());
+        assertEquals("", confirmed.plannedPlan());
         assertNotNull(call("{\"action\":\"review\"}").proposal());
         call("{\"action\":\"scenario\",\"scenario\":\"read-only\"}");
         assertFalse(call("{}").canDeploy());
