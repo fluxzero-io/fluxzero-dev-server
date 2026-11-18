@@ -131,6 +131,11 @@ export class AppComponent implements OnInit, OnDestroy {
   });
   readonly cloudExpanded = signal(this.preference('devboard.cloudExpanded') !== 'false');
   toggleCloud() {this.cloudExpanded.update(value=>!value);this.savePreference('devboard.cloudExpanded',String(this.cloudExpanded()));}
+  openCloudOverview(event:MouseEvent) {
+    if(event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    this.cloudExpanded.set(true);this.savePreference('devboard.cloudExpanded','true');
+    this.link(event,'cloud/overview');
+  }
   cloudSection() {return this.route().substring('cloud/'.length);}
   isCloud() {return this.route().startsWith('cloud/');}
   private isPublishRoute(route:string) {return route === 'publish' || cloudPages.some(page=>'publish/' + page.key === route);}

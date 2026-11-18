@@ -155,12 +155,12 @@ final class CloudDemo {
                     application = name; applicationSize = size;
                     cluster = destination.equals("existing") ? availableClusters().getFirst() : application + "-01";
                     applicationConfigured = true; pipelineConfigured = false;
-                    message = "Application destination saved. Resources will be created by delivery if needed.";
+                    message = "Application settings saved. Your workflow can create resources on the first deployment.";
                 }
                 case "configure-pipeline" -> {
                     require(applicationConfigured && githubConnected && !repository.isEmpty(), "Configure the application and connect its repository first.");
                     pipelineConfigured = true;
-                    message = "Delivery settings saved. Commit and push the workflow to start GitHub Actions.";
+                    message = "Workflow settings saved. Commit and push the workflow to start GitHub Actions.";
                 }
                 case "configure" -> {
                     require(!repository.isEmpty(), "Choose a repository first.");

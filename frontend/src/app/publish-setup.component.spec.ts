@@ -4,6 +4,8 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {CLOUD_API, CLOUD_DEMO_ENABLED, CloudCommand, CloudState} from './cloud-api';
 import {PublishSetupComponent} from './publish-setup.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
+import {AccountConnection} from './account-connection';
+import {CloudConnection} from './cloud-api';
 
 function initial():CloudState{return {version:1,mode:'demo',revision:1,scenario:'local',scenarios:[],account:'signed_out',accountName:'Alex',availability:'available',organizations:[{id:'acme',name:'Acme Studio',plan:'Starter',applications:0,limit:1,role:'Owner'}],organizationId:'',plannedPlan:'',canDeploy:true,capacityAvailable:true,githubConnected:false,repositories:['acme/parcel-service'],repository:'',branch:'main',integration:'',availableClusters:[],cluster:'',application:'parcel-service',environment:'Production',proposal:null,deployment:null,domains:[],emailPreview:{},authTested:false,message:'',setup:{applicationConfigured:false,size:'Starter',pipelineConfigured:false,workflowPath:'.github/workflows/deploy.yml',workflowStatus:'not_checked'}};}
 
@@ -53,6 +55,32 @@ describe('Publication setup checklist',()=>{
     expect(fixture.nativeElement.textContent).toContain('Build and push status is not connected yet');
     expect(fixture.nativeElement.querySelector('.status.running')).toBeNull();
     expect(fixture.nativeElement.querySelector('.application-url')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.plan-badge').textContent).toContain('Starter');
+    fixture.destroy();
+  });
+  it('shows only an explicitly known organization plan and never infers Free from sign-in',async()=>{
+    state={...initial(),account:'signed_in',organizationId:'acme'};
+    const fixture=TestBed.createComponent(CloudResourcesComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const cloud=TestBed.inject(CloudConnection);
+    for(const plan of ['Free','Starter','Pro']) {
+      cloud.state.set({...state,organizations:[{...state.organizations[0],plan}]});fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.plan-badge')?.textContent).toContain(plan);
+    }
+    for(const snapshot of [{...state,organizationId:''},{...state,organizations:[{...state.organizations[0],plan:''}]},{...state,availability:'offline' as const},{...state,account:'signed_out' as const}]) {
+      cloud.state.set(snapshot);fixture.detectChanges();expect(fixture.nativeElement.querySelector('.plan-badge')).toBeNull();
+    }
+    fixture.destroy();
+  });
+  it('uses the configured Dashboard link and leaves an unavailable preview destination disabled',async()=>{
+    state={...initial(),account:'signed_in',organizationId:'acme'};
+    const fixture=TestBed.createComponent(CloudResourcesComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('button.dashboard-button').disabled).toBeTrue();
+    const account=TestBed.inject(AccountConnection);
+    account.account.set({state:'signed_in',dashboardUrl:'http://dashboard.fluxzero.localhost:4200/'});fixture.detectChanges();
+    const link=fixture.nativeElement.querySelector('a.dashboard-button') as HTMLAnchorElement;
+    expect(link.href).toBe('http://dashboard.fluxzero.localhost:4200/');expect(link.target).toBe('_blank');expect(link.rel).toContain('noopener');
+    account.account.set({state:'signed_in',dashboardUrl:'javascript:alert(1)'});fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('a.dashboard-button')).toBeNull();
     fixture.destroy();
   });
 });

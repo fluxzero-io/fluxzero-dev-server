@@ -1,6 +1,6 @@
 <section class="publish-setup">
   @if(cloud.enabled){<dev-cloud-scenarios/>}
-  <header><span class="eyebrow">Your project, online</span><h1 tabindex="-1">Publish live</h1><p>Set up delivery once. Your GitHub workflow puts the app online.</p></header>
+  <header><span class="eyebrow">Your project, online</span><h1 tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></header>
   <div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>
   @if(account.message()){<p class="notice" role="status">{{account.message()}}</p>}
   @if(cloud.error()){<p class="notice" role="alert">{{cloud.error()}}</p>}
@@ -25,17 +25,17 @@
       }
     </div></li>
     <li [class.done]="applicationReady()" [class.current]="current()===2"><span class="step-marker" aria-hidden="true">@if(applicationReady()){<i class="bi bi-check-lg"></i>}@else{3}</span><div class="step-content"><div class="step-heading"><h2>Application & destination</h2>@if(applicationReady()){<button class="text-button" (click)="edit(2)">Edit</button>}</div><p>{{applicationReady() ? data()!.application + ' · ' + data()!.setup!.size : 'Name your app and choose its capacity.'}}</p>
-      @if(applicationReady()){<p class="hint">{{data()?.availableClusters?.includes(data()!.cluster) ? 'Cluster: ' + data()?.cluster : 'Cluster ' + data()?.cluster + ' will be created by delivery.'}}</p>}
+      @if(applicationReady()){<p class="hint">{{data()?.availableClusters?.includes(data()!.cluster) ? 'Cluster: ' + data()?.cluster : 'Cluster ' + data()?.cluster + ' can be created by your GitHub workflow on the first deployment.'}}</p>}
       @if(accountReady() && organization() && expanded()===2){<form (submit)="$event.preventDefault();saveApplication()"><div class="fields"><label>Application name<input [value]="application()" (input)="application.set(value($event))" pattern="[a-z][a-z0-9-]{1,47}" maxlength="48" required></label><label>Size<select [value]="size()" (change)="size.set(value($event))"><option>Starter</option>@if(organization()?.plan==='Pro'){<option>Small</option>}</select></label></div>
         <details><summary>Cluster, variables & secrets</summary><label>Cluster<select [value]="cluster()" (change)="cluster.set(value($event))"><option value="automatic">Create automatically on first deployment</option>@if(data()?.availableClusters?.length){<option value="existing">{{data()!.availableClusters[0]}}</option>}</select></label><p class="hint">Additional app settings and secret values are managed in Dashboard.</p>@if(dashboardUrl();as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Application settings in Dashboard</a>}@else{<p class="hint">Additional settings: not configured (optional).</p>}</details>
         <button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy || !data()?.capacityAvailable">Save application settings</button>
         @if(!data()?.capacityAvailable){<p class="notice">Review available capacity in Dashboard before continuing.</p>}
       </form>}
     </div></li>
-    <li [class.done]="deliveryReady()" [class.current]="current()===3"><span class="step-marker" aria-hidden="true">@if(deliveryReady()){<i class="bi bi-check-lg"></i>}@else{4}</span><div class="step-content"><div class="step-heading"><h2>GitHub delivery</h2>@if(deliveryReady()){<button class="text-button" (click)="edit(3)">Edit</button>}</div><p>{{deliveryReady() ? data()!.repository + ' · ' + data()!.branch : 'Connect the repository and its deployment workflow.'}}</p>
+    <li [class.done]="deliveryReady()" [class.current]="current()===3"><span class="step-marker" aria-hidden="true">@if(deliveryReady()){<i class="bi bi-check-lg"></i>}@else{4}</span><div class="step-content"><div class="step-heading"><h2>GitHub workflow</h2>@if(deliveryReady()){<button class="text-button" (click)="edit(3)">Edit</button>}</div><p>{{deliveryReady() ? data()!.repository + ' · ' + data()!.branch : 'Connect the repository and its deployment workflow.'}}</p>
       @if(applicationReady() && expanded()===3){
         @if(!data()?.githubConnected){<button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="connectGitHub()">Connect GitHub</button>}
-        @else{<form (submit)="$event.preventDefault();saveDelivery()"><div class="fields"><label>Repository<select [value]="repository()" (change)="repository.set(value($event))">@for(repo of data()?.repositories;track repo){<option>{{repo}}</option>}</select></label><label>Branch<select [value]="branch()" (change)="branch.set(value($event))"><option>main</option><option>release</option></select></label></div><p class="hint">The workflow uses its own Integration to publish and deploy.</p><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy">Save delivery settings</button></form>}
+        @else{<form (submit)="$event.preventDefault();saveDelivery()"><div class="fields"><label>Repository<select [value]="repository()" (change)="repository.set(value($event))">@for(repo of data()?.repositories;track repo){<option>{{repo}}</option>}</select></label><label>Branch<select [value]="branch()" (change)="branch.set(value($event))"><option>main</option><option>release</option></select></label></div><p class="hint">The workflow uses its own Integration to publish and deploy.</p><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy">Save workflow settings</button></form>}
       }
       @if(deliveryReady()){<p class="hint">{{data()?.setup?.workflowPath}}</p>}
     </div></li>

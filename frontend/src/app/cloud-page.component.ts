@@ -3,9 +3,9 @@ import {AccountConnection, accountLink} from './account-connection';
 
 export const cloudPages = [
   {key:'overview',label:'Overview',icon:'house'},
-  {key:'applications',label:'Applications',icon:'boxes'},
-  {key:'clusters',label:'Clusters',icon:'hdd-network'},
-  {key:'integrations',label:'Integrations',icon:'plug'},
+  {key:'applications',label:'Applications',icon:'box'},
+  {key:'clusters',label:'Clusters',icon:'diagram-3'},
+  {key:'integrations',label:'Integrations',icon:'robot'},
   {key:'domains',label:'Domains & email',icon:'globe2'},
 ];
 
@@ -39,14 +39,14 @@ export class CloudPageComponent {
     return this.account.message() || ((!this.account.signedIn() || status?.issue) ? status?.message : '') || '';
   });
   readonly journey=[
-    {key:'integrations',label:'Git & CI',icon:'plug',description:'Connect your source and delivery workflow.'},
-    {key:'clusters',label:'Clusters',icon:'hdd-network',description:'Choose where your application will run.'},
-    {key:'applications',label:'Applications',icon:'boxes',description:'Manage versions and deployed applications.'},
+    {key:'integrations',label:'Git & CI',icon:'robot',description:'Connect your repository and deployment workflow.'},
+    {key:'clusters',label:'Clusters',icon:'diagram-3',description:'Choose where your application will run.'},
+    {key:'applications',label:'Applications',icon:'box',description:'Manage versions and deployed applications.'},
   ];
   readonly resource=computed(()=>({
     applications:{title:'Manage your applications',description:'Choose an organization and a cluster in Dashboard to view its applications.'},
     clusters:{title:'Choose a deployment destination',description:'Choose an organization in Dashboard to view its clusters and plan.'},
-    integrations:{title:'Connect your delivery workflow',description:'Manage GitHub connections, or choose an organization to use its existing CI integrations.'},
+    integrations:{title:'Connect your deployment workflow',description:'Manage GitHub connections, or choose an organization to use its existing CI integrations.'},
     domains:{title:'Use your own domains',description:'Choose an organization in Dashboard to manage application, sign-in and email domains.'},
   }[this.section()] || {title:'Fluxzero Cloud',description:'Continue in Dashboard.'}));
 

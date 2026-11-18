@@ -115,3 +115,22 @@ A selected automatic cluster is planned until it appears in availableClusters. A
 shows Waiting for first deployment. Saving a different app draft cannot inherit the prior app's release. Known fixture
 releases can be inspected in the Cloud submenu, without showing CI-stage progress. The live adapter must eventually
 supply independently authorized resource observations and local workflow/commit/push evidence.
+
+## Shared Cloud language and navigation
+
+Publish live names the complete customer journey. GitHub workflow names the automation; deployment names the
+actual rollout, matching the Cloud deployment tutorial. Image publication remains the registry step. Avoid an
+additional Delivery or Publication concept in customer copy. A planned cluster can be created by the GitHub
+workflow on the first deployment; it is not a resource until observed in Cloud.
+
+The Cloud heading opens Overview and expands the submenu. Its separate chevron changes only expansion. The whole
+heading shares the Cloud green hover/focus surface. Cloud icons match Dashboard: diagram-3 for clusters, box for
+applications, robot for organization integrations, and cloud for the plan badge.
+
+Overview offers the account-configured Dashboard destination. A preview without a configured destination shows
+a disabled Dashboard action; it does not invent a production link. The organization plan badge uses only an
+explicit known Free, Starter or Pro response for the selected organization. Missing organization, failed/loading
+context, or sign-in alone cannot establish Free. Payment exemption cannot be used to relabel a Pro plan as Free.
+
+Workspace derives Development profile exclusively from local status. Default configuration means no named profile
+is active. The field remains visible with hidden navigation and causes no account, credential-store or Cloud I/O.

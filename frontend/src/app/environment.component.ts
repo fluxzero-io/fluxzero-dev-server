@@ -20,6 +20,7 @@ import {StartedAgoComponent} from './started-ago.component';
       <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/>@if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-started-ago [startedAt]="state.startedAt"/>}</div>
+    <div class="workspace-profile"><i class="bi bi-sliders2" aria-hidden="true"></i><span>Development profile</span><strong>{{state.profiles?.active?.trim() || 'Default configuration'}}</strong></div>
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">

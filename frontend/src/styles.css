@@ -22,7 +22,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:6px;border-top:2px solid var(--dashboard-cloud-divider);}
 .cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);}
 .cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
-.cloud-section-heading{display:flex;align-items:center;gap:4px;margin-bottom:4px}.dashboard-section-label.cloud-home{display:flex;align-items:center;flex:1;min-width:0;min-height:36px;margin:0;padding:0 10px;border-radius:6px;text-decoration:none}.cloud-home:hover,.cloud-home.active{background:var(--dashboard-cloud-bg);text-decoration:none}.cloud-toggle{flex-shrink:0}.cloud-toggle i{font-size:12px;transition:transform .15s}.cloud-toggle i.expanded{transform:rotate(90deg)}.dashboard-nav-link .cloud-external{margin-left:auto;flex:0 0 12px;width:12px;font-size:11px}
+.cloud-section-heading{display:flex;align-items:center;gap:4px;margin-bottom:4px;border-radius:6px}.cloud-section-heading:is(:hover,:focus-within,.active){background:var(--dashboard-cloud-bg)}.dashboard-section-label.cloud-home{display:flex;align-items:center;flex:1;min-width:0;min-height:36px;margin:0;padding:0 10px;border-radius:6px;text-decoration:none}.cloud-home:hover{text-decoration:none}.cloud-toggle{flex-shrink:0}.cloud-section-heading .cloud-toggle:hover{background:transparent;color:var(--dashboard-control-icon)}.cloud-toggle i{font-size:12px;transition:transform .15s}.cloud-toggle i.expanded{transform:rotate(90deg)}.dashboard-nav-link .cloud-external{margin-left:auto;flex:0 0 12px;width:12px;font-size:11px}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }
 .dashboard-nav-link { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 6px; color: var(--dashboard-link-text); font-size: 15px; font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; border: 0; background: transparent; width: 100%; text-align: left; }
@@ -337,6 +337,8 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 
 .resource-version {display:inline-block;max-width:calc(100% - 6px);margin-left:6px;color:var(--dashboard-muted);font-size:11px;line-height:1.3;}
 .workspace-heading .project-path {display:flex;align-items:center;flex-wrap:wrap;gap:6px 18px;}
+.workspace-profile {display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:10px;color:var(--dashboard-muted);font-size:12px;}
+.workspace-profile strong {color:var(--dashboard-text);font-weight:500;}
 
 .dashboard-nav-link .nav-result-badge.in-progress {background:var(--dashboard-active-soft);color:var(--dashboard-active);}
 

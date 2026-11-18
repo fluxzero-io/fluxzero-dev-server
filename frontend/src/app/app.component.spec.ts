@@ -104,6 +104,13 @@ describe('Dev console navigation', () => {
     const root: HTMLElement = fixture.nativeElement;
     (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
     const frame = root.querySelector('iframe[name="dev-application"]');
+    fixture.componentInstance.cloudExpanded.set(false);fixture.detectChanges();
+    (root.querySelector('nav a[href="#cloud/overview"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    expect(fixture.componentInstance.cloudExpanded()).toBeTrue();
+    (root.querySelector('.cloud-toggle') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(fixture.componentInstance.cloudExpanded()).toBeFalse();
+    expect(fixture.componentInstance.route()).toBe('cloud/overview');
+    (root.querySelector('.cloud-toggle') as HTMLButtonElement).click();fixture.detectChanges();
     for(const page of ['overview', 'applications', 'clusters', 'integrations']) {
       (root.querySelector(`nav a[href="#cloud/${page}"]`) as HTMLAnchorElement).click();fixture.detectChanges();
       expect(fixture.componentInstance.route()).toBe('cloud/' + page);
@@ -122,6 +129,18 @@ describe('Dev console navigation', () => {
     await fixture.whenStable();
     await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     expect(document.activeElement).toBe(root.querySelector('.application-page'));
+  });
+  it('shows the local development profile in Workspace with navigation hidden and no account', () => {
+    const app=fixture.componentInstance;
+    app.route.set('projects');app.sidebarCollapsed.set(true);
+    app.status.update(state=>state ? {...state,profiles:{active:'development',available:['development'],switchSupported:false}} : state);
+    fixture.detectChanges();
+    const profile=fixture.nativeElement.querySelector('.workspace-profile');
+    expect(profile.textContent).toContain('Development profile');
+    expect(profile.textContent).toContain('development');
+    app.status.update(state=>state ? {...state,profiles:undefined} : state);fixture.detectChanges();
+    expect(profile.textContent).toContain('Default configuration');
+    TestBed.inject(HttpTestingController).expectNone('account/login');
   });
   it('shows standalone frontends as local applications without counting their resources twice', () => {
     const app=fixture.componentInstance;
