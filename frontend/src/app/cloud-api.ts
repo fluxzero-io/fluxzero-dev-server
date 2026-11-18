@@ -12,6 +12,7 @@ export interface CloudProposal {
   id:string;revision:number;expiresAt:number;organization:string;team?:string;plan:string;cluster:string;application:string;
   environment:string;repository:string;branch:string;commit:string;change:string;planImpact:string;
 }
+export interface CloudSetup {applicationConfigured:boolean;size:string;pipelineConfigured:boolean;workflowPath:string;workflowStatus:'not_checked'|'checked';}
 export interface CloudState {
   version:1;mode:'demo';revision:number;scenario:string;scenarios:{id:string;label:string;group:string}[];
   account:'signed_out'|'signed_in'|'expired'|'locked';accountName:string;availability:'available'|'offline'|'forbidden';
@@ -19,7 +20,7 @@ export interface CloudState {
   githubConnected:boolean;repositories:string[];repository:string;branch:string;integration:string;
   availableClusters:string[];cluster:string;application:string;environment:string;proposal:CloudProposal|null;
   deployment:{id:string;state:'running'|'failed'|'healthy';commit:string;artifact:string;url:string;steps:{name:string;state:string}[]}|null;
-  domains:CloudDomain[];emailPreview:Record<string,string>;authTested:boolean;message:string;
+  setup?:CloudSetup;domains:CloudDomain[];emailPreview:Record<string,string>;authTested:boolean;message:string;
 }
 
 /** Replaceable transport boundary; the design fixture does not pretend to implement live Cloud authorization. */

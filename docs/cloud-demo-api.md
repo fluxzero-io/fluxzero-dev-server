@@ -10,8 +10,8 @@ FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standal
   --project-dir=/path/to/local/project --port=4743 --no-tests
 ```
 
-Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation has one
-entry; the scenario toolbar stays inside the design pages. Open the advertised Devboard URL and choose Publish live
+Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation exposes a small
+Overview / Applications / Clusters / GitHub submenu; preview scenarios live in a collapsed disclosure. Open the advertised Devboard URL and choose Publish live
 below Startup. This entry is available while signed out and starts with sign-in; Cloud shows live status and resources. Scenario selection resets only process-local fixture
 state; browser refresh preserves it until the process stops. Local app state and files are independent. This does
 not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, image digests,
@@ -36,7 +36,9 @@ published production API or an authenticated Cloud-MCP implementation.
 | `choose-plan` | — | Legacy fixture proposal for a plan change |
 | `confirm-plan` | — | Simulate returning from a completed Dashboard plan review; no real activation |
 | `connect-github`, `cancel-github` | — | Simulate browser authorization completion/cancellation |
-| `select-source` | `repository`, `branch` | Select an allowed repository and immutable source context |
+| `select-source` | `repository`, `branch` | Select an allowed repository/ref; this does not verify a commit |
+| `configure-application` | `application`, `size` (`Starter`/plan-eligible `Small`), `cluster` (`automatic`/`existing`) | Save intended app settings without provisioning |
+| `configure-pipeline` | — | Confirm fixture delivery settings, without committing/pushing or starting CI |
 | `configure` | `application`, `cluster` (`existing`/`new`); legacy optional `environment` | Prepare a destination |
 | `review` | — | Create a revision- and expiry-bound proposal |
 | `deploy` | `proposalId` | Apply that proposal once and start a simulated operation |
@@ -44,8 +46,8 @@ published production API or an authenticated Cloud-MCP implementation.
 | `check-domain` | `kind` (`application`/`auth`/`email`) | Verify a fixture domain |
 | `test-auth`, `test-email` | — | Local sign-in outcome / captured message preview |
 
-Deployment progress is derived from a clock across build, publication, acceptance, rollout and application check.
-It performs no work on user code. Proposal expiry, changed organization/configuration, permission loss and capacity
+Legacy review/deploy commands and seeded scenarios retain their simulated clock-based outcomes for compatibility.
+The current checklist never invokes them and reports no build/push success. It performs no work on user code. Proposal expiry, changed organization/configuration, permission loss and capacity
 checks reject stale application; repeating an accepted proposal returns the same operation.
 
 ## Data and actions required from live Cloud
@@ -76,8 +78,9 @@ The first Cloud target is one Fluxzero application, including its frontend. A st
 in the local Workspace overview; deploying it independently is outside this Cloud journey. Use a real Maven/SDK
 fixture with a managed Test Server to review the first deployment route, rather than a frontend-only process.
 
-The Publish live route is sign-in → organization → GitHub source/CI → destination → reviewed deployment → progress
-and checked URL. Setup and review remain under publish routes; App preview and Progress receive no publication toolbar.
+The Publish live route is account → organization/plan → app/destination → GitHub delivery → commit/push.
+It ends with View in Fluxzero Cloud. Commit/push remains pending without evidence; no CI timeline is shown.
+App preview and Progress receive no publication toolbar.
 New organizations in this fixture use Starter capacity, a default team and a proposed new cluster. Starter exists
 in Dashboard's versioned capacity catalog with one Starter app and cluster; the catalog entry is not activated.
 The fixture asserts no live offer, price, billing activation or provisioned capacity. Existing targets are reused.
@@ -99,3 +102,16 @@ provider evidence before starting a real pipeline.
 Workspace status adds optional per-application sdkVersion/sdkVersionSource fields for versions detected from the
 project build. These differ from the Test Server version and are omitted for overrides or unknown/fallback builds.
 Test Server memory is displayed separately; other-dev-services totals exclude it, including resource graphs.
+
+## Setup versus observed resources
+
+The additive optional setup projection contains applicationConfigured, size, pipelineConfigured, workflowPath and
+workflowStatus. The current fixture always reports workflowStatus=not_checked. These are setup facts, not proof of
+a committed workflow, a pushed ref, a build or a running task. configure-application accepts no variable/secret values;
+optional app settings stay in Dashboard. configure-pipeline neither provisions resources nor invokes legacy deploy.
+Changing organization resets setup; changing app/source invalidates delivery configuration.
+
+A selected automatic cluster is planned until it appears in availableClusters. An app without a matching deployment
+shows Waiting for first deployment. Saving a different app draft cannot inherit the prior app's release. Known fixture
+releases can be inspected in the Cloud submenu, without showing CI-stage progress. The live adapter must eventually
+supply independently authorized resource observations and local workflow/commit/push evidence.

@@ -1,6 +1,7 @@
 import {ServerUpdateComponent} from './server-update.component';
 import {CloudPageComponent, cloudPages} from './cloud-page.component';
-import {CloudDemoComponent} from './cloud-demo.component';
+import {CloudResourcesComponent} from './cloud-resources.component';
+import {PublishSetupComponent} from './publish-setup.component';
 import {CLOUD_DEMO_ENABLED} from './cloud-api';
 import {AccountConnection} from './account-connection';
 import {AccountMenuComponent} from './account-menu.component';
@@ -24,7 +25,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudDemoComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -119,6 +120,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
   readonly cloudPages = cloudPages;
+  readonly cloudMenuPages = cloudPages.filter(page=>page.key!=='domains').map(page=>page.key==='integrations' ? {...page,label:'GitHub'} : page);
   readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
   readonly accountConnection = inject(AccountConnection);
   readonly cloudVisible = computed(() => {
@@ -288,7 +290,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.navigate(route);
     afterNextRender(()=>{
       if(this.route() !== route) return;
-      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1, dev-cloud-demo h1')?.focus();
+      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1, dev-cloud-resources h1, dev-publish-setup h1')?.focus();
     },{injector:this.injector});
   }
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {

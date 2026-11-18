@@ -30,19 +30,20 @@ final class CloudDemo {
     record Proposal(String id, long revision, long expiresAt, String organization, String team, String plan, String cluster,
                     String application, String environment, String repository, String branch, String commit,
                     String change, String planImpact) {}
+    record Setup(boolean applicationConfigured, String size, boolean pipelineConfigured, String workflowPath, String workflowStatus) {}
     record Snapshot(int version, String mode, long revision, String scenario, List<Scenario> scenarios,
                     String account, String accountName, String availability, List<Organization> organizations,
                     String organizationId, String team, String plannedPlan, boolean canDeploy, boolean capacityAvailable, boolean githubConnected,
                     List<String> repositories, String repository, String branch, String integration,
                     List<String> availableClusters, String cluster, String application, String environment, Proposal proposal, Deployment deployment,
-                    List<Domain> domains, Map<String, String> emailPreview, boolean authTested, String message) {}
+                    List<Domain> domains, Map<String, String> emailPreview, boolean authTested, String message, Setup setup) {}
 
     static final List<Scenario> SCENARIOS = List.of(
             new Scenario("local", "Local project, signed out", "Start"),
             new Scenario("first-organization", "First organization", "Start"),
             new Scenario("choose-organization", "Choose an organization", "Start"),
             new Scenario("github-required", "Connect GitHub", "Delivery"),
-            new Scenario("ready", "Ready to review", "Delivery"),
+            new Scenario("ready", "Ready to push", "Delivery"),
             new Scenario("deploying", "Deployment in progress", "Delivery"),
             new Scenario("live", "Live application", "Delivery"),
             new Scenario("dns-pending", "Waiting for DNS", "Domains"),
@@ -62,9 +63,10 @@ final class CloudDemo {
     private long revision;
     private String scenario, account, organizationId, repository, branch, cluster, application, environment, fault, message;
     private List<Organization> organizations;
-    private boolean githubConnected, authTested, planChanged;
+    private boolean githubConnected, authTested, planChanged, applicationConfigured, pipelineConfigured;
+    private String applicationSize = "Starter";
     private Proposal proposal;
-    private String acceptedProposal, operation, deployedApplication;
+    private String acceptedProposal, operation, deployedApplication, deployedCluster;
     private Instant started;
     private List<Domain> domains;
     private Map<String, String> emailPreview;
@@ -82,6 +84,7 @@ final class CloudDemo {
             case "create-organization" -> Set.of("action", "name");
             case "select-organization" -> Set.of("action", "organizationId");
             case "select-source" -> Set.of("action", "repository", "branch");
+            case "configure-application" -> Set.of("action", "application", "size", "cluster");
             case "configure" -> Set.of("action", "application", "environment", "cluster");
             case "deploy" -> Set.of("action", "proposalId");
             case "configure-domains" -> Set.of("action", "applicationDomain", "authDomain", "emailDomain");
@@ -130,14 +133,34 @@ final class CloudDemo {
                     planChanged = true;
                 }
                 case "connect-github" -> {githubConnected = true; message = "GitHub connected for this demo.";}
-                case "cancel-github" -> {githubConnected = false; repository = ""; message = "GitHub connection cancelled. You can try again.";}
+                case "cancel-github" -> {githubConnected = false; repository = ""; pipelineConfigured = false; message = "GitHub connection cancelled. You can try again.";}
                 case "select-source" -> {
                     require(githubConnected, "Connect GitHub first.");
                     String repo = text(request, "repository", "");
                     require(REPOSITORIES.contains(repo), "Choose a repository you can access.");
                     String branch = text(request, "branch", "main");
                     require(Set.of("main", "release").contains(branch), "Choose main or release.");
+                    if (!repo.equals(repository) || !branch.equals(this.branch)) pipelineConfigured = false;
                     repository = repo; this.branch = branch; environment = "Production";
+                }
+                case "configure-application" -> {
+                    String name = text(request, "application", "parcel-service");
+                    require(name.matches("[a-z][a-z0-9-]{1,47}"), "Use a short app name with lowercase letters, numbers and hyphens.");
+                    String size = text(request, "size", "Starter");
+                    require(size.equals("Starter") || size.equals("Small") && organization().plan().equals("Pro"), "Choose a size available in your plan.");
+                    String destination = text(request, "cluster", "automatic");
+                    require(Set.of("automatic", "existing").contains(destination), "Choose an existing cluster or automatic creation.");
+                    require(!destination.equals("existing") || !availableClusters().isEmpty(), "This organization has no existing cluster yet.");
+                    require(name.equals(deployedApplication) || organization().applications() < organization().limit(), "Review your organization's plan before adding an application.");
+                    application = name; applicationSize = size;
+                    cluster = destination.equals("existing") ? availableClusters().getFirst() : application + "-01";
+                    applicationConfigured = true; pipelineConfigured = false;
+                    message = "Application destination saved. Resources will be created by delivery if needed.";
+                }
+                case "configure-pipeline" -> {
+                    require(applicationConfigured && githubConnected && !repository.isEmpty(), "Configure the application and connect its repository first.");
+                    pipelineConfigured = true;
+                    message = "Delivery settings saved. Commit and push the workflow to start GitHub Actions.";
                 }
                 case "configure" -> {
                     require(!repository.isEmpty(), "Choose a repository first.");
@@ -150,6 +173,7 @@ final class CloudDemo {
                     require(Set.of("Production", "Staging").contains(env), "Choose Production or Staging.");
                     application = name; environment = env;
                     cluster = destination.equals("existing") ? availableClusters().getFirst() : application + "-01";
+                    applicationConfigured = true; pipelineConfigured = false;
                 }
                 case "review" -> {
                     require(!repository.isEmpty() && !cluster.isEmpty(), "Choose a source and deployment destination first.");
@@ -179,7 +203,7 @@ final class CloudDemo {
                                 ? new Organization(o.id(), o.name(), o.plan(), o.applications() + 1, o.limit(), o.role()) : o).toList();
                         deployedApplication = application;
                     }
-                    clusters.put(organizationId, cluster);
+                    clusters.put(organizationId, cluster); deployedCluster = cluster;
                     acceptedProposal = id; operation = UUID.randomUUID().toString(); started = clock.get(); fault = ""; proposal = null;
                 }
                 case "configure-domains" -> {
@@ -227,11 +251,12 @@ final class CloudDemo {
         repository = githubConnected ? REPOSITORIES.getFirst() : "";
         cluster = repository.isEmpty() ? "" : "shared-01";
         application = "parcel-service"; environment = "Production"; branch = "main";
-        proposal = null; acceptedProposal = null; operation = null; started = null; deployedApplication = "";
+        proposal = null; acceptedProposal = null; operation = null; started = null; deployedApplication = ""; deployedCluster = "";
         planChanged = false; authTested = false; emailPreview = Map.of();
+        applicationConfigured = !repository.isEmpty(); pipelineConfigured = applicationConfigured; applicationSize = "Starter";
         domains = List.of(domain("application", "app.acme.example", "not_configured"), domain("auth", "auth.acme.example", "not_configured"), domain("email", "mail.acme.example", "not_configured"));
         if (Set.of("deploying", "live", "dns-pending", "email-pending", "build-failed", "rollout-failed").contains(id)) {
-            operation = UUID.randomUUID().toString(); deployedApplication = application; started = clock.get().minusSeconds(id.equals("deploying") ? 0 : 30);
+            operation = UUID.randomUUID().toString(); deployedApplication = application; deployedCluster = cluster; started = clock.get().minusSeconds(id.equals("deploying") ? 0 : 30);
         }
         if (Set.of("live", "dns-pending", "email-pending").contains(id)) {
             domains = List.of(domain("application", "app.acme.example", id.equals("dns-pending") ? "pending" : "ready"),
@@ -244,7 +269,8 @@ final class CloudDemo {
 
     private void clearDestination() {
         githubConnected = false; repository = ""; cluster = ""; proposal = null; operation = null; started = null;
-        authTested = false; emailPreview = Map.of(); planChanged = false; deployedApplication = "";
+        authTested = false; emailPreview = Map.of(); planChanged = false; deployedApplication = ""; deployedCluster = "";
+        applicationConfigured = false; pipelineConfigured = false; applicationSize = "Starter";
         domains = domains.stream().map(d -> domain(d.kind(), d.hostname(), "not_configured")).toList();
     }
     private List<String> availableClusters() {return clusters.containsKey(organizationId) ? List.of(clusters.get(organizationId)) : List.of();}
@@ -255,11 +281,12 @@ final class CloudDemo {
     private Snapshot snapshot() {
         return new Snapshot(1, "demo", revision, scenario, SCENARIOS, account, "Alex Morgan", fault.equals("offline") ? "offline" : fault.equals("forbidden") ? "forbidden" : "available",
                 organizations, organizationId, "default", planChanged ? "Pro" : "", organization() != null && !organization().role().equals("Viewer") && !fault.equals("forbidden"), capacity(), githubConnected,
-                REPOSITORIES, repository, branch, repository.isEmpty() ? "" : "GitHub Actions · existing Integration", availableClusters(), cluster, application, environment,
-                proposal, deployment(), domains, emailPreview, authTested, message);
+                REPOSITORIES, repository, branch, repository.isEmpty() ? "" : "GitHub Actions Integration", availableClusters(), cluster, application, environment,
+                proposal, deployment(), domains, emailPreview, authTested, message,
+                new Setup(applicationConfigured, applicationSize, pipelineConfigured, ".github/workflows/deploy.yml", "not_checked"));
     }
     private Deployment deployment() {
-        if (operation == null) return null;
+        if (operation == null || !application.equals(deployedApplication) || !cluster.equals(deployedCluster)) return null;
         boolean failed = Set.of("build-failed", "rollout-failed").contains(fault);
         int index = failed ? fault.equals("build-failed") ? 0 : 3 : (int)Math.min(5, Math.max(0, (clock.get().getEpochSecond() - started.getEpochSecond()) / 2));
         var steps = new ArrayList<Step>();

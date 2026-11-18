@@ -87,10 +87,10 @@ describe('Dev console navigation', () => {
     publish.click();await fixture.whenStable();fixture.detectChanges();
     expect(fixture.componentInstance.route()).toBe('publish');
     expect(root.querySelector('h1')?.textContent).toBe('Publish live');
-    expect(root.textContent).toContain('Sign in to publish live');
-    expect(root.querySelector('.publish-steps [aria-current=step]')?.textContent).toContain('Sign in');
+    expect(root.textContent).toContain('Sign in to choose where your app will run.');
+    expect(root.querySelector('.setup-timeline li.current')?.textContent).toContain('Fluxzero account');
     TestBed.inject(HttpTestingController).expectNone('account/login');
-    (root.querySelector('dev-cloud-page .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('dev-publish-setup .primary-button') as HTMLButtonElement).click();
     const login=TestBed.inject(HttpTestingController).expectOne('account/login');
     expect(login.request.body.returnTo).toContain('#publish');
     login.flush({account:{state:'signing_in'}});await fixture.whenStable();fixture.detectChanges();
@@ -1334,7 +1334,7 @@ describe('Dev console navigation', () => {
     statusDetail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('Monitoring database');
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('failed');
-    expect(statusDetail.querySelector('.resource-version')).toBeNull();
+    expect(statusDetail.querySelector('.resource-version')?.textContent).toBe('1.2.3');
     statusDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')).toBeNull();
     const memoryDetail = rows[1].querySelector('.component-memory dev-resource-detail')!;

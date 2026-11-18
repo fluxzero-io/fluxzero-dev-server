@@ -14,7 +14,7 @@ import {formatBytes} from './format-bytes';
     <span class="resource-tooltip" [class.above]="above()" [id]="tooltipId" [attr.role]="kind() === 'memory' ? 'dialog' : 'tooltip'" [attr.aria-label]="kind() === 'memory' ? 'Memory by service' : null" [style.left.px]="left()" [style.top.px]="top()">
       <span class="resource-tooltip-content" [style.max-height.px]="maxHeight()">
         @for(component of components(); track component.id) {
-          <span class="resource-tooltip-row"><span>{{component.name}}@if(kind() === 'memory' && component.version) {<small class="resource-version">{{component.version}}</small>}</span>
+          <span class="resource-tooltip-row"><span>{{component.name}}@if(component.version) {<small class="resource-version">{{component.version}}</small>}</span>
             @if(kind() === 'status') {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<span class="resource-tooltip-memory"><span class="resource-value">{{formatBytes(usedMemory(component))}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span><dev-resource-graph [title]="component.name + ' · Memory'" [samples]="samples()" [componentId]="component.id" [current]="usedMemory(component)" [limit]="component.memoryMaxBytes" (openedChange)="graphOpen.set($event)"/></span>}
           </span>

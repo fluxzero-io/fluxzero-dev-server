@@ -432,3 +432,5 @@ body:has(.preview-expanded) {overflow:hidden;}
 .publish-steps .current > span {background:var(--dashboard-surface);border-color:var(--dashboard-control-icon);}
 .publish-steps .done > span {background:var(--dashboard-status-success-bg);color:var(--dashboard-success-text);}
 @media(max-width:600px){.publish-steps{gap:10px;flex-wrap:wrap;font-size:12px;}}
+
+.resource-tooltip-row .resource-version{display:inline-flex;margin:0 0 0 7px;padding:1px 5px;border:1px solid var(--dashboard-border);border-radius:4px;background:var(--dashboard-panel-soft);font-size:10px;vertical-align:middle}

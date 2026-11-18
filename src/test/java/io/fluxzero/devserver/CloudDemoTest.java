@@ -53,6 +53,41 @@ class CloudDemoTest {
         assertEquals("Captured locally · no email sent", email.get("status"));
     }
 
+    @Test void preparesDeliveryWithoutProvisioningOrStartingADeployment() throws Exception {
+        call("{\"action\":\"sign-in\"}");
+        call("{\"action\":\"create-organization\",\"name\":\"Parcel Studio\"}");
+        assertThrows(IllegalArgumentException.class, () -> call("{\"action\":\"configure-pipeline\"}"));
+        call("{\"action\":\"configure-application\",\"application\":\"parcels\",\"size\":\"Starter\",\"cluster\":\"automatic\"}");
+        call("{\"action\":\"connect-github\"}");
+        call("{\"action\":\"select-source\",\"repository\":\"acme/parcel-service\",\"branch\":\"main\"}");
+        var ready = call("{\"action\":\"configure-pipeline\"}");
+        assertTrue(ready.setup().applicationConfigured());
+        assertTrue(ready.setup().pipelineConfigured());
+        assertEquals("not_checked", ready.setup().workflowStatus());
+        assertEquals("parcels-01", ready.cluster());
+        assertTrue(ready.availableClusters().isEmpty());
+        assertEquals(0, ready.organizations().getFirst().applications());
+        assertNull(ready.proposal());
+        assertNull(ready.deployment());
+        now.set(now.get().plusSeconds(3600));
+        assertNull(call("{}").deployment());
+        assertFalse(call("{\"action\":\"select-source\",\"repository\":\"acme/parcel-service\",\"branch\":\"release\"}").setup().pipelineConfigured());
+    }
+
+    @Test void doesNotTreatAnExistingReleaseAsANewApplicationsDeployment() throws Exception {
+        call("{\"action\":\"scenario\",\"scenario\":\"live\"}");
+        var existing = call("{}").deployment();
+        assertNotNull(existing);
+        var draft = call("{\"action\":\"configure-application\",\"application\":\"another-app\",\"cluster\":\"existing\"}");
+        assertNull(draft.deployment());
+        assertEquals(1, draft.organizations().getFirst().applications());
+        assertFalse(draft.setup().pipelineConfigured());
+        var restored = call("{\"action\":\"configure-application\",\"application\":\"parcel-service\",\"cluster\":\"existing\"}");
+        assertEquals(existing.id(), restored.deployment().id());
+        var planned = call("{\"action\":\"configure-application\",\"application\":\"parcel-service\",\"cluster\":\"automatic\"}");
+        assertNull(planned.deployment());
+    }
+
     @Test void bindsApplyToTheReviewedRevisionAndExpiry() throws Exception {
         call("{\"action\":\"scenario\",\"scenario\":\"ready\"}");
         var proposal = call("{\"action\":\"review\"}").proposal();

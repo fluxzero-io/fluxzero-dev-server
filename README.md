@@ -36,8 +36,9 @@ Account actions keep the current page and App preview in place.
 
 **Publish live**, directly below Startup, stays available while signed out. Its first step is account sign-in;
 a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
-continue through existing Dashboard handoffs. The opt-in Cloud design fixture supports the interactive proposal and publication
-journey on the same route. Cloud navigation provides the live-app overview.
+continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a vertical setup checklist ending
+with commit/push instructions and a Cloud handoff. It does not start a pipeline or infer deployment success.
+Cloud navigation provides Overview, Applications, Clusters and GitHub with known and planned state kept separate.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.

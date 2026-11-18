@@ -41,14 +41,10 @@
         </div>
       </div>
       @if(cloudVisible()) {<div class="dashboard-nav-section cloud-navigation">
-        @if(cloudDemo){
-          <a class="dashboard-nav-link cloud-entry" href="#cloud/overview" (click)="link($event,'cloud/overview')" [class.active]="isCloud()" [attr.aria-current]="isCloud() ? 'page' : null"><span class="cloud-nav-title"><img src="assets/fluxzero-logo.svg" alt="" aria-hidden="true">Fluxzero Cloud</span><i class="bi bi-chevron-right" aria-hidden="true"></i></a>
-        } @else {
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleCloud()" [attr.aria-expanded]="cloudExpanded()" aria-controls="cloud-menu"><span class="cloud-nav-title"><img src="assets/fluxzero-logo.svg" alt="" aria-hidden="true">Fluxzero Cloud</span><i class="bi bi-chevron-right" [class.expanded]="cloudExpanded()" aria-hidden="true"></i></button>
         <div id="cloud-menu" class="dashboard-section-items" [hidden]="!cloudExpanded()">
-          @for(page of cloudPages;track page.key){<a class="dashboard-nav-link" [href]="'#cloud/' + page.key" (click)="link($event,'cloud/' + page.key)" [class.active]="isCloud() && cloudSection() === page.key" [attr.aria-current]="isCloud() && cloudSection() === page.key ? 'page' : null"><i [class]="'bi bi-' + page.icon" aria-hidden="true"></i><span>{{page.label}}</span></a>}
+          @for(page of cloudMenuPages;track page.key){<a class="dashboard-nav-link" [href]="'#cloud/' + page.key" (click)="link($event,'cloud/' + page.key)" [class.active]="isCloud() && cloudSection() === page.key" [attr.aria-current]="isCloud() && cloudSection() === page.key ? 'page' : null"><i [class]="'bi bi-' + page.icon" aria-hidden="true"></i><span>{{page.label}}</span></a>}
         </div>
-        }
       </div>}
     </nav>
     <div class="sidebar-footer-group"><dev-server-update (updated)="showUpdateNotice($event)" [status]="status()" [connected]="connected()"/><div class="sidebar-footer">@if(!navigationHidden()){<dev-account-menu/><ng-container [ngTemplateOutlet]="localConnection"/>}<dev-theme-menu [theme]="themePreference()"/></div></div>
@@ -58,12 +54,9 @@
     @if(sidebarCollapsed() || mobileNavigation()) {<div class="navigation-bar"><button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button>@if(navigationHidden() && !previewExpanded()){<div class="navigation-account"><ng-container [ngTemplateOutlet]="localConnection"/><dev-account-menu placement="below"/></div>}</div>}
 
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
-    @if(isPublishing()) {
-      @if(cloudDemo){<dev-cloud-demo [publishing]="true" [section]="publishSection()" [projectName]="currentName()" (pageChanged)="navigateFromPublish($event)"/>}
-      @else{<dev-cloud-page [publishing]="true" [section]="publishSection()" [projectName]="currentName()" (pageChanged)="navigateFromPublish($event)"/>}
-    }
+    @if(isPublishing()) {<dev-publish-setup [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
     @if(isCloud()) {
-      @if(cloudDemo){<dev-cloud-demo [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
+      @if(cloudDemo){<dev-cloud-resources [section]="cloudSection()" (pageChanged)="navigateFromCloud($event)"/>}
       @else{<dev-cloud-page [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
     }
     @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}

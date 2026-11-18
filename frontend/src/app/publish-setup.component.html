@@ -1,0 +1,46 @@
+<section class="publish-setup">
+  @if(cloud.enabled){<dev-cloud-scenarios/>}
+  <header><span class="eyebrow">Your project, online</span><h1 tabindex="-1">Publish live</h1><p>Set up delivery once. Your GitHub workflow puts the app online.</p></header>
+  <div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>
+  @if(account.message()){<p class="notice" role="status">{{account.message()}}</p>}
+  @if(cloud.error()){<p class="notice" role="alert">{{cloud.error()}}</p>}
+  @if(data()?.availability==='forbidden'){<p class="notice" role="status">Your access to this organization has changed. Choose another organization or ask its owner.</p>}
+  @if(data()?.availability==='offline'){<p class="notice" role="status">Cloud is unavailable. Your local app is still available.</p>}
+  <ol class="setup-timeline" aria-label="Publishing setup">
+    <li [class.done]="accountReady()" [class.current]="current()===0"><span class="step-marker" aria-hidden="true">@if(accountReady()){<i class="bi bi-check-lg"></i>}@else{1}</span><div class="step-content"><h2>Fluxzero account</h2>
+      @if(accountReady()){<p>{{account.account()?.displayName || 'Signed in'}}</p>}
+      @else if(account.account()?.state==='signing_in'){<p role="status">Finish signing in in your browser.</p><button class="secondary-button" (click)="account.act('cancel')">Cancel sign-in</button>}
+      @else if(account.account()===undefined){<p role="status">Loading account…</p>}
+      @else if(account.account()?.state==='unavailable'){<p>Account is temporarily unavailable.</p><button class="secondary-button" [disabled]="account.busy()" (click)="account.load()">Try again</button>}
+      @else if(account.account()?.pendingAction){<p role="status">Confirm sign-out in your browser.</p>}
+      @else if(storageLocked()){<p>Allow access to your saved sign-in.</p><button class="primary-button" [disabled]="account.busy()" (click)="account.act('check-interactive')">Unlock secure storage</button>}
+      @else{<p>Sign in to choose where your app will run.</p><button class="primary-button" [disabled]="account.busy()" (click)="account.act('login')">{{account.busy() ? 'Opening sign-in…' : 'Sign in'}}</button>}
+    </div></li>
+    <li [class.done]="accountReady() && !!organization()" [class.current]="current()===1"><span class="step-marker" aria-hidden="true">@if(accountReady() && organization()){<i class="bi bi-check-lg"></i>}@else{2}</span><div class="step-content"><div class="step-heading"><h2>Organization & plan</h2>@if(accountReady() && organization()){<button class="text-button" (click)="edit(1)">Edit</button>}</div><p>{{accountReady() && organization() ? organization()!.name + ' · ' + organization()!.plan : 'Choose an organization and the plan for your app.'}}</p>
+      @if(accountReady() && expanded()===1){
+        @if(cloud.enabled){
+          @if(data()?.organizations?.length){<label>Organization<select [value]="data()?.organizationId || ''" (change)="chooseOrganization(value($event))"><option value="" disabled>Choose an organization</option>@for(org of data()?.organizations;track org.id){<option [value]="org.id">{{org.name}} · {{org.plan}}</option>}</select></label>}
+          <form (submit)="$event.preventDefault();createOrganization()"><label>New organization<input [value]="organizationName()" (input)="organizationName.set(value($event))" maxlength="64" required></label><button class="primary-button" [disabled]="cloud.busy()">Create organization</button></form>
+        }@else if(dashboardUrl();as url){<a class="primary-button" [href]="url" target="_blank" rel="noopener noreferrer">Choose in Dashboard</a><p class="hint">Plan activation and costs are confirmed in Dashboard.</p>}
+      }
+    </div></li>
+    <li [class.done]="applicationReady()" [class.current]="current()===2"><span class="step-marker" aria-hidden="true">@if(applicationReady()){<i class="bi bi-check-lg"></i>}@else{3}</span><div class="step-content"><div class="step-heading"><h2>Application & destination</h2>@if(applicationReady()){<button class="text-button" (click)="edit(2)">Edit</button>}</div><p>{{applicationReady() ? data()!.application + ' · ' + data()!.setup!.size : 'Name your app and choose its capacity.'}}</p>
+      @if(applicationReady()){<p class="hint">{{data()?.availableClusters?.includes(data()!.cluster) ? 'Cluster: ' + data()?.cluster : 'Cluster ' + data()?.cluster + ' will be created by delivery.'}}</p>}
+      @if(accountReady() && organization() && expanded()===2){<form (submit)="$event.preventDefault();saveApplication()"><div class="fields"><label>Application name<input [value]="application()" (input)="application.set(value($event))" pattern="[a-z][a-z0-9-]{1,47}" maxlength="48" required></label><label>Size<select [value]="size()" (change)="size.set(value($event))"><option>Starter</option>@if(organization()?.plan==='Pro'){<option>Small</option>}</select></label></div>
+        <details><summary>Cluster, variables & secrets</summary><label>Cluster<select [value]="cluster()" (change)="cluster.set(value($event))"><option value="automatic">Create automatically on first deployment</option>@if(data()?.availableClusters?.length){<option value="existing">{{data()!.availableClusters[0]}}</option>}</select></label><p class="hint">Additional app settings and secret values are managed in Dashboard.</p>@if(dashboardUrl();as url){<a [href]="url" target="_blank" rel="noopener noreferrer">Application settings in Dashboard</a>}@else{<p class="hint">Additional settings: not configured (optional).</p>}</details>
+        <button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy || !data()?.capacityAvailable">Save application settings</button>
+        @if(!data()?.capacityAvailable){<p class="notice">Review available capacity in Dashboard before continuing.</p>}
+      </form>}
+    </div></li>
+    <li [class.done]="deliveryReady()" [class.current]="current()===3"><span class="step-marker" aria-hidden="true">@if(deliveryReady()){<i class="bi bi-check-lg"></i>}@else{4}</span><div class="step-content"><div class="step-heading"><h2>GitHub delivery</h2>@if(deliveryReady()){<button class="text-button" (click)="edit(3)">Edit</button>}</div><p>{{deliveryReady() ? data()!.repository + ' · ' + data()!.branch : 'Connect the repository and its deployment workflow.'}}</p>
+      @if(applicationReady() && expanded()===3){
+        @if(!data()?.githubConnected){<button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="connectGitHub()">Connect GitHub</button>}
+        @else{<form (submit)="$event.preventDefault();saveDelivery()"><div class="fields"><label>Repository<select [value]="repository()" (change)="repository.set(value($event))">@for(repo of data()?.repositories;track repo){<option>{{repo}}</option>}</select></label><label>Branch<select [value]="branch()" (change)="branch.set(value($event))"><option>main</option><option>release</option></select></label></div><p class="hint">The workflow uses its own Integration to publish and deploy.</p><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy">Save delivery settings</button></form>}
+      }
+      @if(deliveryReady()){<p class="hint">{{data()?.setup?.workflowPath}}</p>}
+    </div></li>
+    <li [class.current]="current()===4"><span class="step-marker" aria-hidden="true">5</span><div class="step-content"><h2>Commit & push</h2><p>{{deliveryReady() ? 'Commit and push the workflow to start GitHub Actions.' : 'Publish the workflow when setup is ready.'}}</p>
+      @if(deliveryReady()){<details><summary>Workflow instructions</summary><p>Use <code>{{data()?.setup?.workflowPath}}</code>. Configure the workflow to run on pushes to <code>{{data()?.branch}}</code>, or start it manually.</p><dl><dt>FLUXZERO_CLUSTER_NAME</dt><dd>{{data()?.cluster}}</dd><dt>FLUXZERO_APPLICATION_NAME</dt><dd>{{data()?.application}}</dd><dt>FLUXZERO_IMAGE_NAME</dt><dd>Your published image name</dd></dl><p>Add these as repository Action Variables. Keep your existing build and image publication steps; add these deployment steps afterward.</p><pre><code>{{workflowSnippet}}</code></pre><p class="hint">Workflow file and push status have not been checked locally.</p></details><button class="primary-button cloud-link" (click)="pageChanged.emit('cloud/overview')">View in Fluxzero Cloud <i class="bi bi-arrow-right" aria-hidden="true"></i></button><p class="hint">Cloud shows the app when a deployment is reported.</p>}
+    </div></li>
+  </ol>
+</section>
