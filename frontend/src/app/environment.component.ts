@@ -19,8 +19,11 @@ import {StartedAgoComponent} from './started-ago.component';
       @else {<h1>{{displayName() || state.project}}</h1>}
       <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
-    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/>@if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-started-ago [startedAt]="state.startedAt"/>}</div>
-    <div class="workspace-profile"><i class="bi bi-sliders2" aria-hidden="true"></i><span>Development profile</span><strong>{{state.profiles?.active?.trim() || 'Default configuration'}}</strong></div>
+    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
+    <div class="workspace-details">
+      @if(state.startedAt && !state.maintenance?.workspaceStopped && !fullyStopped()){<div class="workspace-started"><i class="bi bi-clock" aria-hidden="true"></i><dev-started-ago [startedAt]="state.startedAt"/></div>}
+      <div class="workspace-profile"><i class="bi bi-sliders2" aria-hidden="true"></i><div><span>Development profile</span><strong>{{state.profiles?.active?.trim() || 'Default configuration'}}</strong></div></div>
+    </div>
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
