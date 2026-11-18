@@ -2,6 +2,7 @@ import {ServerUpdateComponent} from './server-update.component';
 import {CloudPageComponent, cloudPages, dashboardDestination} from './cloud-page.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
 import {PublishSetupComponent} from './publish-setup.component';
+import {MonitoringOverviewComponent} from './monitoring-overview.component';
 import {CLOUD_DEMO_ENABLED} from './cloud-api';
 import {AccountConnection} from './account-connection';
 import {AccountMenuComponent} from './account-menu.component';
@@ -25,7 +26,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -154,6 +155,11 @@ export class AppComponent implements OnInit, OnDestroy {
   toggleMonitoring() {
     this.monitoringExpanded.update(value=>!value);
     this.savePreference('devboard.monitoringExpanded',String(this.monitoringExpanded()));
+  }
+  openMonitoringOverview(event:MouseEvent) {
+    if(event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    this.monitoringExpanded.set(true);this.savePreference('devboard.monitoringExpanded','true');
+    this.link(event,'monitoring');
   }
   togglePinnedNavigation() {
     if(this.mobileNavigation()) {this.closeNavigation();return;}
@@ -288,7 +294,7 @@ export class AppComponent implements OnInit, OnDestroy {
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
     } else if (!this.isPublishRoute(route) && !cloudPages.some(page => 'cloud/' + page.key === route)
-      && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) return;
+      && !['projects', 'environment', 'application', 'tests', 'startup', 'progress', 'monitoring'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
@@ -398,9 +404,8 @@ export class AppComponent implements OnInit, OnDestroy {
       route = 'projects';
       history.replaceState(null, '', '#projects');
     }
-    if (route === 'monitoring') route = 'monitoring/messages';
-    if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !this.isPublishRoute(route) && !cloudPages.some(page=>'cloud/'+page.key===route) && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
+    if (route.startsWith('monitoring/') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
+    if (!route.startsWith('monitoring/') && !this.isPublishRoute(route) && !cloudPages.some(page=>'cloud/'+page.key===route) && !['projects', 'environment', 'application', 'tests', 'startup', 'progress', 'monitoring'].includes(route)) route = 'projects';
     this.route.set(route);
     if (route !== 'application') this.previewExpanded.set(false);
     if (route === 'application') this.applicationOpened.set(true);

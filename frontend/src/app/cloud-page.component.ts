@@ -3,11 +3,11 @@ import {AccountConnection, accountLink} from './account-connection';
 import {DashboardLinkComponent} from './dashboard-link.component';
 
 export const cloudPages = [
-  {key:'overview',label:'Overview',icon:'house'},
-  {key:'applications',label:'Applications',icon:'box'},
-  {key:'clusters',label:'Clusters',icon:'diagram-3'},
-  {key:'integrations',label:'Integrations',icon:'robot'},
-  {key:'domains',label:'Domains & email',icon:'globe2'},
+  {key:'overview',label:'Overview',icon:'house',description:'Your organization, deployment destination and live app at a glance.'},
+  {key:'applications',label:'Applications',icon:'box',description:'See which versions of your apps are running in the cloud.'},
+  {key:'clusters',label:'Clusters',icon:'diagram-3',description:'See where your apps run and where your next deployment will go.'},
+  {key:'integrations',label:'Integrations',icon:'robot',description:'Connect the tools that build and deploy your app.'},
+  {key:'domains',label:'Domains & email',icon:'globe2',description:'Connect your own domains for your app, sign-in and email.'},
 ];
 
 /** Organization/resource routes need authorized IDs; this entry route is independent. */

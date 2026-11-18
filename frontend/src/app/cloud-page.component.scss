@@ -10,6 +10,7 @@ h2{font-size:18px;margin:0 0 16px;font-weight:600;}
 .cloud-card{padding:28px;border:1px solid var(--dashboard-border);border-radius:12px;background:var(--dashboard-surface);overflow-wrap:anywhere;}
 .recovery,.resource-card{max-width:680px;}.progress-label{display:flex;align-items:center;gap:12px;}.progress-label h2{margin:0;}.progress-label+p{margin-top:14px;}.recovery[aria-busy]{display:flex;align-items:center;gap:12px;}.recovery[aria-busy] h2{margin:0;}
 p{margin:0 0 20px;line-height:1.6;color:var(--dashboard-muted);}p:last-child{margin-bottom:0;}
+.page-description{margin:8px 0 0;font-size:15px;}
 .cloud-symbol{font-size:26px;color:var(--dashboard-muted);display:block;margin-bottom:20px;}
 a{display:inline-flex;align-items:center;gap:10px;text-decoration:none;}a.quiet-link{color:var(--dashboard-active);font-size:14px;}.local-project>a{flex-shrink:0;}
 .journey-card{padding:24px 12px 12px;}.journey-card h2{padding:0 12px;margin-bottom:12px;}.journey-card ul{list-style:none;margin:0;padding:0;}.journey-card li+li{border-top:1px solid var(--dashboard-border);}

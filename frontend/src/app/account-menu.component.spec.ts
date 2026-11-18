@@ -120,9 +120,13 @@ describe('Optional Fluxzero account', () => {
     fixture.detectChanges();
     const more: HTMLButtonElement = fixture.nativeElement.querySelector('.more-signout');
     more.dispatchEvent(new PointerEvent('pointerenter',{pointerType:'mouse'}));fixture.detectChanges();
-    expect(document.activeElement).not.toBe(fixture.nativeElement.querySelector('#more-signout-menu button'));
+    expect(fixture.nativeElement.querySelector('#more-signout-menu')).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
     more.click();fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Sign out everywhere…');
+    more.click();fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('#more-signout-menu')).toBeNull();
+    more.click();fixture.detectChanges();
     http.expectNone('account/logout');http.expectNone('account/logout-everywhere');
     fixture.componentInstance.onKeydown(new KeyboardEvent('keydown', {key:'Escape'}));fixture.detectChanges();
     expect(fixture.componentInstance.open()).toBeTrue();

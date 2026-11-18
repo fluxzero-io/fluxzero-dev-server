@@ -1,5 +1,5 @@
 <section class="page cloud-page" aria-labelledby="cloud-title">
-  <header class="page-heading"><h1 class="page-title" id="cloud-title" tabindex="-1">{{publishing() ? 'Publish live' : page().label}}</h1>
+  <header class="page-heading"><div><h1 class="page-title" id="cloud-title" tabindex="-1">{{publishing() ? 'Publish live' : page().label}}</h1>@if(!publishing()){<p class="page-description">{{page().description}}</p>}</div>
     @if(account.signedIn()){<dev-dashboard-link/>}
   </header>
   @if(publishing()){<ol class="publish-steps" aria-label="Publishing steps">@for(step of publicationSteps;track step;let i=$index){<li [class.done]="i===0 && account.signedIn()" [class.current]="i===(account.signedIn() ? 1 : 0)" [attr.aria-current]="i===(account.signedIn() ? 1 : 0) ? 'step' : null"><span>{{i+1}}</span>{{step}}</li>}</ol>}

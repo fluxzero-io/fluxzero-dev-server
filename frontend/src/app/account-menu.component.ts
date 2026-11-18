@@ -21,18 +21,18 @@ export type {AccountStatus} from './account-connection';
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel')">Cancel sign-in</button>
       } @else if(signedIn()) {
         @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
-        @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><img class="dashboard-brand-icon" src="assets/fluxzero-logo-light.svg" alt="" aria-hidden="true"><span>Dashboard</span></a>}
+        @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" title="Open the online Fluxzero Cloud dashboard" (click)="close(true)"><img class="dashboard-brand-icon" src="assets/fluxzero-logo-light.svg" alt="" aria-hidden="true"><span>Dashboard</span><i class="bi bi-box-arrow-up-right external-link" aria-hidden="true"></i></a>}
         @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Unlock secure storage</button>}
         @if(signingOutEverywhere()) {
           <p class="account-progress" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Confirm sign-out in your browser…</span></p>
         }
-        <div class="signout-actions" role="group" aria-label="Sign-out options" (pointerleave)="leaveMore()" (pointerenter)="keepMore()">
+        <div class="signout-actions" role="group" aria-label="Sign-out options">
           <button type="button" role="menuitem" tabindex="-1" title="Sign out on this computer only" [disabled]="busy()" [attr.aria-busy]="connection.activeAction() === 'logout' ? 'true' : null" (click)="act('logout')">
             @if(connection.activeAction() === 'logout') {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>} @else {<i class="bi bi-box-arrow-right" aria-hidden="true"></i>}
             <span>{{connection.activeAction() === 'logout' ? 'Signing out…' : 'Sign out'}}</span>
           </button>
-          <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy() || signingOutEverywhere()" (pointerenter)="hoverMore($event)" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
-          @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu" (pointerenter)="keepMore()">
+          <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy() || signingOutEverywhere()" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
+          @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu">
             <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('logout-everywhere')"><i class="bi bi-globe" aria-hidden="true"></i>Sign out everywhere…</button>
           </div>}
         </div>
@@ -66,11 +66,11 @@ export type {AccountStatus} from './account-connection';
   .signout-actions .more-signout {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
   .more-signout-menu {position:absolute;bottom:calc(100% + 6px);right:0;z-index:1;width:230px;max-width:100%;padding:6px;
     background:var(--dashboard-popover-bg);border:1px solid var(--dashboard-border);border-radius:8px;box-shadow:var(--dashboard-popover-shadow);}
-  .more-signout-menu::after {content:"";position:absolute;left:0;right:0;bottom:-8px;height:8px;}
   .more-signout[aria-expanded=true] {background:var(--dashboard-active-soft);}
   [role=menuitem]:hover {background:var(--dashboard-panel-soft);}
   [role=menuitem] span {flex:1;}
   [role=menuitem] i {font-size:16px;}
+  [role=menuitem] .external-link {margin-left:auto;font-size:12px;color:var(--dashboard-control-icon);}
   button:focus-visible,a:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
   button:disabled {opacity:.65;cursor:wait;}
   @media(pointer:coarse) {.signout-actions .more-signout,.account-identity .switch-account {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
@@ -87,7 +87,6 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
   readonly busy = this.connection.busy;
   readonly signedIn = this.connection.signedIn;
   readonly signingOutEverywhere = computed(() => this.account()?.pendingAction === 'sign_out_everywhere');
-  private hoverTimer?: ReturnType<typeof setTimeout>;
   readonly label = computed(() => 'Fluxzero account — ' + (this.signedIn() ? this.account()?.displayName || 'signed in' : this.account()?.state === 'signing_in' ? 'signing in' : 'signed out'));
   readonly tooltip = computed(() => this.signedIn() ? (this.account()?.displayName || 'Signed in') + ' — Fluxzero account' : this.account()?.state === 'signing_in' ? 'Signing in to Fluxzero' : 'Sign in to Fluxzero');
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -102,12 +101,8 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
     else {this.open.set(true);void this.load();this.changeDetector.detectChanges();this.items()[0]?.focus();}
   }
   ngOnDestroy() {this.destroyed=true;this.close();}
-  keepMore() {clearTimeout(this.hoverTimer);}
-  leaveMore() {this.hoverTimer=setTimeout(() => {if(!this.panel?.nativeElement.querySelector('#more-signout-menu')?.contains(document.activeElement)) this.more.set(false);},150);}
-  hoverMore(event: PointerEvent) {if(event.pointerType === 'mouse' && !this.busy() && !this.signingOutEverywhere()) {this.keepMore();this.more.set(true);}}
   toggleMore() {
-    this.keepMore();
-    this.more.set(true);
+    this.more.update(value=>!value);
     this.changeDetector.detectChanges();
     if(this.more()) this.panel?.nativeElement.querySelector<HTMLElement>('#more-signout-menu [role=menuitem]')?.focus();
   }
@@ -123,7 +118,7 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
   @HostListener('document:click', ['$event'])
   @HostListener('document:focusin', ['$event'])
   dismissOutside(event: Event) {if(!this.element.nativeElement.contains(event.target as Node)) this.close();}
-  close(restoreFocus = false) {this.keepMore();this.more.set(false);this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
+  close(restoreFocus = false) {this.more.set(false);this.open.set(false);if(restoreFocus) this.trigger?.nativeElement.focus();}
   private items() {return Array.from(this.panel?.nativeElement.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)') || []);}
   @HostListener('keydown', ['$event']) onKeydown(event: KeyboardEvent) {
     if(event.key === 'Tab') {if(this.open()) this.close(true);return;}

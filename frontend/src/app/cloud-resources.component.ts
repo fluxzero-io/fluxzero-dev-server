@@ -2,9 +2,10 @@ import {Component, computed, inject, input, output} from '@angular/core';
 import {CloudConnection} from './cloud-api';
 import {AccountConnection} from './account-connection';
 import {DashboardLinkComponent} from './dashboard-link.component';
+import {cloudPages} from './cloud-page.component';
 
 @Component({selector:'dev-cloud-resources',standalone:true,imports:[DashboardLinkComponent],template:`
-  <section class="page cloud-resources"><header class="page-heading"><h1 class="page-title" tabindex="-1">{{title()}}</h1><div class="cloud-header-context">
+  <section class="page cloud-resources"><header class="page-heading"><div><h1 class="page-title" tabindex="-1">{{page().label}}</h1><p class="page-description">{{page().description}}</p></div><div class="cloud-header-context">
     @if(section()==='overview' && data()?.account==='signed_in'){<dev-dashboard-link/>}
     @if(data()?.account==='signed_in' && data()?.availability==='available'){@if(organization();as org){<div class="organization-context"><span>{{org.name}}</span>@if(plan();as label){<span class="plan-badge" [attr.aria-label]="'Organization plan: ' + label"><i class="bi bi-cloud" aria-hidden="true"></i>{{label}}</span>}</div>}}
     </div></header>
@@ -23,7 +24,7 @@ import {DashboardLinkComponent} from './dashboard-link.component';
     </div>
   }
   </section>
-`,styles:`:host{display:block}.cloud-header-context{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto;flex-wrap:wrap}.hint{font-size:12px;color:var(--dashboard-muted)}.organization-context{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;font-size:13px;color:var(--dashboard-muted)}.plan-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--dashboard-border);border-radius:20px;background:var(--dashboard-surface);color:var(--dashboard-text);font-size:12px}.plan-badge i{font-size:14px;color:var(--dashboard-control-icon)}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:20px}.resource-card{background:var(--dashboard-surface);border:1px solid var(--dashboard-border);border-radius:12px;padding:24px}h2{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 18px}h2 i{color:var(--dashboard-control-icon);font-size:18px}h3{font-size:18px;margin:16px 0;overflow-wrap:anywhere}p{color:var(--dashboard-muted);font-size:13px;line-height:1.6}.card-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.card-heading h2{margin:0}.status{display:inline-flex;padding:4px 8px;border:1px solid var(--dashboard-border);border-radius:20px;font-size:11px;color:var(--dashboard-muted)}.status.running{background:var(--dashboard-status-success-bg);color:var(--dashboard-success-text)}dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;font-size:12px}dt{color:var(--dashboard-muted)}dd{margin:0}code{font-size:12px;overflow-wrap:anywhere}.application-url{display:block;margin-top:20px}.notice{padding:14px;border:1px solid var(--dashboard-border);border-radius:8px}`})
+`,styles:`:host{display:block}.cloud-header-context{display:flex;align-items:center;justify-content:flex-end;gap:16px;margin-left:auto;flex-wrap:wrap}.page-description{margin:8px 0 0;font-size:15px}.hint{font-size:12px;color:var(--dashboard-muted)}.organization-context{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto;font-size:13px;color:var(--dashboard-muted)}.plan-badge{display:inline-flex;align-items:center;gap:6px;padding:4px 9px;border:1px solid var(--dashboard-border);border-radius:20px;background:var(--dashboard-surface);color:var(--dashboard-text);font-size:12px}.plan-badge i{font-size:14px;color:var(--dashboard-control-icon)}.resource-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:20px}.resource-card{background:var(--dashboard-surface);border:1px solid var(--dashboard-border);border-radius:12px;padding:24px}h2{display:flex;align-items:center;gap:8px;font-size:14px;margin:0 0 18px}h2 i{color:var(--dashboard-control-icon);font-size:18px}h3{font-size:18px;margin:16px 0;overflow-wrap:anywhere}p{color:var(--dashboard-muted);font-size:13px;line-height:1.6}.card-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.card-heading h2{margin:0}.status{display:inline-flex;padding:4px 8px;border:1px solid var(--dashboard-border);border-radius:20px;font-size:11px;color:var(--dashboard-muted)}.status.running{background:var(--dashboard-status-success-bg);color:var(--dashboard-success-text)}dl{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;font-size:12px}dt{color:var(--dashboard-muted)}dd{margin:0}code{font-size:12px;overflow-wrap:anywhere}.application-url{display:block;margin-top:20px}.notice{padding:14px;border:1px solid var(--dashboard-border);border-radius:8px}`})
 export class CloudResourcesComponent {
   readonly section=input('overview');
   readonly pageChanged=output<string>();
@@ -32,6 +33,6 @@ export class CloudResourcesComponent {
   readonly data=this.cloud.state;
   readonly organization=computed(()=>this.data()?.organizations.find(o=>o.id===this.data()?.organizationId));
   readonly plan=computed(()=>this.data()?.account==='signed_in' && this.data()?.availability==='available' && ['Free','Starter','Pro'].includes(this.organization()?.plan || '') ? this.organization()!.plan : undefined);
-  readonly title=computed(()=>({overview:'Overview',applications:'Applications',clusters:'Clusters',integrations:'Integrations'}[this.section()] || 'Overview'));
+  readonly page=computed(()=>cloudPages.find(page=>page.key===this.section()) || cloudPages[0]);
   constructor(){this.cloud.initialize();}
 }

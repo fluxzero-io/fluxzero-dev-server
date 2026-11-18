@@ -39,7 +39,7 @@ a remembered sign-in continues to setup. Outside the fixture, organization, GitH
 continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a vertical setup checklist ending
 with a commit/push step and Applications/Dashboard actions. It does not start a pipeline or infer deployment success.
 Fluxzero Cloud opens the overview and expands its submenu; the separate chevron only toggles navigation.
-The heading shares one green hover surface. Its submenu contains Clusters, Applications and Integrations. Integrations
+The heading shares one green hover surface, with a separate highlight on its chevron. Its submenu contains Clusters, Applications and Integrations. Integrations
 uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
 and planned resources remain distinct.
 Cloud pages share the local page gutters and title style. The header aligns organization and plan at the right,
@@ -53,7 +53,7 @@ The destination is validated against this Devboard's origin, stays in memory and
 CLI and local MCP actions show terminal- or agent-specific return guidance; agent-host deep links are not inferred.
 
 The switch icon beside the account name requests a fresh browser sign-in; Dashboard opens the configured Cloud dashboard.
-The three-dot action beside local sign-out opens a small submenu on hover, click or keyboard activation.
+The three-dot action beside local sign-out opens a small submenu only on click or keyboard activation.
 **Sign out everywhere…** opens a focused IDP confirmation using the existing authenticated logout-all action.
 A spinner shows that confirmation is pending. Confirmation or cancellation returns automatically to local
 development; a proof-bound session check verifies this native account before clearing it. Passive status polling
@@ -68,6 +68,9 @@ resources first open the organization overview. Links never include the local pr
 **App preview** returns to the same local frame. Expired sign-ins and locked secure storage have explicit recovery
 actions within Cloud; opening Cloud pages does not contact Cloud or unlock credentials.
 Monitoring starts collapsed unless you saved a preference.
+Its heading opens a local overview with Test Server and Auditlog status and links explaining each monitoring view;
+the separate chevron only expands or collapses navigation. The overview remains useful with monitoring disabled
+or the workspace stopped and does not load Auditlog or request Cloud access.
 
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
 when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.
@@ -101,7 +104,7 @@ listed with a dashboard-unavailable message instead of routing into the customer
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
 The Total memory breakdown shows known versions after each service name, including the Dev Server,
-selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
+selected Fluxzero Test Server, Auditlog and bundled VictoriaLogs store. Current startup
 or update failures add a short notice and a navigation indicator. Tests shows its green success count
 beside blue pending, red failed and neutral skipped counts in one split navigation badge. During a full rerun,
 green starts at zero and blue holds the known total; each completed test moves from blue to its result segment.

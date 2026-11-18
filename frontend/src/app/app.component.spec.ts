@@ -829,6 +829,40 @@ describe('Dev console navigation', () => {
     expect(link.getAttribute('aria-current')).toBe('page');
     expect(fixture.nativeElement.textContent).toContain('Monitoring is not configured');
   });
+  it('opens a local Monitoring overview without an Auditlog or account and toggles navigation separately', async () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    expect(app.monitoringExpanded()).toBeFalse();
+    root.querySelector<HTMLAnchorElement>('nav a[href="#monitoring"]')!.click();
+    await fixture.whenStable();fixture.detectChanges();
+    expect(app.route()).toBe('monitoring');
+    expect(app.monitoringExpanded()).toBeTrue();
+    expect(root.querySelector('dev-monitoring-overview h1')?.textContent).toBe('Monitoring');
+    expect(root.querySelector('[aria-label="Fluxzero Test Server"]')?.textContent).toContain('Running');
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Not enabled');
+    expect(app.frameSource).toBeUndefined();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    root.querySelector<HTMLButtonElement>('[aria-label="Toggle Monitoring navigation"]')!.click();fixture.detectChanges();
+    expect(app.monitoringExpanded()).toBeFalse();expect(app.route()).toBe('monitoring');
+    const http=TestBed.inject(HttpTestingController);
+    http.expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('cloud'));
+    root.querySelector<HTMLAnchorElement>('dev-monitoring-overview a[href="#monitoring/logs"]')!.click();
+    await fixture.whenStable();fixture.detectChanges();
+    expect(app.route()).toBe('monitoring/logs');
+  });
+  it('keeps Monitoring purposes visible after stopping or losing the local connection', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.status.update(status=>({...status!,monitoring:{enabled:true,state:'running'},components:[...status!.components!,{id:'auditlog',name:'Fluxzero Auditlog',version:'1.2.3',state:'running',application:false,memoryBytes:null}]}));
+    app.navigate('monitoring');fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('1.2.3');
+    app.status.update(status=>({...status!,maintenance:{...status!.maintenance!,workspaceStopped:true}}));fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Stopped');
+    connected(false);fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Disconnected');
+    expect(root.querySelectorAll('dev-monitoring-overview .monitoring-card').length).toBe(6);
+    expect(app.frameSource).toBeUndefined();
+  });
   it('opens known folders and forgets stopped projects through DOM commands', async () => {
     const http = TestBed.inject(HttpTestingController);
     (fixture.nativeElement.querySelector('.current-project .folder-button') as HTMLButtonElement).click();
