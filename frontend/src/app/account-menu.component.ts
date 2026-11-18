@@ -1,4 +1,4 @@
-import {ChangeDetectorRef, Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, computed, inject, signal} from '@angular/core';
+import {ChangeDetectorRef, Component, ElementRef, HostListener, OnInit, OnDestroy, ViewChild, computed, inject, input, signal} from '@angular/core';
 import {AccountConnection, AccountAction, accountLink} from './account-connection';
 export type {AccountStatus} from './account-connection';
 
@@ -8,7 +8,7 @@ export type {AccountStatus} from './account-connection';
     <i class="bi" [class.bi-person]="!signedIn()" [class.bi-person-fill]="signedIn()" aria-hidden="true"></i>
   </button>
   @if(open()) {
-    <div #panel id="dev-account-menu" class="account-menu" role="menu" aria-label="Fluxzero account">
+    <div #panel id="dev-account-menu" class="account-menu" [class.account-menu-below]="placement() === 'below'" role="menu" aria-label="Fluxzero account">
       @if(signedIn()) {
         <div class="account-identity" role="group" aria-label="Signed-in account"><div class="account-identity-text"><strong>{{account()?.displayName || 'Fluxzero account'}}</strong>
           @if(account()?.email) {<span>{{account()?.email}}</span>}
@@ -50,6 +50,7 @@ export type {AccountStatus} from './account-connection';
     box-sizing:border-box;padding:6px;display:flex;flex-direction:column;gap:4px;color:var(--dashboard-text);
     background:var(--dashboard-popover-bg);border:1px solid var(--dashboard-border);border-radius:10px;
     box-shadow:var(--dashboard-popover-shadow);font-size:14px;line-height:1.5;}
+  .account-menu.account-menu-below {top:calc(100% + 10px);bottom:auto;left:auto;right:0;width:min(300px,calc(100vw - 32px));}
   .account-identity {display:flex;align-items:center;gap:8px;padding:8px 10px 12px;margin-bottom:4px;
     border-bottom:1px solid var(--dashboard-border);overflow-wrap:anywhere;}
   .account-identity-text {display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
@@ -75,6 +76,8 @@ export type {AccountStatus} from './account-connection';
   @media(pointer:coarse) {.signout-actions .more-signout,.account-identity .switch-account {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
 `})
 export class AccountMenuComponent implements OnInit, OnDestroy {
+  readonly placement = input<'above'|'below'>('above');
+  private destroyed = false;
   readonly open = signal(false);
   readonly more = signal(false);
   readonly connection = inject(AccountConnection);
@@ -98,7 +101,7 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
     if(this.open()) this.close();
     else {this.open.set(true);void this.load();this.changeDetector.detectChanges();this.items()[0]?.focus();}
   }
-  ngOnDestroy() {clearTimeout(this.hoverTimer);}
+  ngOnDestroy() {this.destroyed=true;this.close();}
   keepMore() {clearTimeout(this.hoverTimer);}
   leaveMore() {this.hoverTimer=setTimeout(() => {if(!this.panel?.nativeElement.querySelector('#more-signout-menu')?.contains(document.activeElement)) this.more.set(false);},150);}
   hoverMore(event: PointerEvent) {if(event.pointerType === 'mouse' && !this.busy() && !this.signingOutEverywhere()) {this.keepMore();this.more.set(true);}}
@@ -113,7 +116,7 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
   async load() {await this.connection.load();this.retainFocus();}
   async act(action: AccountAction) {await this.connection.act(action);this.more.set(false);this.retainFocus();}
   private retainFocus() {
-    if(!this.open()) return;
+    if(this.destroyed || !this.open()) return;
     this.changeDetector.detectChanges();
     if(!this.panel?.nativeElement.contains(document.activeElement)) this.items()[0]?.focus();
   }

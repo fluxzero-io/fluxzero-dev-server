@@ -354,7 +354,8 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .navigation-collapsed .dashboard-sidebar {position:fixed;left:0;transform:translateX(-100%);visibility:hidden;}
 .navigation-collapsed .dashboard-sidebar.open {transform:translateX(0);visibility:visible;box-shadow:12px 0 40px #0002;}
 .nav-backdrop {display:block;position:fixed;inset:0;background:#10203955;border:0;z-index:19;cursor:default;}
-.navigation-bar {height:48px;display:flex;align-items:center;padding:0 16px;background:var(--dashboard-sidebar-bg);border-bottom:1px solid var(--dashboard-border);}
+.navigation-bar {position:relative;height:48px;display:flex;align-items:center;padding:0 16px;background:var(--dashboard-sidebar-bg);border-bottom:1px solid var(--dashboard-border);}
+.navigation-account {display:flex;align-items:center;gap:12px;margin-left:auto;color:var(--dashboard-muted);font-size:12px;}
 .navigation-launcher {width:36px;height:36px;font-size:20px;}
 .dashboard-section-toggle {min-height:36px;padding:0 10px;gap:8px;}
 .dashboard-section-toggle:hover {background:var(--dashboard-active-soft);}
@@ -419,3 +420,7 @@ body:has(.preview-expanded) {overflow:hidden;}
 .component-sdk{display:block;margin-top:.3rem;font-size:.8rem;font-weight:400;color:var(--dashboard-muted)}
 
 .infrastructure-section .component-table-scroll + .component-table-scroll{margin-top:12px}
+
+.application-component .component-memory::before {display:none;}
+.component-memory-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-bottom:8px;color:var(--dashboard-muted);font-size:12px;}
+.sdk-badge {display:inline-flex;align-items:center;padding:2px 6px;border:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-panel-soft);font-size:11px;line-height:1.4;white-space:nowrap;}

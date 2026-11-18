@@ -74,7 +74,9 @@ describe('Dev console navigation', () => {
   it('shows the application build SDK beside the separate Test Server version', () => {
     fixture.componentInstance.status.update(s=>s ? {...s,components:s.components!.map(c=>c.application ? {...c,sdkVersion:'2.29.1'} : c.id==='testserver' ? {...c,version:'2.29.2'} : c)} : s);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.application-overview').textContent).toContain('Fluxzero SDK 2.29.1');
+    expect(fixture.nativeElement.querySelector('.application-overview .component-name').textContent).not.toContain('2.29.1');
+    expect(fixture.nativeElement.querySelector('.component-memory-heading .sdk-badge').textContent).toBe('SDK 2.29.1');
+    expect(fixture.nativeElement.querySelector('.sdk-badge').getAttribute('aria-label')).toBe('Fluxzero SDK 2.29.1');
     expect(fixture.nativeElement.querySelector('.infrastructure-section').textContent).toContain('Fluxzero Test Server 2.29.2');
   });
   it('opens each Cloud page through navigation and retains the local preview frame', async () => {
@@ -407,6 +409,35 @@ describe('Dev console navigation', () => {
     restored.componentInstance.readRoute();
     expect(restored.componentInstance.monitoringExpanded()).toBeTrue();
     restored.destroy();
+  });
+  it('moves one shared account menu and local connection into the hidden-navigation bar', async () => {
+    const app=fixture.componentInstance,root=fixture.nativeElement as HTMLElement;
+    const http=TestBed.inject(HttpTestingController);
+    // Moving the menu must also be safe while a background account check is pending.
+    (root.querySelector('.sidebar-footer .account-trigger') as HTMLButtonElement).click();
+    const pending=http.expectOne('account/status');
+    app.togglePinnedNavigation();fixture.detectChanges();
+    const settling=TestBed.inject(AccountConnection).load();
+    pending.flush({account:{state:'signed_in',displayName:'Alex'}});
+    await settling;await fixture.whenStable();fixture.detectChanges();
+    expect(root.querySelectorAll('dev-account-menu').length).toBe(1);
+    expect(root.querySelector('.sidebar-footer dev-account-menu')).toBeNull();
+    const trigger=root.querySelector('.navigation-bar .account-trigger') as HTMLButtonElement;
+    expect(trigger.getAttribute('aria-label')).toContain('Alex');
+    expect(root.querySelector('.navigation-bar .connection')?.getAttribute('aria-label')).toBe('Connected to the local Dev Server');
+    trigger.click();http.expectOne('account/status').flush({account:{state:'signed_in',displayName:'Alex'}});
+    await fixture.whenStable();fixture.detectChanges();
+    const panel=root.querySelector<HTMLElement>('.navigation-bar [role=menu]')!;
+    expect(panel.getBoundingClientRect().top).toBeGreaterThan(trigger.getBoundingClientRect().bottom);
+    expect(root.querySelectorAll('#dev-account-menu').length).toBe(1);
+    app.openNavigation();fixture.detectChanges();
+    expect(root.querySelectorAll('dev-account-menu').length).toBe(1);
+    expect(root.querySelector('.sidebar-footer .account-trigger')?.getAttribute('aria-label')).toContain('Alex');
+    expect(root.querySelector('.navigation-bar .account-trigger')).toBeNull();
+    http.expectNone('account/status');
+    app.closeNavigation();app.error.set('Connection lost');fixture.detectChanges();
+    expect(root.querySelector('.navigation-bar .connection')?.textContent).toContain('Disconnected');
+    http.verify();
   });
   it('opens a temporary drawer without changing the saved pinned state and closes on Escape', () => {
     const app=fixture.componentInstance;

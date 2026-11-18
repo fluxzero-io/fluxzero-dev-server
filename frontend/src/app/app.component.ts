@@ -6,6 +6,7 @@ import {AccountConnection} from './account-connection';
 import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
+import {NgTemplateOutlet} from '@angular/common';
 import {Component, ElementRef, HostListener, Injector, afterNextRender, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
@@ -23,7 +24,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [CloudDemoComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudDemoComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {

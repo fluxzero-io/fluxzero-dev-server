@@ -34,14 +34,14 @@ import {StartedAgoComponent} from './started-ago.component';
       <tbody role="rowgroup">
         <tr role="row" [class.application-component]="component.application" [class.testserver-component]="component.id==='testserver'">
           <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i><span>{{component.name}}
-            @if(component.sdkVersion){<small class="component-sdk">Fluxzero SDK {{component.sdkVersion}}</small>}
             @if(component.id==='testserver' && component.version){<small class="component-sdk">{{component.version}}</small>}
           </span></th>
           <td role="cell" class="component-status">
             @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
-          <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
+          <td role="cell" class="component-memory" [attr.data-label]="component.application ? null : 'Total memory'">
+            @if(component.application){<div class="component-memory-heading"><span>Memory</span>@if(component.sdkVersion){<span class="sdk-badge" [attr.aria-label]="'Fluxzero SDK ' + component.sdkVersion" title="Fluxzero SDK version from the project build">SDK {{component.sdkVersion}}</span>}</div>}
             <div class="resource-reading">
               @if(component.application) {<span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span>}
               @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span></dev-resource-detail>}

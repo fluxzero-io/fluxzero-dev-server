@@ -28,16 +28,18 @@ For independent full suites and dependency changes while using a frontend watche
 ## Optional account connection
 
 The profile icon beside **Connected** opens a compact account menu. Its outline means signed out; the filled
-icon means a remembered sign-in. Sign in opens the browser, Profile opens account settings, and Sign out on
-this computer signs out the CLI and Devboards sharing that account configuration. Connected describes the
-local Dev Server connection separately. Account actions keep the current page and App preview in place.
+icon means a remembered sign-in. Sign in opens the browser, Profile opens account settings, and Sign out
+removes local access for the CLI and Devboards sharing that account configuration. Its tooltip clarifies the
+computer-only scope. Connected describes the local Dev Server connection separately. When navigation is hidden,
+the connection status and profile icon appear at the top right, with the same account menu opening below.
+Account actions keep the current page and App preview in place.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.
 The destination is validated against this Devboard's origin, stays in memory and is never sent to the IDP.
 CLI and local MCP actions show terminal- or agent-specific return guidance; agent-host deep links are not inferred.
 
-The switch icon beside Profile requests a fresh browser sign-in; Dashboard opens the configured Cloud dashboard.
+The switch icon beside the account name requests a fresh browser sign-in; Dashboard opens the configured Cloud dashboard.
 The three-dot action beside local sign-out opens a small submenu on hover, click or keyboard activation.
 **Sign out everywhere…** opens a focused IDP confirmation using the existing authenticated logout-all action.
 A spinner shows that confirmation is pending. Confirmation or cancellation returns automatically to local
