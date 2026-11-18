@@ -1,5 +1,6 @@
 import {Component, computed, inject, input, output} from '@angular/core';
 import {AccountConnection, accountLink} from './account-connection';
+import {DashboardLinkComponent} from './dashboard-link.component';
 
 export const cloudPages = [
   {key:'overview',label:'Overview',icon:'house'},
@@ -19,7 +20,7 @@ export function dashboardDestination(base: string | undefined, destination: 'org
   return url.href;
 }
 
-@Component({selector:'dev-cloud-page',standalone:true,templateUrl:'./cloud-page.component.html',styleUrl:'./cloud-page.component.scss'})
+@Component({selector:'dev-cloud-page',standalone:true,imports:[DashboardLinkComponent],templateUrl:'./cloud-page.component.html',styleUrl:'./cloud-page.component.scss'})
 export class CloudPageComponent {
   readonly section=input('overview');
   readonly publishing=input(false);
@@ -28,8 +29,8 @@ export class CloudPageComponent {
   readonly pageChanged=output<string>();
   readonly page=computed(()=>cloudPages.find(page=>page.key===this.section()) || cloudPages[0]);
   readonly account=inject(AccountConnection);
-  readonly dashboardUrl=computed(()=>dashboardDestination(this.account.account()?.dashboardUrl));
-  readonly githubUrl=computed(()=>dashboardDestination(this.account.account()?.dashboardUrl,'github'));
+  readonly dashboardUrl=computed(()=>dashboardDestination(this.account.dashboardUrl()));
+  readonly githubUrl=computed(()=>dashboardDestination(this.account.dashboardUrl(),'github'));
   readonly profileUrl=computed(()=>accountLink(this.account.account()?.accountUrl));
   readonly signInRequired=computed(()=>this.account.account()?.state === 'sign_in_required');
   readonly storageLocked=computed(()=>(this.account.issue() || this.account.account()?.issue) === 'storage_locked');

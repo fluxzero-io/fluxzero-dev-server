@@ -123,7 +123,7 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly cloudMenuPages = ['clusters','applications'].map(key=>cloudPages.find(page=>page.key===key)!);
   readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
   readonly accountConnection = inject(AccountConnection);
-  readonly cloudDashboardUrl = computed(()=>dashboardDestination(this.accountConnection.account()?.dashboardUrl));
+  readonly cloudDashboardUrl = computed(()=>dashboardDestination(this.accountConnection.dashboardUrl()));
   openIntegrations(event:MouseEvent) {if(!this.cloudDashboardUrl()) this.link(event,'cloud/integrations');}
   readonly cloudVisible = computed(() => {
     const account=this.accountConnection.account();

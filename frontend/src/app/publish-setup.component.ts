@@ -2,9 +2,9 @@ import {Component, ElementRef, Injector, afterNextRender, computed, effect, inje
 import {AccountConnection} from './account-connection';
 import {CloudConnection} from './cloud-api';
 import {dashboardDestination} from './cloud-page.component';
-import {githubWorkflowSnippet} from './github-workflow';
+import {DashboardLinkComponent} from './dashboard-link.component';
 
-@Component({selector:'dev-publish-setup',standalone:true,templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
+@Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
 export class PublishSetupComponent {
   readonly projectName=input('');
   readonly pageChanged=output<string>();
@@ -12,8 +12,8 @@ export class PublishSetupComponent {
   readonly cloud=inject(CloudConnection);
   readonly data=this.cloud.state;
   readonly organization=computed(()=>this.data()?.organizations.find(o=>o.id===this.data()?.organizationId));
-  readonly dashboardUrl=computed(()=>dashboardDestination(this.account.account()?.dashboardUrl));
-  readonly githubUrl=computed(()=>dashboardDestination(this.account.account()?.dashboardUrl,'github'));
+  readonly dashboardUrl=computed(()=>dashboardDestination(this.account.dashboardUrl()));
+  readonly githubUrl=computed(()=>dashboardDestination(this.account.dashboardUrl(),'github'));
   readonly storageLocked=computed(()=>(this.account.issue() || this.account.account()?.issue)==='storage_locked');
   readonly accountReady=computed(()=>this.account.signedIn() && !this.storageLocked() && !this.account.account()?.pendingAction);
   readonly applicationReady=computed(()=>this.accountReady() && !!this.organization() && !!this.data()?.setup?.applicationConfigured);
@@ -27,7 +27,6 @@ export class PublishSetupComponent {
   readonly cluster=signal('automatic');
   readonly repository=signal('acme/parcel-service');
   readonly branch=signal('main');
-  readonly workflowSnippet=githubWorkflowSnippet;
   private context?:string;
   private readonly element=inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector=inject(Injector);

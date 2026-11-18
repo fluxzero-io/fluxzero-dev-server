@@ -199,12 +199,9 @@ dev-resource-chart>svg {display:block;width:100%;height:100%;overflow:visible;}
 .test-pause-status {margin:12px 0 0 38px;color:var(--dashboard-muted);font-size:12px;}
 .test-output pre {margin:0;min-width:0;height:360px;min-height:120px;max-height:80vh;resize:vertical;box-sizing:border-box;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;padding:12px 76px 12px 12px;background:var(--dashboard-sidebar-bg);border:1px solid var(--dashboard-border);border-radius:6px;font-size:12px;}
 
-/* Match the monitoring content container, using the available main-column width. */
+/* Workspace shares the local page gutters with Startup and Tests. */
 dev-projects {display:block;container-type:inline-size;}
-.project-page {width:calc(100% - 64px);max-width:1440px;margin-inline:auto;padding:32px 0;}
-.project-page > .page-heading h1 {font-size:32px;font-weight:800;line-height:1.2;margin:0;}
-@container (max-width:991.98px) {.project-page {width:calc(100% - 32px);}}
-@container (max-width:575.98px) {.project-page {width:calc(100% - 24px);}}
+.project-page {width:100%;margin:0;}
 
 .application-page { display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
 .application-heading { display:grid;grid-template-columns:102px minmax(0,1fr) 102px;align-items:center;gap:12px;min-height:48px;padding:6px 20px;border-bottom:1px solid var(--dashboard-border);box-sizing:border-box;background:var(--dashboard-surface); }
@@ -226,7 +223,7 @@ dev-projects {display:block;container-type:inline-size;}
 
 /* Environment overview: reuse dashboard colors, with a softer workspace hierarchy. */
 select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
-.project-page {max-width:1440px;}
+.project-page {max-width:1600px;}
 .project-page > .page-heading {margin-bottom:28px;}
 .project-page > .page-heading p {font-size:14px;}
 .current-project {padding:0;background:transparent;border:0;box-shadow:none;}
@@ -448,3 +445,12 @@ body:has(.preview-expanded) {overflow:hidden;}
 @media(max-width:600px){.publish-steps{gap:10px;flex-wrap:wrap;font-size:12px;}}
 
 .resource-tooltip-row .resource-version{display:inline-flex;margin:0 0 0 7px;padding:1px 5px;border:1px solid var(--dashboard-border);border-radius:4px;background:var(--dashboard-panel-soft);font-size:10px;vertical-align:middle}
+
+/* Shared page titles and the public Dashboard entry. */
+.page-title {font-size:32px;font-weight:800;line-height:1.2;margin:0;}
+.dashboard-link {display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:8px 18px;border:1px solid var(--dashboard-border);border-radius:999px;background:var(--dashboard-surface);color:var(--dashboard-text);font-size:14px;font-weight:600;white-space:nowrap;text-decoration:none;}
+.dashboard-link:hover {background:var(--dashboard-action-bg);text-decoration:none;}
+.account-sign-in {display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:0;border-radius:8px;background:transparent;color:var(--dashboard-text);font-size:14px;}
+.account-sign-in i {font-size:20px;color:var(--dashboard-control-icon);}
+.account-sign-in:hover {background:var(--dashboard-action-bg);}
+@media(max-width:650px){.page-title {font-size:28px;}}

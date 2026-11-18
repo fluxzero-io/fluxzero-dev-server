@@ -1,7 +1,7 @@
 :host{display:block;min-width:0;container-type:inline-size;}
-.cloud-page{max-width:1080px;margin:0 auto;padding:32px;box-sizing:border-box;color:var(--dashboard-text);}
-header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:24px;}h1{font-size:28px;margin:6px 0 0;font-weight:650;}h2{font-size:18px;margin:0 0 16px;font-weight:600;}
-.eyebrow{color:var(--dashboard-muted);font-size:12px;letter-spacing:.05em;}
+.cloud-page{box-sizing:border-box;color:var(--dashboard-text);}
+h2{font-size:18px;margin:0 0 16px;font-weight:600;}
+
 .local-project{display:flex;align-items:center;gap:12px;border:1px solid var(--dashboard-border);border-radius:10px;padding:16px 20px;margin-bottom:24px;background:var(--dashboard-panel-soft);}
 .local-project>i{font-size:22px;color:var(--dashboard-muted);}.local-project>div{display:flex;flex:1;flex-direction:column;gap:2px;min-width:0;overflow-wrap:anywhere;}
 .local-project>div>span{font-size:12px;color:var(--dashboard-muted);}.local-project strong{font-size:14px;font-weight:600;}
@@ -21,4 +21,4 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--dashboard-active);o
 button:disabled{opacity:.65;cursor:wait;}
 @container(max-width:780px){.cloud-grid{grid-template-columns:1fr;}}
 @container(max-width:580px){.local-project{flex-wrap:wrap;}.local-project>div{flex-basis:calc(100% - 38px);}.local-project>a{margin-left:34px;}}
-@media(max-width:500px){.cloud-page{padding:22px 16px;}.cloud-card{padding:22px;}.journey-card{padding:22px 10px 10px;}header{align-items:flex-start;}header>a{font-size:13px;padding:8px 10px;}.local-project{flex-wrap:wrap;padding:14px;}.local-project>a{margin-left:34px;}.resource-actions{align-items:flex-start;flex-direction:column;}.account-summary a{margin-left:0;}}
+@media(max-width:500px){.cloud-card{padding:22px;}.journey-card{padding:22px 10px 10px;}header{align-items:flex-start;}header>a{font-size:13px;padding:8px 10px;}.local-project{flex-wrap:wrap;padding:14px;}.local-project>a{margin-left:34px;}.resource-actions{align-items:flex-start;flex-direction:column;}.account-summary a{margin-left:0;}}

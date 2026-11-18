@@ -21,10 +21,16 @@ export function accountLink(value?: string): string | undefined {
   } catch { return undefined; }
 }
 
+export function accountDashboardLink(value?:string):string|undefined {
+  const trusted=accountLink(value);if(!trusted)return undefined;
+  const url=new URL(trusted);url.pathname=url.pathname.replace(/\/?$/,'/');url.search='';url.hash='';return url.href;
+}
+
 /** One shared projection; status and startup never inspect credentials or contact Cloud. */
 @Injectable({providedIn: 'root'})
 export class AccountConnection {
   readonly account = signal<AccountStatus | undefined>(undefined);
+  readonly dashboardUrl = computed(()=>accountDashboardLink(this.account()?.dashboardUrl ?? (window as Window & {fluxzeroDashboardUrl?:string}).fluxzeroDashboardUrl));
   readonly message = signal('');
   readonly issue = signal('');
   readonly busy = signal(false);

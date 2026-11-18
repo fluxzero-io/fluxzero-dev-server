@@ -78,8 +78,8 @@ The first Cloud target is one Fluxzero application, including its frontend. A st
 in the local Workspace overview; deploying it independently is outside this Cloud journey. Use a real Maven/SDK
 fixture with a managed Test Server to review the first deployment route, rather than a frontend-only process.
 
-The Publish live route is account → organization/plan → app/destination → GitHub delivery → commit/push.
-It ends with View in Fluxzero Cloud. Commit/push remains pending without evidence; no CI timeline is shown.
+The Publish live route is account → organization/plan → app/destination → GitHub workflow → commit/push.
+It ends with Sign in / Dashboard while signed out and See your applications / Dashboard while signed in. Commit/push remains pending without evidence; no CI timeline is shown.
 App preview and Progress receive no publication toolbar.
 New organizations in this fixture use Starter capacity, a default team and a proposed new cluster. Starter exists
 in Dashboard's versioned capacity catalog with one Starter app and cluster; the catalog entry is not activated.
@@ -91,8 +91,8 @@ are not separate app-owned setup wizards. Teams contain clusters; clusters conta
 are system user profiles associated with an organization and authorized for the target. There is no required
 Cloud Production/Staging entity: the legacy fixture environment field is retained only for protocol compatibility.
 
-The GitHub setup disclosure shows a deploy-job fragment based on the public jwt-action v2 and deploy-action v1
-inputs. It retains the project's existing immutable build/publication, requests GitHub OIDC, and uses deploy-token
+The current Publish live preview omits the workflow-instructions disclosure. The earlier fixture fragment is based
+on the public jwt-action v2 and deploy-action v1 inputs. It retains the project's existing immutable build/publication, requests GitHub OIDC, and uses deploy-token
 for deployment. Repository variables carry cluster name, application name and image name; github.sha must match
 the published tag. A live implementation must discover the actual workflow, its ref/environment claims, selected
 Integration and published image identity before reporting CI as ready. Nothing here creates a workflow, variable,
@@ -127,10 +127,18 @@ The Cloud heading opens Overview and expands the submenu. Its separate chevron c
 heading shares the Cloud green hover/focus surface. Cloud icons match Dashboard: diagram-3 for clusters, box for
 applications, robot for organization integrations, and cloud for the plan badge.
 
-Overview offers the account-configured Dashboard destination. A preview without a configured destination shows
-a disabled Dashboard action; it does not invent a production link. The organization plan badge uses only an
+The shell exposes the public Dashboard URL from shared user/process account configuration before sign-in, including
+in the fixture; the normal configured production default still applies. No credentials or account files are accessed.
+Configured values are validated, query/fragment data is stripped in links, and invalid configuration disables the
+Dashboard entry without blocking local development. Explicit unsafe account values cannot fall back to another URL. The organization plan badge uses only an
 explicit known Free, Starter or Pro response for the selected organization. Missing organization, failed/loading
 context, or sign-in alone cannot establish Free. Payment exemption cannot be used to relabel a Pro plan as Free.
 
 Workspace derives Development profile exclusively from local status. Default configuration means no named profile
 is active. The field remains visible with hidden navigation and causes no account, credential-store or Cloud I/O.
+
+Workspace, Publish live and Cloud pages use the same page gutters and title typography as Startup. Cloud pages omit
+the Fluxzero Cloud eyebrow and align organization/plan context to the right. The Cloud navigation uses the existing
+transparent Dashboard logo. A signed-out Cloud page offers a direct person-icon Sign in action; it does not redirect
+the user through publication setup. Publish live keeps the commit/push step without claiming a push or rollout, and
+ends with Applications or Sign in plus a shared pill-shaped Dashboard link.

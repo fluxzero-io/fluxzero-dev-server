@@ -15,6 +15,7 @@
 package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.fluxzero.tools.account.AccountConfiguration;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
@@ -173,9 +174,18 @@ final class DevConsole implements AutoCloseable {
                 content = input.readAllBytes();
             }
             type = contentType(name);
-            if (name.equals("index.html") && cloudDemo != null) {
+            if (name.equals("index.html")) {
+                String dashboardUrl = "null";
+                try {
+                    String destination = AccountConfiguration.defaults().dashboardUrl().toString();
+                    int query = destination.indexOf('?');
+                    dashboardUrl = new ObjectMapper().writeValueAsString(query < 0 ? destination : destination.substring(0, query))
+                            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
+                } catch (Exception | LinkageError ignored) { /* Optional account configuration cannot prevent local development. */ }
                 content = new String(content, StandardCharsets.UTF_8).replace("<head>",
-                        "<head><script>window.fluxzeroCloudDemo=true;</script>").getBytes(StandardCharsets.UTF_8);
+                        "<head><script>window.fluxzeroDashboardUrl=" + dashboardUrl + ";"
+                                + (cloudDemo == null ? "" : "window.fluxzeroCloudDemo=true;")
+                                + "</script>").getBytes(StandardCharsets.UTF_8);
             }
         }
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, type);

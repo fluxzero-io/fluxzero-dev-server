@@ -22,6 +22,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.Callback;
+
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ import java.net.http.WebSocket;
 import java.net.http.WebSocketHandshakeException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +58,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DevGatewayTest {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2)).build();
+
+    @Test
+    void dashboardEntryUsesOptionalConfigurationWithoutOpeningCredentials(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        String previousUrl = System.getProperty("fluxzero.account.dashboardUrl");
+        String previousDirectory = System.getProperty("fluxzero.account.directory");
+        Path accountDirectory = directory.resolve("unused-account");
+        System.setProperty("fluxzero.account.directory", accountDirectory.toString());
+        try (var console = new DevConsole(java.util.Map::of, null, new DevEnvironmentRegistry(directory.resolve("registry")));
+             TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                     "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+            System.setProperty("fluxzero.account.dashboardUrl", "http://dashboard.fluxzero.localhost:4200/?private-context=omit-this");
+            String shell = request(gateway.url() + DevConsole.ROOT, "text/html", null).body();
+            assertTrue(shell.contains("window.fluxzeroDashboardUrl=\"http://dashboard.fluxzero.localhost:4200/\""));
+            assertFalse(shell.contains("omit-this"));
+            System.setProperty("fluxzero.account.dashboardUrl", "javascript:alert(1)");
+            var response = request(gateway.url() + DevConsole.ROOT, "text/html", null);
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("window.fluxzeroDashboardUrl=null"));
+            assertFalse(Files.exists(accountDirectory));
+        } finally {
+            if (previousUrl == null) System.clearProperty("fluxzero.account.dashboardUrl"); else System.setProperty("fluxzero.account.dashboardUrl", previousUrl);
+            if (previousDirectory == null) System.clearProperty("fluxzero.account.directory"); else System.setProperty("fluxzero.account.directory", previousDirectory);
+        }
+    }
 
     @Test
     void cloudDemoRequiresExplicitOptInAndTheLocalConsoleOrigin(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {

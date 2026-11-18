@@ -37,13 +37,13 @@ Account actions keep the current page and App preview in place.
 **Publish live**, directly below Startup, stays available while signed out. Its first step is account sign-in;
 a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
 continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a vertical setup checklist ending
-with commit/push instructions and a Cloud handoff. It does not start a pipeline or infer deployment success.
+with a commit/push step and Applications/Dashboard actions. It does not start a pipeline or infer deployment success.
 Fluxzero Cloud opens the overview and expands its submenu; the separate chevron only toggles navigation.
 The heading shares one green hover surface. Its submenu contains Clusters, Applications and Integrations. Integrations
 uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
 and planned resources remain distinct.
-The Cloud overview shows an explicitly known organization plan in a compact badge and offers the configured
-Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
+Cloud pages share the local page gutters and title style. The header aligns organization and plan at the right,
+and Overview offers the configured Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
 Workspace shows the local development profile beside project details, including when navigation is hidden.
 Without a named profile it shows Default configuration; this does not depend on account or Cloud access.
 
@@ -79,6 +79,8 @@ integration. CLI and Dev Server must use the same user-level `FLUXZERO_ACCOUNT_*
 production environments have separate credentials. Cloud authorization remains a separate server-side check.
 `FLUXZERO_ACCOUNT_ACCOUNT_URL` defaults to the issuer's `/account`, `FLUXZERO_ACCOUNT_SESSIONS_URL` to its
 `/account/sessions`, and `FLUXZERO_ACCOUNT_DASHBOARD_URL` to `https://dashboard.fluxzero.io`.
+The shell exposes only that public Dashboard destination before sign-in, without creating account state, opening
+Keychain or making a network request. Invalid account configuration leaves local development available.
 Set an explicit local Dashboard URL when testing a local chain. These links never come from project configuration.
 
 ### Cloud journey demo

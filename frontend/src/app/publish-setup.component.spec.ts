@@ -43,7 +43,7 @@ describe('Publication setup checklist',()=>{
     expect(state.deployment).toBeNull();
     const changed=spyOn(page.pageChanged,'emit');
     (fixture.nativeElement.querySelector('.cloud-link') as HTMLButtonElement).click();
-    expect(changed).toHaveBeenCalledWith('cloud/overview');
+    expect(changed).toHaveBeenCalledWith('cloud/applications');
     TestBed.inject(HttpTestingController).expectNone(r=>r.url.startsWith('account/'));
     fixture.destroy();
   });
@@ -74,13 +74,36 @@ describe('Publication setup checklist',()=>{
   it('uses the configured Dashboard link and leaves an unavailable preview destination disabled',async()=>{
     state={...initial(),account:'signed_in',organizationId:'acme'};
     const fixture=TestBed.createComponent(CloudResourcesComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('button.dashboard-button').disabled).toBeTrue();
+    expect(fixture.nativeElement.querySelector('button.dashboard-link').disabled).toBeTrue();
     const account=TestBed.inject(AccountConnection);
     account.account.set({state:'signed_in',dashboardUrl:'http://dashboard.fluxzero.localhost:4200/'});fixture.detectChanges();
-    const link=fixture.nativeElement.querySelector('a.dashboard-button') as HTMLAnchorElement;
+    const link=fixture.nativeElement.querySelector('a.dashboard-link') as HTMLAnchorElement;
     expect(link.href).toBe('http://dashboard.fluxzero.localhost:4200/');expect(link.target).toBe('_blank');expect(link.rel).toContain('noopener');
     account.account.set({state:'signed_in',dashboardUrl:'javascript:alert(1)'});fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('a.dashboard-button')).toBeNull();
+    expect(fixture.nativeElement.querySelector('a.dashboard-link')).toBeNull();
     fixture.destroy();
+  });
+  it('signs in directly on a Cloud page without navigating to publication setup',async()=>{
+    const fixture=TestBed.createComponent(CloudResourcesComponent);fixture.componentRef.setInput('section','clusters');fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const changed=spyOn(fixture.componentInstance.pageChanged,'emit');
+    expect(calls.map(call=>call.action)).toEqual(['status']);
+    (fixture.nativeElement.querySelector('.account-sign-in') as HTMLButtonElement).click();await fixture.whenStable();fixture.detectChanges();
+    expect(calls.map(call=>call.action)).toEqual(['status','sign-in']);expect(changed).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.querySelector('h1').textContent).toBe('Clusters');
+    TestBed.inject(HttpTestingController).expectNone(r=>r.url.startsWith('account/'));fixture.destroy();
+  });
+  it('offers the configured Dashboard before sign-in without accepting an unsafe account override',async()=>{
+    const client=window as Window & {fluxzeroDashboardUrl?:string},previous=client.fluxzeroDashboardUrl;
+    client.fluxzeroDashboardUrl='http://dashboard.fluxzero.localhost:4200/console?source=private#draft';
+    const fixture=TestBed.createComponent(PublishSetupComponent);
+    try {
+      fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+      const link=fixture.nativeElement.querySelector('.publish-destinations a.dashboard-link') as HTMLAnchorElement;
+      expect(link.href).toBe('http://dashboard.fluxzero.localhost:4200/console/');
+      expect(fixture.nativeElement.querySelector('.publish-destinations .account-sign-in')).not.toBeNull();
+      expect(calls.map(call=>call.action)).toEqual(['status']);
+      TestBed.inject(AccountConnection).account.set({state:'signed_out',dashboardUrl:'javascript:alert(1)'});fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('a.dashboard-link')).toBeNull();
+    } finally {fixture.destroy();if(previous===undefined)delete client.fluxzeroDashboardUrl;else client.fluxzeroDashboardUrl=previous;}
   });
 });

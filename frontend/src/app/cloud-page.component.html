@@ -1,9 +1,9 @@
-<section class="cloud-page" aria-labelledby="cloud-title">
-  <header><div><span class="eyebrow">Fluxzero Cloud</span><h1 id="cloud-title" tabindex="-1">{{publishing() ? 'Publish live' : page().label}}</h1></div>
-    @if(account.signedIn() && dashboardUrl();as url){<a class="secondary-button" [href]="url" target="_blank" rel="noopener noreferrer">Dashboard<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
+<section class="page cloud-page" aria-labelledby="cloud-title">
+  <header class="page-heading"><h1 class="page-title" id="cloud-title" tabindex="-1">{{publishing() ? 'Publish live' : page().label}}</h1>
+    @if(account.signedIn()){<dev-dashboard-link/>}
   </header>
   @if(publishing()){<ol class="publish-steps" aria-label="Publishing steps">@for(step of publicationSteps;track step;let i=$index){<li [class.done]="i===0 && account.signedIn()" [class.current]="i===(account.signedIn() ? 1 : 0)" [attr.aria-current]="i===(account.signedIn() ? 1 : 0) ? 'step' : null"><span>{{i+1}}</span>{{step}}</li>}</ol>}
-  @if(projectName()) {
+  @if(projectName() && (account.signedIn() || publishing())) {
     <div class="local-project" aria-label="Local project">
       <i class="bi bi-folder2" aria-hidden="true"></i><div><span>Local project</span><strong>{{projectName()}}</strong></div>
       <a class="quiet-link" href="#application" (click)="navigate($event,'application')"><i class="bi bi-arrow-left" aria-hidden="true"></i>App preview</a>
@@ -21,10 +21,7 @@
       <p>Continue in your browser.</p><button type="button" class="secondary-button" [disabled]="account.busy()" (click)="account.act('cancel')">Cancel sign-in</button>
     </div>
   } @else if(!account.signedIn()) {
-    <div class="cloud-card recovery"><i class="bi bi-cloud cloud-symbol" aria-hidden="true"></i><h2>{{signInRequired() ? 'Sign in again' : publishing() ? 'Sign in to publish live' : 'Sign in to Fluxzero Cloud'}}</h2>
-      <p>{{signInRequired() ? 'Reconnect your account to continue in Cloud.' : publishing() ? 'Choose the account you want to publish with.' : 'Manage your organizations, applications and clusters.'}}</p>
-      <button type="button" class="primary-button" [disabled]="account.busy()" (click)="account.act('login')">{{account.busy() ? 'Opening sign-in…' : signInRequired() ? 'Sign in again' : 'Sign in'}}</button>
-    </div>
+    <button type="button" class="account-sign-in" [disabled]="account.busy()" (click)="account.act('login')"><i class="bi bi-person" aria-hidden="true"></i>{{account.busy() ? 'Opening sign-in…' : signInRequired() ? 'Sign in again' : 'Sign in'}}</button>
   } @else if(account.account()?.pendingAction === 'sign_out_everywhere') {
     <div class="cloud-card recovery"><div class="progress-label" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><h2>Confirm sign-out in your browser…</h2></div></div>
   } @else if(storageLocked()) {

@@ -74,9 +74,9 @@ describe('Fluxzero Cloud entry', () => {
   });
   it('asks for a fresh sign-in only after intent when authorization is no longer valid', async () => {
     fixture.componentInstance.account.account.set({state:'sign_in_required'});fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('h2').textContent).toBe('Sign in again');
+    expect(fixture.nativeElement.querySelector('.account-sign-in').textContent).toContain('Sign in again');
     http.expectNone(()=>true);
-    (fixture.nativeElement.querySelector('.recovery button') as HTMLButtonElement).click();
+    (fixture.nativeElement.querySelector('.account-sign-in') as HTMLButtonElement).click();
     http.expectOne('account/login').flush({account:{state:'signed_out'}});
     await fixture.whenStable();
   });

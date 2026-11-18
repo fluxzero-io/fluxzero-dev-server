@@ -112,7 +112,7 @@ export class AccountMenuComponent implements OnInit, OnDestroy {
     if(this.more()) this.panel?.nativeElement.querySelector<HTMLElement>('#more-signout-menu [role=menuitem]')?.focus();
   }
   accountUrl() {return accountLink(this.account()?.accountUrl);}
-  dashboardUrl() {return accountLink(this.account()?.dashboardUrl);}
+  dashboardUrl() {return this.connection.dashboardUrl();}
   async load() {await this.connection.load();this.retainFocus();}
   async act(action: AccountAction) {await this.connection.act(action);this.more.set(false);this.retainFocus();}
   private retainFocus() {

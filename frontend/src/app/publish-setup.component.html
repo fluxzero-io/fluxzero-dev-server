@@ -1,5 +1,5 @@
-<section class="publish-setup">
-  <header><h1 tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></header>
+<section class="page publish-setup">
+  <header class="page-heading"><div><h1 class="page-title" tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></div></header>
   <div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>
   @if(account.message()){<p class="notice" role="status">{{account.message()}}</p>}
   @if(cloud.error()){<p class="notice" role="alert">{{cloud.error()}}</p>}
@@ -39,7 +39,11 @@
       @if(deliveryReady()){<p class="hint">{{data()?.setup?.workflowPath}}</p>}
     </div></li>
     <li [class.current]="current()===4"><span class="step-marker" aria-hidden="true">5</span><div class="step-content"><h2>Commit & push</h2><p>{{deliveryReady() ? 'Commit and push the workflow to start GitHub Actions.' : 'Publish the workflow when setup is ready.'}}</p>
-      @if(deliveryReady()){<details><summary>Workflow instructions</summary><p>Use <code>{{data()?.setup?.workflowPath}}</code>. Configure the workflow to run on pushes to <code>{{data()?.branch}}</code>, or start it manually.</p><dl><dt>FLUXZERO_CLUSTER_NAME</dt><dd>{{data()?.cluster}}</dd><dt>FLUXZERO_APPLICATION_NAME</dt><dd>{{data()?.application}}</dd><dt>FLUXZERO_IMAGE_NAME</dt><dd>Your published image name</dd></dl><p>Add these as repository Action Variables. Keep your existing build and image publication steps; add these deployment steps afterward.</p><pre><code>{{workflowSnippet}}</code></pre><p class="hint">Workflow file and push status have not been checked locally.</p></details><button class="primary-button cloud-link" (click)="pageChanged.emit('cloud/overview')">View in Fluxzero Cloud <i class="bi bi-arrow-right" aria-hidden="true"></i></button><p class="hint">Cloud shows the app when a deployment is reported.</p>}
     </div></li>
   </ol>
+  <div class="publish-destinations" role="group" aria-label="Continue in Cloud">
+    @if(account.signedIn()){<button class="secondary-button cloud-link" (click)="pageChanged.emit('cloud/applications')"><i class="bi bi-box" aria-hidden="true"></i>See your applications</button>}
+    @else{<button class="account-sign-in" [disabled]="account.busy() || !account.account() || !!account.account()?.pendingAction" (click)="account.act('login')"><i class="bi bi-person" aria-hidden="true"></i>Sign in</button>}
+    <dev-dashboard-link/>
+  </div>
 </section>
