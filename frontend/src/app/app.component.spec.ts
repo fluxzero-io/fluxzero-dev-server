@@ -114,6 +114,11 @@ describe('Dev console navigation', () => {
     (root.querySelector('.local-project a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
     expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
     expect(root.querySelector('.application-page')?.hasAttribute('hidden')).toBeFalse();
+    expect(Array.from(root.querySelectorAll('#cloud-menu a span')).map(span=>span.textContent)).toEqual(['Clusters','Applications','Integrations']);
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex',dashboardUrl:'http://dashboard.fluxzero.localhost:4200/'});fixture.detectChanges();
+    const integrations=root.querySelector<HTMLAnchorElement>('#cloud-menu a:last-child')!;
+    expect(integrations.href).toBe('http://dashboard.fluxzero.localhost:4200/');
+    expect(integrations.target).toBe('_blank');expect(integrations.rel).toContain('noopener');
     await fixture.whenStable();
     await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
     expect(document.activeElement).toBe(root.querySelector('.application-page'));

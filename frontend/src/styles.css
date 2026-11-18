@@ -22,7 +22,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-cloud-divider);}
 .cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);}
 .cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
-.cloud-entry{justify-content:space-between;}.cloud-entry>.bi-chevron-right{font-size:12px;}
+.cloud-section-heading{display:flex;align-items:center;gap:4px;margin-bottom:6px}.cloud-home{display:flex;align-items:center;flex:1;min-width:0;min-height:36px;margin:0;padding:0 10px;border-radius:6px;text-decoration:none}.cloud-home:hover,.cloud-home.active{background:var(--dashboard-cloud-bg);text-decoration:none}.cloud-toggle{flex-shrink:0}.cloud-toggle i{font-size:12px;transition:transform .15s}.cloud-toggle i.expanded{transform:rotate(90deg)}.dashboard-nav-link .cloud-external{margin-left:auto;flex:0 0 12px;width:12px;font-size:11px}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }
 .dashboard-nav-link { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 6px; color: var(--dashboard-link-text); font-size: 15px; font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; border: 0; background: transparent; width: 100%; text-align: left; }

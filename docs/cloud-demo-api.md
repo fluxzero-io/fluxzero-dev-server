@@ -11,7 +11,7 @@ FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standal
 ```
 
 Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation exposes a small
-Overview / Applications / Clusters / GitHub submenu; preview scenarios live in a collapsed disclosure. Open the advertised Devboard URL and choose Publish live
+Clusters / Applications / Integrations submenu with Overview on the Fluxzero Cloud heading; preview scenarios live in a collapsed disclosure. Open the advertised Devboard URL and choose Publish live
 below Startup. This entry is available while signed out and starts with sign-in; Cloud shows live status and resources. Scenario selection resets only process-local fixture
 state; browser refresh preserves it until the process stops. Local app state and files are independent. This does
 not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, image digests,

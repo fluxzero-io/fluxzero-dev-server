@@ -38,7 +38,9 @@ Account actions keep the current page and App preview in place.
 a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
 continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a vertical setup checklist ending
 with commit/push instructions and a Cloud handoff. It does not start a pipeline or infer deployment success.
-Cloud navigation provides Overview, Applications, Clusters and GitHub with known and planned state kept separate.
+Fluxzero Cloud opens the overview. Its submenu contains Clusters, Applications and Integrations. Integrations
+uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
+and planned resources remain distinct.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.

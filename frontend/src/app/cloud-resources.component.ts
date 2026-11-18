@@ -27,6 +27,6 @@ export class CloudResourcesComponent {
   readonly cloud=inject(CloudConnection);
   readonly data=this.cloud.state;
   readonly organization=computed(()=>this.data()?.organizations.find(o=>o.id===this.data()?.organizationId));
-  readonly title=computed(()=>({overview:'Overview',applications:'Applications',clusters:'Clusters',integrations:'GitHub'}[this.section()] || 'Overview'));
+  readonly title=computed(()=>({overview:'Overview',applications:'Applications',clusters:'Clusters',integrations:'Integrations'}[this.section()] || 'Overview'));
   constructor(){this.cloud.initialize();}
 }

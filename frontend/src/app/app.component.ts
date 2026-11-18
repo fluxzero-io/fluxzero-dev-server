@@ -1,5 +1,5 @@
 import {ServerUpdateComponent} from './server-update.component';
-import {CloudPageComponent, cloudPages} from './cloud-page.component';
+import {CloudPageComponent, cloudPages, dashboardDestination} from './cloud-page.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
 import {PublishSetupComponent} from './publish-setup.component';
 import {CLOUD_DEMO_ENABLED} from './cloud-api';
@@ -120,9 +120,11 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
   readonly cloudPages = cloudPages;
-  readonly cloudMenuPages = cloudPages.filter(page=>page.key!=='domains').map(page=>page.key==='integrations' ? {...page,label:'GitHub'} : page);
+  readonly cloudMenuPages = ['clusters','applications'].map(key=>cloudPages.find(page=>page.key===key)!);
   readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
   readonly accountConnection = inject(AccountConnection);
+  readonly cloudDashboardUrl = computed(()=>dashboardDestination(this.accountConnection.account()?.dashboardUrl));
+  openIntegrations(event:MouseEvent) {if(!this.cloudDashboardUrl()) this.link(event,'cloud/integrations');}
   readonly cloudVisible = computed(() => {
     const account=this.accountConnection.account();
     return account?.state === 'signed_in' || account?.state === 'sign_in_required';
