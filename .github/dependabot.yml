@@ -11,6 +11,10 @@ updates:
     schedule:
       interval: "daily"
     open-pull-requests-limit: 10
+    ignore:
+      # Both releases leave session sweeper threads alive after shutdown (modelcontextprotocol/java-sdk#1342).
+      - dependency-name: io.modelcontextprotocol.sdk:mcp-bom
+        versions: ["2.1.0", "2.2.0"]
     groups:
       maven-minor-and-patch:
         patterns: ["*"]
