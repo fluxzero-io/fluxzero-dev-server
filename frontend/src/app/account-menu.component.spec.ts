@@ -64,6 +64,9 @@ describe('Optional Fluxzero account', () => {
     fixture.componentInstance.account.set({state: 'signed_in', accountUrl: 'javascript:alert(1)'});
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a')).toBeNull();
+    const switchAccount:HTMLButtonElement=fixture.nativeElement.querySelector('.switch-account');
+    expect(switchAccount.textContent).toContain('Use another account');
+    expect(switchAccount.classList.contains('icon-only')).toBeFalse();
   });
 
   it('supports menu navigation and closes on Tab without invoking an action', async () => {

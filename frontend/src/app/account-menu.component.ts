@@ -21,7 +21,7 @@ export type {AccountStatus} from './account-connection';
       } @else if(signedIn()) {
         <div class="profile-actions" role="group" aria-label="Profile actions">
           @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
-          <button type="button" class="switch-account" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-repeat" aria-hidden="true"></i></button>
+          <button type="button" class="switch-account" [class.icon-only]="!!accountUrl()" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>@if(!accountUrl()) {<span>Use another account</span>}</button>
         </div>
         @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>}
         @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Unlock secure storage</button>}
@@ -60,7 +60,8 @@ export type {AccountStatus} from './account-connection';
     color:var(--dashboard-text);background:transparent;border:0;border-radius:5px;text-decoration:none;text-align:left;font:inherit;font-size:13px;}
   .profile-actions,.signout-actions {display:flex;align-items:stretch;position:relative;}
   .profile-actions > a {flex:1;min-width:0;}
-  .profile-actions .switch-account {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
+  .profile-actions .switch-account {flex:1;min-width:0;}
+  .profile-actions .switch-account.icon-only {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
   .account-progress {display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;color:var(--dashboard-muted);font-size:13px;}
   .account-progress .spinner-border {flex-shrink:0;}
   .signout-actions > button:first-child {flex:1;min-width:0;}
@@ -74,7 +75,7 @@ export type {AccountStatus} from './account-connection';
   [role=menuitem] i {font-size:16px;}
   button:focus-visible,a:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
   button:disabled {opacity:.65;cursor:wait;}
-  @media(pointer:coarse) {.signout-actions .more-signout,.profile-actions .switch-account {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
+  @media(pointer:coarse) {.signout-actions .more-signout,.profile-actions .switch-account.icon-only {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
 `})
 export class AccountMenuComponent implements OnInit, OnDestroy {
   readonly open = signal(false);
