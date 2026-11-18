@@ -9,6 +9,7 @@ import {Status, monitoringViews} from './models';
   .service-info{flex:1;min-width:0;}.service-card h2{font-size:14px;margin:0 0 6px;}.service-state{font-size:13px;color:var(--dashboard-muted);}.service-state.running{color:var(--dashboard-success-text);}.service-state.failed{color:var(--dashboard-danger-text);}
   .service-version{display:inline-flex;margin-left:6px;padding:1px 5px;border:1px solid var(--dashboard-border);border-radius:4px;font-size:11px;font-weight:400;color:var(--dashboard-muted);}
   .monitoring-note{color:var(--dashboard-muted);font-size:13px;margin:0 0 20px;line-height:1.6;}
+  .monitoring-settings{margin:0 0 24px;font-size:12px;color:var(--dashboard-muted);line-height:1.6;}.monitoring-settings summary{width:max-content;max-width:100%;cursor:pointer;}.monitoring-settings p{max-width:680px;}.monitoring-settings pre{display:block;width:max-content;max-width:100%;padding:12px 16px;background:var(--dashboard-surface);border:1px solid var(--dashboard-border);border-radius:6px;color:var(--dashboard-text);overflow:auto;}
   .monitoring-views{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,275px),1fr));gap:16px;}
   .monitoring-card{display:flex;align-items:center;gap:16px;padding:22px;border:1px solid var(--dashboard-border);border-radius:12px;background:var(--dashboard-surface);color:var(--dashboard-text);text-decoration:none;}
   .monitoring-card:hover{background:var(--dashboard-panel-soft);border-color:var(--dashboard-focus-border);text-decoration:none;}.view-copy{flex:1;min-width:0;}.view-copy strong{display:block;font-size:15px;margin-bottom:6px;}.view-copy small{display:block;color:var(--dashboard-muted);font-size:13px;line-height:1.6;}.view-arrow{color:var(--dashboard-control-icon);font-size:16px;}
@@ -19,7 +20,7 @@ export class MonitoringOverviewComponent {
   readonly pageChanged=output<string>();
   readonly services=computed(()=>[
     this.service('testserver','Fluxzero Test Server','hdd-stack',this.status()?.runtime),
-    this.service('auditlog','Fluxzero Auditlog','chat-square-text',this.status()?.monitoring.enabled ? this.status()?.monitoring.state : 'disabled'),
+    this.service('auditlog','Fluxzero Auditlog','shop',this.status()?.monitoring.enabled ? this.status()?.monitoring.state : 'disabled'),
   ]);
   readonly views=monitoringViews.filter(view=>view.key!=='visualize').map(view=>({...view,description:{
     messages:'Follow messages and see how your local app handles them.',

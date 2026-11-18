@@ -30,7 +30,7 @@ export class PublishSetupComponent {
   private context?:string;
   private readonly element=inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector=inject(Injector);
-  private focusCurrent(){afterNextRender(()=>this.element.nativeElement.querySelector<HTMLElement>('.setup-timeline .current .primary-button,.setup-timeline .current input,.setup-timeline .current select')?.focus({preventScroll:true}),{injector:this.injector});}
+  private focusCurrent(){afterNextRender(()=>this.element.nativeElement.querySelector<HTMLElement>('.setup-timeline .current .primary-button,.setup-timeline .current .sign-in-action,.setup-timeline .current input,.setup-timeline .current select')?.focus({preventScroll:true}),{injector:this.injector});}
   constructor(){
     this.account.initialize();
     effect(()=>{

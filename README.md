@@ -36,14 +36,17 @@ Account actions keep the current page and App preview in place.
 
 **Publish live**, directly below Startup, stays available while signed out. Its first step is account sign-in;
 a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
-continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a vertical setup checklist ending
-with a commit/push step and Applications/Dashboard actions. It does not start a pipeline or infer deployment success.
+continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a six-step vertical checklist:
+account, organization, application, GitHub workflow, commit/push, and live applications. Sign-in is offered at
+step one; the final step links to Applications or the online Dashboard. It does not start a pipeline or infer deployment success.
 Fluxzero Cloud opens the overview and expands its submenu; the separate chevron only toggles navigation.
 The heading shares one green hover surface, with a separate highlight on its chevron. Its submenu contains Clusters, Applications and Integrations. Integrations
 uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
 and planned resources remain distinct.
 Cloud pages share the local page gutters and title style. The header aligns organization and plan at the right,
 and Overview offers the configured Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
+Dashboard and Integrations open in a new browser tab, keeping Devboard available. Dashboard and plan pills share
+the same size, with tooltips identifying the online destination, selected organization and known plan.
 Workspace shows the local development profile beside project details, including when navigation is hidden.
 Without a named profile it shows Default configuration; this does not depend on account or Cloud access.
 
@@ -71,6 +74,8 @@ Monitoring starts collapsed unless you saved a preference.
 Its heading opens a local overview with Test Server and Auditlog status and links explaining each monitoring view;
 the separate chevron only expands or collapses navigation. The overview remains useful with monitoring disabled
 or the workspace stopped and does not load Auditlog or request Cloud access.
+Its Monitoring settings disclosure explains enabling/disabling monitoring in project configuration and restarting
+the Dev Server; this is not a live toggle. Auditlog uses the same marketplace icon as Dashboard.
 
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
 when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.

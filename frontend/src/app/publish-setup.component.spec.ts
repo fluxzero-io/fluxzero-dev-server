@@ -26,22 +26,23 @@ describe('Publication setup checklist',()=>{
   });
   it('finishes setup with a Cloud handoff and never claims a build, push or deployment',async()=>{
     const fixture=TestBed.createComponent(PublishSetupComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.setup-timeline > li').length).toBe(5);
+    expect(fixture.nativeElement.querySelectorAll('.setup-timeline > li').length).toBe(6);
     expect(calls.map(c=>c.action)).toEqual(['status']);
     expect(fixture.nativeElement.querySelector('.cloud-link')).toBeNull();
-    (fixture.nativeElement.querySelector('.primary-button') as HTMLButtonElement).click();await fixture.whenStable();fixture.detectChanges();
+    (fixture.nativeElement.querySelector('.sign-in-action') as HTMLButtonElement).click();await fixture.whenStable();fixture.detectChanges();
     const page=fixture.componentInstance;
     await page.chooseOrganization('acme');fixture.detectChanges();
     await page.saveApplication();fixture.detectChanges();
     await page.connectGitHub();fixture.detectChanges();
     await page.saveDelivery();fixture.detectChanges();
     expect(page.deliveryReady()).toBeTrue();
-    expect(fixture.nativeElement.querySelector('.setup-timeline > li:last-child').classList.contains('done')).toBeFalse();
+    expect(fixture.nativeElement.querySelector('.setup-timeline > li:nth-child(5)').classList.contains('done')).toBeFalse();
     expect(fixture.nativeElement.textContent).toContain('Commit and push the workflow');
     expect(fixture.nativeElement.textContent).not.toContain('Healthy');
     expect(calls.some(c=>['review','deploy'].includes(c.action))).toBeFalse();
     expect(state.deployment).toBeNull();
     const changed=spyOn(page.pageChanged,'emit');
+    expect(fixture.nativeElement.querySelector('.setup-timeline > li:last-child .cloud-link')?.textContent).toContain('See your live applications');
     (fixture.nativeElement.querySelector('.cloud-link') as HTMLButtonElement).click();
     expect(changed).toHaveBeenCalledWith('cloud/applications');
     TestBed.inject(HttpTestingController).expectNone(r=>r.url.startsWith('account/'));
@@ -100,7 +101,10 @@ describe('Publication setup checklist',()=>{
       fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
       const link=fixture.nativeElement.querySelector('.publish-destinations a.dashboard-link') as HTMLAnchorElement;
       expect(link.href).toBe('http://dashboard.fluxzero.localhost:4200/console/');
-      expect(fixture.nativeElement.querySelector('.publish-destinations .account-sign-in')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.setup-timeline > li:first-child .account-sign-in')).not.toBeNull();
+      expect(fixture.nativeElement.querySelector('.publish-destinations .account-sign-in')).toBeNull();
+      expect(fixture.nativeElement.querySelectorAll('.account-sign-in').length).toBe(1);
+      expect(fixture.nativeElement.querySelector('.setup-timeline > li:last-child .dashboard-link')).toBe(link);
       expect(calls.map(call=>call.action)).toEqual(['status']);
       TestBed.inject(AccountConnection).account.set({state:'signed_out',dashboardUrl:'javascript:alert(1)'});fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('a.dashboard-link')).toBeNull();

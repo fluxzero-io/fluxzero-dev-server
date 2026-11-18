@@ -13,7 +13,7 @@
       @else if(account.account()?.state==='unavailable'){<p>Account is temporarily unavailable.</p><button class="secondary-button" [disabled]="account.busy()" (click)="account.load()">Try again</button>}
       @else if(account.account()?.pendingAction){<p role="status">Confirm sign-out in your browser.</p>}
       @else if(storageLocked()){<p>Allow access to your saved sign-in.</p><button class="primary-button" [disabled]="account.busy()" (click)="account.act('check-interactive')">Unlock secure storage</button>}
-      @else{<p>Sign in to choose where your app will run.</p><button class="primary-button" [disabled]="account.busy()" (click)="account.act('login')">{{account.busy() ? 'Opening sign-in…' : 'Sign in'}}</button>}
+      @else{<p>Sign in to choose where your app will run.</p><button class="account-sign-in sign-in-action" [disabled]="account.busy()" (click)="account.act('login')"><i class="bi bi-person" aria-hidden="true"></i>{{account.busy() ? 'Opening sign-in…' : 'Sign in'}}</button>}
     </div></li>
     <li [class.done]="accountReady() && !!organization()" [class.current]="current()===1"><span class="step-marker" aria-hidden="true">@if(accountReady() && organization()){<i class="bi bi-check-lg"></i>}@else{2}</span><div class="step-content"><div class="step-heading"><h2>Organization & plan</h2>@if(accountReady() && organization()){<button class="text-button" (click)="edit(1)">Edit</button>}</div><p>{{accountReady() && organization() ? organization()!.name + ' · ' + organization()!.plan : 'Choose an organization and the plan for your app.'}}</p>
       @if(accountReady() && expanded()===1){
@@ -40,10 +40,12 @@
     </div></li>
     <li [class.current]="current()===4"><span class="step-marker" aria-hidden="true">5</span><div class="step-content"><h2>Commit & push</h2><p>{{deliveryReady() ? 'Commit and push the workflow to start GitHub Actions.' : 'Publish the workflow when setup is ready.'}}</p>
     </div></li>
+    <li class="live-applications-step"><span class="step-marker" aria-hidden="true">6</span><div class="step-content"><h2>Your live applications</h2>
+      <p>{{account.signedIn() ? 'See your live applications here or continue in the online Dashboard.' : 'Sign in above to see your live applications here, or view them in the online Dashboard.'}}</p>
+      <div class="publish-destinations" role="group" aria-label="Continue in Cloud">
+        @if(account.signedIn()){<button class="secondary-button cloud-link" (click)="pageChanged.emit('cloud/applications')"><i class="bi bi-box" aria-hidden="true"></i>See your live applications</button>}
+        <dev-dashboard-link/>
+      </div>
+    </div></li>
   </ol>
-  <div class="publish-destinations" role="group" aria-label="Continue in Cloud">
-    @if(account.signedIn()){<button class="secondary-button cloud-link" (click)="pageChanged.emit('cloud/applications')"><i class="bi bi-box" aria-hidden="true"></i>See your applications</button>}
-    @else{<button class="account-sign-in" [disabled]="account.busy() || !account.account() || !!account.account()?.pendingAction" (click)="account.act('login')"><i class="bi bi-person" aria-hidden="true"></i>Sign in</button>}
-    <dev-dashboard-link/>
-  </div>
 </section>

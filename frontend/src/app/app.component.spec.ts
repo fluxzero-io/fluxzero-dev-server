@@ -90,7 +90,7 @@ describe('Dev console navigation', () => {
     expect(root.textContent).toContain('Sign in to choose where your app will run.');
     expect(root.querySelector('.setup-timeline li.current')?.textContent).toContain('Fluxzero account');
     TestBed.inject(HttpTestingController).expectNone('account/login');
-    (root.querySelector('dev-publish-setup .primary-button') as HTMLButtonElement).click();
+    (root.querySelector('dev-publish-setup .sign-in-action') as HTMLButtonElement).click();
     const login=TestBed.inject(HttpTestingController).expectOne('account/login');
     expect(login.request.body.returnTo).toContain('#publish');
     login.flush({account:{state:'signing_in'}});await fixture.whenStable();fixture.detectChanges();
