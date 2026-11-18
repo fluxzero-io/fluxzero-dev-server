@@ -1,6 +1,5 @@
 <section class="publish-setup">
-  @if(cloud.enabled){<dev-cloud-scenarios/>}
-  <header><span class="eyebrow">Your project, online</span><h1 tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></header>
+  <header><h1 tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></header>
   <div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>
   @if(account.message()){<p class="notice" role="status">{{account.message()}}</p>}
   @if(cloud.error()){<p class="notice" role="alert">{{cloud.error()}}</p>}

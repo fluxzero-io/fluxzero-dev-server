@@ -2,10 +2,9 @@ import {Component, ElementRef, Injector, afterNextRender, computed, effect, inje
 import {AccountConnection} from './account-connection';
 import {CloudConnection} from './cloud-api';
 import {dashboardDestination} from './cloud-page.component';
-import {CloudScenarioControlsComponent} from './cloud-scenario-controls.component';
 import {githubWorkflowSnippet} from './github-workflow';
 
-@Component({selector:'dev-publish-setup',standalone:true,imports:[CloudScenarioControlsComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
+@Component({selector:'dev-publish-setup',standalone:true,templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
 export class PublishSetupComponent {
   readonly projectName=input('');
   readonly pageChanged=output<string>();

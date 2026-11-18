@@ -84,8 +84,8 @@ Set an explicit local Dashboard URL when testing a local chain. These links neve
 ### Cloud journey demo
 
 For product review, explicitly start the standalone server with `FLUXZERO_CLOUD_DEMO=true`.
-The Cloud section then uses a process-local mock API, with selectable scenarios for organization, GitHub,
-deployment, domains, sign-in and email. Its visible demo marker distinguishes simulated data and actions.
+The Cloud section then uses a process-local mock API for organization, GitHub, deployment, domains, sign-in
+and email. Fixture scenarios are available through the local demo API; customer pages contain no scenario controls.
 Account actions in that UI never access native credentials; the normal account flow is unchanged when the
 option is absent. The demo contacts no external providers and sends no email. Local App preview remains independent.
 Cloud pages use a subtly different background from local development pages.

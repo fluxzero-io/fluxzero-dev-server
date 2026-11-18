@@ -2,8 +2,7 @@
 
 The optional Cloud demo is for product and interaction review in Devboard. Enable it explicitly for a local
 standalone process with `FLUXZERO_CLOUD_DEMO=true` (or `-Dfluxzero.cloud.demo=true`). It is disabled by default;
-project configuration cannot enable it. The served shell advertises the mode, and the UI clearly labels simulated
-Cloud data and actions. Native account credentials are neither read nor changed in this mode.
+project configuration cannot enable it. The served shell advertises the fixture mode to the client. Native account credentials are neither read nor changed in this mode.
 
 ```sh
 FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standalone.jar \
@@ -11,7 +10,8 @@ FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standal
 ```
 
 Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation exposes a small
-Clusters / Applications / Integrations submenu with Overview on the Fluxzero Cloud heading; preview scenarios live in a collapsed disclosure. Open the advertised Devboard URL and choose Publish live
+Clusters / Applications / Integrations submenu with Overview on the Fluxzero Cloud heading. Scenario selection stays
+in the local fixture API; Publish live and Cloud pages contain no scenario picker or manual status/setup footer. Open the advertised Devboard URL and choose Publish live
 below Startup. This entry is available while signed out and starts with sign-in; Cloud shows live status and resources. Scenario selection resets only process-local fixture
 state; browser refresh preserves it until the process stops. Local app state and files are independent. This does
 not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, image digests,
