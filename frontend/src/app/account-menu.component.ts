@@ -21,7 +21,7 @@ export type {AccountStatus} from './account-connection';
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel')">Cancel sign-in</button>
       } @else if(signedIn()) {
         @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
-        @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="fluxzero-outline" aria-hidden="true"></i><span>Dashboard</span></a>}
+        @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><img class="dashboard-brand-icon" src="assets/fluxzero-logo-light.svg" alt="" aria-hidden="true"><span>Dashboard</span></a>}
         @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Unlock secure storage</button>}
         @if(signingOutEverywhere()) {
           <p class="account-progress" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Confirm sign-out in your browser…</span></p>

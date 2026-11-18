@@ -460,7 +460,7 @@ body:has(.preview-expanded) {overflow:hidden;}
 /* Shared page titles and the public Dashboard entry. */
 .page-title {font-size:32px;font-weight:800;line-height:1.2;margin:0;}
 .dashboard-link {display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:8px 18px;border:1px solid var(--dashboard-border);border-radius:999px;background:var(--dashboard-surface);color:var(--dashboard-text);font-size:14px;font-weight:600;white-space:nowrap;text-decoration:none;}
-.fluxzero-outline {display:inline-block;width:18px;height:20px;flex:0 0 18px;background:currentColor;mask:url('../public/assets/fluxzero-logo-outline.svg') center/contain no-repeat;}
+.dashboard-brand-icon {display:block;width:18px;height:20px;flex:0 0 18px;object-fit:contain;}
 .dashboard-link:hover {background:var(--dashboard-action-bg);text-decoration:none;}
 .account-sign-in {display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:0;border-radius:8px;background:transparent;color:var(--dashboard-text);font-size:14px;}
 .account-sign-in i {font-size:20px;color:var(--dashboard-control-icon);}
