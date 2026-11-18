@@ -6,6 +6,7 @@ export const cloudPages = [
   {key:'applications',label:'Applications',icon:'boxes'},
   {key:'clusters',label:'Clusters',icon:'hdd-network'},
   {key:'integrations',label:'Integrations',icon:'plug'},
+  {key:'domains',label:'Domains & email',icon:'globe2'},
 ];
 
 /** Organization/resource routes need authorized IDs; this entry route is independent. */
@@ -44,6 +45,7 @@ export class CloudPageComponent {
     applications:{title:'Manage your applications',description:'Choose an organization and a cluster in Dashboard to view its applications.'},
     clusters:{title:'Choose a deployment destination',description:'Choose an organization in Dashboard to view its clusters and plan.'},
     integrations:{title:'Connect your delivery workflow',description:'Manage GitHub connections, or choose an organization to use its existing CI integrations.'},
+    domains:{title:'Use your own domains',description:'Choose an organization in Dashboard to manage application, sign-in and email domains.'},
   }[this.section()] || {title:'Fluxzero Cloud',description:'Continue in Dashboard.'}));
 
   navigate(event:MouseEvent,page:string) {

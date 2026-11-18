@@ -66,6 +66,16 @@ production environments have separate credentials. Cloud authorization remains a
 `/account/sessions`, and `FLUXZERO_ACCOUNT_DASHBOARD_URL` to `https://dashboard.fluxzero.io`.
 Set an explicit local Dashboard URL when testing a local chain. These links never come from project configuration.
 
+### Cloud journey demo
+
+For product review, explicitly start the standalone server with `FLUXZERO_CLOUD_DEMO=true`.
+The Cloud section then uses a process-local mock API, with selectable scenarios for organization, GitHub,
+deployment, domains, sign-in and email. Its visible demo marker distinguishes simulated data and actions.
+Account actions in that UI never access native credentials; the normal account flow is unchanged when the
+option is absent. The demo contacts no external providers and sends no email. Local App preview remains independent.
+Cloud pages use a subtly different background from local development pages.
+See [the demo protocol and required live Cloud capabilities](docs/cloud-demo-api.md).
+
 ## Devboard
 
 The dashboard's dev server selector only links to sessions whose gateway advertises

@@ -1,4 +1,5 @@
-import {DestroyRef, Injectable, computed, inject, signal} from '@angular/core';
+import {DestroyRef, Injectable, computed, effect, inject, signal} from '@angular/core';
+import {CloudConnection} from './cloud-api';
 import {HttpClient} from '@angular/common/http';
 import {firstValueFrom, timeout} from 'rxjs';
 
@@ -30,6 +31,7 @@ export class AccountConnection {
   readonly activeAction = signal<AccountAction | undefined>(undefined);
   readonly signedIn = computed(() => this.account()?.state === 'signed_in');
   private readonly http = inject(HttpClient);
+  private readonly cloudDemo = inject(CloudConnection);
   private timer?: ReturnType<typeof setTimeout>;
   private statusRequest?: Promise<void>;
   private started = false;
@@ -38,6 +40,14 @@ export class AccountConnection {
   private readonly returned = () => {if(document.visibilityState !== 'hidden') void this.load(true);};
 
   constructor() {
+    if(this.cloudDemo.enabled) effect(()=>{
+      const state=this.cloudDemo.state();
+      if(state) {
+        this.account.set({state:state.account === 'expired' ? 'sign_in_required' : state.account === 'signed_out' ? 'signed_out' : 'signed_in',
+          displayName:state.accountName,email:'alex@acme.example',environment:'Cloud demo',issue:state.account === 'locked' ? 'storage_locked' : undefined});
+        this.issue.set(state.account === 'locked' ? 'storage_locked' : '');
+      }
+    });
     window.addEventListener('focus', this.returned);
     document.addEventListener('visibilitychange', this.returned);
     inject(DestroyRef).onDestroy(() => {
@@ -46,13 +56,18 @@ export class AccountConnection {
       document.removeEventListener('visibilitychange', this.returned);
     });
   }
-  initialize() {if(!this.started) {this.started = true;void this.load();}}
+  initialize() {if(!this.started) {this.started = true;if(this.cloudDemo.enabled) this.cloudDemo.initialize();else void this.load();}}
   async load(checkPending = false) {
+    if(this.cloudDemo.enabled) {await this.cloudDemo.call({action:'status'});return;}
     if(this.busy() || this.destroyed) return;
     const pending = this.statusRequest ||= this.call('status');
     try {await pending;} finally {if(this.statusRequest === pending) this.statusRequest = undefined;}
   }
   async act(action: AccountAction) {
+    if(this.cloudDemo.enabled) {
+      const mapped=action === 'logout' || action === 'logout-everywhere' ? 'sign-out' : action === 'check-interactive' ? 'unlock' : action.startsWith('login') ? 'sign-in' : 'status';
+      await this.cloudDemo.call({action:mapped});return;
+    }
     if(this.busy() || this.destroyed) return;
     this.busy.set(true);
     this.activeAction.set(action);

@@ -41,6 +41,7 @@ final class DevConsole implements AutoCloseable {
     private final FolderOpener folderOpener;
     private final DevConsoleProjectStarter projectStarter;
     private final DevAccount account = new DevAccount();
+    private final CloudDemo cloudDemo = CloudDemo.enabled() ? new CloudDemo() : null;
     private final DevConsoleProjects projects;
     private java.util.function.Function<String, Runnable> maintenance;
     private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
@@ -94,6 +95,7 @@ final class DevConsole implements AutoCloseable {
             return false;
         }
         if (isApi(request)) return false;
+        if (path.startsWith(ROOT + "cloud-demo/")) return cloudDemoAction(path, request, response, callback);
         if (path.startsWith(ROOT + "account/")) return accountAction(path, request, response, callback);
         if (path.equals(ROOT + "startup-command.json")) {
             if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
@@ -171,6 +173,10 @@ final class DevConsole implements AutoCloseable {
                 content = input.readAllBytes();
             }
             type = contentType(name);
+            if (name.equals("index.html") && cloudDemo != null) {
+                content = new String(content, StandardCharsets.UTF_8).replace("<head>",
+                        "<head><script>window.fluxzeroCloudDemo=true;</script>").getBytes(StandardCharsets.UTF_8);
+            }
         }
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, type);
         response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
@@ -200,6 +206,24 @@ final class DevConsole implements AutoCloseable {
         response.getHeaders().put("X-Content-Type-Options", "nosniff");
         response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(account.call(action, context))), callback);
         return true;
+    }
+
+    private boolean cloudDemoAction(String path, Request request, Response response, Callback callback) throws Exception {
+        if (cloudDemo == null || !path.equals(ROOT + "cloud-demo/action"))
+            return actionResult(response, callback, 404, "Cloud demo is not enabled.");
+        if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
+        if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Open the demo in your local Devboard.");
+        try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+            byte[] body = input.readNBytes(4097);
+            if (body.length > 4096) return actionResult(response, callback, 413, "Demo request is too large.");
+            Object result = cloudDemo.call(new ObjectMapper().readTree(body));
+            response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
+            response.getHeaders().put("X-Content-Type-Options", "nosniff");
+            return projectJson(response, callback, result);
+        } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            return actionResult(response, callback, 400, invalid instanceof IllegalArgumentException
+                    ? invalid.getMessage() : "Choose a supported demo action.");
+        }
     }
 
     static io.fluxzero.tools.account.AccountBrowserContext accountBrowserContext(String origin, byte[] body) throws java.io.IOException {

@@ -57,6 +57,34 @@ public class DevGatewayTest {
             .connectTimeout(Duration.ofSeconds(2)).build();
 
     @Test
+    void cloudDemoRequiresExplicitOptInAndTheLocalConsoleOrigin(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String previous = System.getProperty("fluxzero.cloud.demo");
+        try {
+            for (boolean enabled : List.of(false, true)) {
+                System.setProperty("fluxzero.cloud.demo", String.valueOf(enabled));
+                var console = new DevConsole(java.util.Map::of, null, new DevEnvironmentRegistry(directory.resolve("registry")));
+                try (TestUpstream backend = TestUpstream.start("backend");
+                     DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                             "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+                    String url = gateway.url() + DevConsole.ROOT + "cloud-demo/action";
+                    assertEquals(enabled ? 405 : 404, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+                    assertEquals(enabled ? 403 : 404, projectPost(url, "https://untrusted.example", true).statusCode());
+                    assertEquals(enabled ? 200 : 404, renamePost(url, gateway.url(), "{\"action\":\"status\"}").statusCode());
+                    if (enabled) {
+                        assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+                        assertEquals(413, renamePost(url, gateway.url(), " ".repeat(4097)).statusCode());
+                        assertEquals(400, renamePost(url, gateway.url(), "{\"action\":\"status\",\"token\":\"unused\"}").statusCode());
+                        assertTrue(request(gateway.url() + DevConsole.ROOT, "text/html", null).body().contains("window.fluxzeroCloudDemo=true"));
+                    }
+                    assertEquals(200, request(gateway.url() + "/api/orders", "application/json", null).statusCode());
+                } finally {console.close();}
+            }
+        } finally {
+            if (previous == null) System.clearProperty("fluxzero.cloud.demo"); else System.setProperty("fluxzero.cloud.demo", previous);
+        }
+    }
+
+    @Test
     void accountActionsRequireConsoleOriginAndAccountFailureDoesNotInterruptTheApp(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
         String originalIssuer = System.getProperty("fluxzero.account.issuer");
         System.setProperty("fluxzero.account.issuer", "invalid-account-configuration");

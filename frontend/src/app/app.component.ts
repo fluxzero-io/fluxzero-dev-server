@@ -1,9 +1,11 @@
 import {ServerUpdateComponent} from './server-update.component';
 import {CloudPageComponent, cloudPages} from './cloud-page.component';
+import {CloudDemoComponent} from './cloud-demo.component';
+import {CLOUD_DEMO_ENABLED} from './cloud-api';
 import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
-import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
+import {Component, ElementRef, HostListener, Injector, afterNextRender, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
@@ -20,11 +22,12 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [CloudDemoComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   private readonly http = inject(HttpClient);
   private readonly connection = inject(ConsoleConnection);
   private readonly sanitizer = inject(DomSanitizer);
@@ -114,6 +117,7 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
   readonly cloudPages = cloudPages;
+  readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
   readonly cloudExpanded = signal(this.preference('devboard.cloudExpanded') !== 'false');
   toggleCloud() {this.cloudExpanded.update(value=>!value);this.savePreference('devboard.cloudExpanded',String(this.cloudExpanded()));}
   cloudSection() {return this.route().substring('cloud/'.length);}
@@ -271,10 +275,10 @@ export class AppComponent implements OnInit, OnDestroy {
   }
   navigateFromCloud(route:string) {
     this.navigate(route);
-    setTimeout(()=>{
+    afterNextRender(()=>{
       if(this.route() !== route) return;
-      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1')?.focus();
-    });
+      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1, dev-cloud-demo h1')?.focus();
+    },{injector:this.injector});
   }
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {
     const url = environmentConsoleUrl(environment);

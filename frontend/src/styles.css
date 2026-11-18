@@ -22,6 +22,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 .dashboard-sidebar .cloud-navigation {margin: auto 0 0;padding-top:16px;border-top:2px solid var(--dashboard-cloud-divider);}
 .cloud-nav-title {display:flex;align-items:center;gap:8px;color:var(--dashboard-muted);}
 .cloud-nav-title img {width:20px;height:22px;object-fit:contain;}
+.cloud-demo-marker {font-size:9px;font-weight:500;border:1px solid var(--dashboard-border);border-radius:4px;padding:2px 4px;text-transform:none;}
 .dashboard-section-label { color: var(--dashboard-muted); font-size: 12px; font-weight: 700; margin: 0 0 8px; text-transform: uppercase; }
 .project-section { margin-top: 28px; }
 .dashboard-nav-link { display: flex; align-items: center; gap: 12px; min-width: 0; min-height: 44px; padding: 0 14px; border-radius: 6px; color: var(--dashboard-link-text); font-size: 15px; font-weight: 500; text-decoration: none; transition: background-color .15s, color .15s; border: 0; background: transparent; width: 100%; text-align: left; }
@@ -45,6 +46,8 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 @keyframes spinner-border {to {transform:rotate(360deg);}}
 @media (prefers-reduced-motion:reduce) {.spinner-border {animation-duration:1.5s;}}
 main { min-width: 0; flex: 1; }
+main.cloud-data {background:#f1f7f8;}
+[data-bs-theme="dark"] main.cloud-data {background:#122532;}
 .connection { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .sidebar-footer .connection {margin-right:auto;}
 .connection i {font-size:16px;color:var(--dashboard-muted);}

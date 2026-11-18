@@ -1,0 +1,102 @@
+<section class="cloud-demo-page">
+  <div class="demo-controls" aria-label="Cloud demo controls">
+    <span class="demo-label"><i class="bi bi-beaker" aria-hidden="true"></i>Cloud demo <span>· simulated data and actions</span></span>
+    <label>Scenario <select [value]="data()?.scenario || 'local'" (change)="scenario(value($event))" [disabled]="cloud.busy()">
+      @for(group of groups;track group){<optgroup [label]="group">@for(scenario of data()?.scenarios;track scenario.id){@if(scenario.group===group){<option [value]="scenario.id">{{scenario.label}}</option>}}</optgroup>}
+    </select></label>
+    <button type="button" class="text-button" [disabled]="cloud.busy()" (click)="scenario(data()?.scenario || 'local')">Reset</button>
+    @if(data()?.scenario && !['local','first-organization','choose-organization','github-required','ready','deploying','live'].includes(data()!.scenario)) {
+      <button type="button" class="text-button" [disabled]="cloud.busy()" (click)="cloud.call({action:'recover'})">Resolve demo issue</button>
+    }
+  </div>
+  <header class="cloud-heading"><div><span class="eyebrow"><img src="assets/fluxzero-logo.svg" alt="">Fluxzero Cloud</span><h1 tabindex="-1">{{title()}}</h1></div>
+    @if(organization();as org){<label class="organization-switch"><span>Organization</span><select [value]="org.id" (change)="cloud.call({action:'select-organization',organizationId:value($event)})" [disabled]="cloud.busy()">@for(o of data()?.organizations;track o.id){<option [value]="o.id">{{o.name}}</option>}</select></label>}
+  </header>
+  <div class="local-context"><i class="bi bi-folder2" aria-hidden="true"></i><span><small>Local project</small><strong>{{projectName() || 'Your project'}}</strong></span><a href="#application" (click)="navigate($event,'application')"><i class="bi bi-arrow-left" aria-hidden="true"></i>App preview</a></div>
+  @if(cloud.error()){<div class="notice warning" role="alert">{{cloud.error()}}</div>}
+  @if(data()?.message){<div class="notice" role="status">{{data()?.message}}</div>}
+  @if(!data()) {
+    <div class="card"><h2>{{cloud.error() ? 'Cloud demo is unavailable' : 'Loading Cloud demo…'}}</h2><button class="secondary-button" (click)="cloud.call({action:'status'})">Try again</button></div>
+  } @else if(data()?.account!=='signed_in') {
+    <div class="card welcome"><i class="bi bi-cloud" aria-hidden="true"></i><h2>{{data()?.account==='locked' ? 'Unlock secure storage' : data()?.account==='expired' ? 'Sign in again' : 'Bring your project to Cloud'}}</h2><p>{{data()?.account==='locked' ? 'Allow access to your saved sign-in to continue.' : 'Choose your organization, connect GitHub and deploy when you are ready.'}}</p>
+      <button class="primary-button" [disabled]="cloud.busy()" (click)="cloud.call({action:data()?.account==='locked' ? 'unlock' : 'sign-in'})">{{data()?.account==='locked' ? 'Unlock secure storage' : 'Sign in'}}</button>
+    </div>
+  } @else if(data()?.availability==='offline' || data()?.availability==='forbidden') {
+    <div class="card welcome"><i class="bi bi-cloud-slash" aria-hidden="true"></i><h2>{{data()?.availability==='offline' ? 'Cloud is temporarily unavailable' : 'Your organization access has changed'}}</h2><p>{{data()?.availability==='offline' ? 'Try again shortly. You can keep working on your local project.' : 'Ask an organization owner for access, or choose another organization.'}}</p><button class="primary-button" [disabled]="cloud.busy()" (click)="cloud.call({action:'recover'})">{{data()?.availability==='offline' ? 'Try again' : 'Refresh access'}}</button></div>
+  } @else if(!organization()) {
+    <div class="card"><div class="step-label">Organization</div><h2>Where will your application live?</h2><p>Use an existing organization or create one for your project.</p>
+      @if(data()?.organizations?.length){<div class="choices">@for(org of data()?.organizations;track org.id){<button class="choice" [disabled]="cloud.busy()" (click)="cloud.call({action:'select-organization',organizationId:org.id})"><i class="bi bi-buildings" aria-hidden="true"></i><span><strong>{{org.name}}</strong><small>{{org.plan}} · {{org.role}} · {{org.applications}} / {{org.limit}} applications</small></span><i class="bi bi-chevron-right" aria-hidden="true"></i></button>}</div>}
+      <form (submit)="$event.preventDefault();cloud.call({action:'create-organization',name:organizationName()})"><label>New organization name<input [value]="organizationName()" (input)="organizationName.set(value($event))" maxlength="64" required></label><button class="primary-button" [disabled]="cloud.busy()">Create organization</button></form>
+      <div class="invitation"><span>Invitation to Acme Studio</span><button type="button" class="text-button" [disabled]="cloud.busy()" (click)="cloud.call({action:'join-organization'})">Accept invitation</button></div>
+    </div>
+  } @else {
+    @if(!data()?.canDeploy){<div class="notice">You have view access. Ask an organization owner for permission to configure or deploy.</div>}
+    @if(!data()?.capacityAvailable){<div class="notice warning"><strong>Your plan has no application slots left.</strong><span>Review a plan with more capacity before preparing a deployment.</span><button class="secondary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="cloud.call({action:'choose-plan'})">Include Team plan · €25/month <small>(example)</small></button></div>}
+    @if(data()?.plannedPlan){<div class="notice"><strong>Team plan included in your proposal</strong><span>€25/month (example price). The plan changes only when you confirm the deployment.</span></div>}
+    <div class="workspace-grid">
+      <div class="workspace-content">
+        @if(section()==='domains') {
+          <div class="card"><div class="step-label">Domains & email</div><h2>Your application, your identity</h2><p>Connect your app address, sign-in page and email sender.</p>
+            @if(!healthy()){<div class="notice">Deploy and check your application before connecting its domains.</div>}
+            <form (submit)="$event.preventDefault();configureDomains()"><div class="fields"><label>Application hostname<input [value]="applicationDomain()" (input)="applicationDomain.set(value($event))" placeholder="app.example.com" required></label><label>Sign-in hostname<input [value]="authDomain()" (input)="authDomain.set(value($event))" placeholder="login.example.com" required></label><label>Email domain<input [value]="emailDomain()" (input)="emailDomain.set(value($event))" placeholder="mail.example.com" required></label></div><button class="primary-button" [disabled]="cloud.busy() || !healthy() || !data()?.canDeploy">Prepare domains</button></form>
+          </div>
+          @for(domain of data()?.domains;track domain.kind){
+            @if(domain.status!=='not_configured') {
+              <div class="card domain-card"><div class="card-heading"><div><span class="step-label">{{domain.kind==='application' ? 'Application' : domain.kind==='auth' ? 'Sign-in' : 'Email sender'}}</span><h2>{{domain.hostname}}</h2></div><span class="status" [class.success]="domain.status==='ready'">{{domain.status==='ready' ? 'Ready' : 'Waiting for DNS'}}</span></div>
+                @if(domain.status!=='ready') {<p>Add these records at your DNS provider, then check again.</p><div class="dns-records">@for(record of domain.records;track record.name){<div class="dns-record"><strong>{{record.type}}</strong><div><code>{{record.name}}</code><code>{{record.value}}</code></div><button class="icon-button" [attr.aria-label]="'Copy ' + record.name" (click)="copy(record.value)"><i class="bi" [class.bi-copy]="copied()!==record.value" [class.bi-check2]="copied()===record.value" aria-hidden="true"></i></button></div>}</div>}
+                @if(domain.status==='ready'){<p>{{domain.kind==='email' ? 'Sender verified. Email is ready for a local delivery preview.' : 'Ownership verified and certificate active.'}}</p>}
+                <div class="actions"><button class="secondary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="cloud.call({action:'check-domain',kind:domain.kind})">{{domain.status==='ready' ? 'Check again' : 'Check DNS'}}</button>
+                  @if(domain.kind==='auth' && domain.status==='ready'){<button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="cloud.call({action:'test-auth'})">{{data()?.authTested ? 'Sign-in checked' : 'Test sign-in'}}</button>}
+                  @if(domain.kind==='email' && domain.status==='ready'){<button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="cloud.call({action:'test-email'})">Preview test email</button>}
+                </div>
+              </div>
+            }
+          }
+          @if(data()?.emailPreview?.['subject']) {<div class="card email-preview" role="status"><span class="step-label">{{data()?.emailPreview?.['status']}}</span><h2>{{data()?.emailPreview?.['subject']}}</h2><dl><dt>From</dt><dd>{{data()?.emailPreview?.['from']}}</dd><dt>To</dt><dd>{{data()?.emailPreview?.['to']}}</dd></dl><p>Your application is ready. Welcome aboard!</p></div>}
+        } @else if(section()==='integrations' || section()==='overview' && sourceNeeded()) {
+          <div class="card"><div class="step-label">Source & delivery</div><h2>Connect your GitHub workflow</h2><p>Use your repository and its existing CI integration.</p>
+            @if(!data()?.githubConnected){<div class="provider"><i class="bi bi-github" aria-hidden="true"></i><span><strong>GitHub</strong><small>Select which repositories to make available.</small></span><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="openProvider()">Connect GitHub</button></div>}
+            @else {
+              <form (submit)="$event.preventDefault();selectSource()"><div class="fields"><label>Repository<select [value]="repository()" (change)="repository.set(value($event))">@for(repo of data()?.repositories;track repo){<option [value]="repo">{{repo}}</option>}</select></label><label>Branch<select [value]="branch()" (change)="branch.set(value($event))"><option>main</option><option>release</option></select></label></div>
+                <div class="detail-row"><i class="bi bi-check-circle" aria-hidden="true"></i><span>GitHub Actions <small>Existing deploy workflow and Integration</small></span></div><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy">Use this repository</button>
+              </form>
+              @if(data()?.repository){<div class="notice success-notice">{{data()?.repository}} · {{data()?.branch}} connected.<a href="#cloud/overview" (click)="navigate($event,'cloud/overview')">Continue to deployment<i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>}
+            }
+          </div>
+        } @else if(section()==='clusters' || editingDestination() || section()==='overview' && !data()?.cluster) {
+          <div class="card"><div class="step-label">Deployment destination</div><h2>Choose where your app will run</h2><p>Reuse an available cluster or include a new one in your deployment proposal.</p>
+            <form (submit)="$event.preventDefault();configure()"><div class="fields"><label>Application name<input [value]="application()" (input)="application.set(value($event))" pattern="[a-z][a-z0-9-]{1,47}" maxlength="48" required></label><label>Environment<select [value]="environment()" (change)="environment.set(value($event))"><option>Production</option><option>Staging</option></select></label></div>
+              <label>Cluster<select [value]="cluster()" (change)="cluster.set(value($event))"><option value="existing" [disabled]="!data()?.availableClusters?.length">{{data()?.availableClusters?.length ? data()!.availableClusters[0] + ' — use existing' : 'No existing cluster in this organization'}}</option><option value="new">Europe — prepare a new cluster</option></select></label>
+              <div class="detail-row"><i class="bi bi-sliders" aria-hidden="true"></i><span>1 instance · 512 MiB<small>Default application configuration.</small></span></div>
+              <button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy || !data()?.repository">Use this destination</button>
+            </form>
+          </div>
+        } @else {
+          @if(data()?.deployment;as deployment){
+            <div class="card release-card"><div class="card-heading"><div><span class="step-label">{{environment()}}</span><h2>{{data()?.application}}</h2></div><span class="status" [class.success]="healthy()" [class.failed]="deployment.state==='failed'">{{healthy() ? 'Healthy' : deployment.state==='failed' ? 'Needs attention' : 'Deploying'}}</span></div>
+              <div class="release-version"><code>{{data()?.repository}} · {{deployment.commit}}</code><small>{{data()?.cluster}}</small></div>
+              <ol class="deployment-steps" aria-label="Deployment progress">@for(step of deployment.steps;track step.name){<li [class]="step.state"><i class="bi" [class.bi-check-circle-fill]="step.state==='done'" [class.bi-circle]="step.state==='pending'" [class.bi-x-circle-fill]="step.state==='failed'" [class.bi-arrow-repeat]="step.state==='running'" aria-hidden="true"></i>{{step.name}}@if(step.state==='running'){<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>}</li>}</ol>
+              @if(deployment.state==='failed'){<div class="notice warning"><strong>{{deployment.steps[0].state==='failed' ? 'The build did not complete.' : 'The new version could not become healthy.'}}</strong><span>{{deployment.steps[0].state==='failed' ? 'Review the build output and try the deployment again.' : 'The previous healthy version keeps serving traffic.'}}</span></div><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="review()">Review retry</button>}
+              @if(healthy()){
+                <div class="application-url"><i class="bi bi-globe2" aria-hidden="true"></i><code>{{deployment.url}}</code><button class="icon-button" aria-label="Copy application URL" (click)="copy(deployment.url)"><i class="bi bi-copy" aria-hidden="true"></i></button></div>
+                <div class="actions"><button class="primary-button" (click)="openApplication()">Open application<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></button><button class="secondary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="review()">Deploy next version</button></div>
+              }
+            </div>
+            @if(healthy()){<div class="card"><div class="card-heading"><div><span class="step-label">Next step</span><h2>Use your own domains</h2></div><i class="bi bi-globe2" aria-hidden="true"></i></div><p>Give your application, sign-in page and email sender your own addresses.</p><a class="secondary-button" href="#cloud/domains" (click)="navigate($event,'cloud/domains')">Domains & email<i class="bi bi-arrow-right" aria-hidden="true"></i></a></div>}
+          } @else {
+            <div class="card"><div class="step-label">Ready for review</div><h2>Your project is ready to deploy</h2><p>Review the destination and plan impact before starting the pipeline.</p><dl class="summary"><dt>Source</dt><dd>{{data()?.repository}} · {{data()?.branch}}</dd><dt>Destination</dt><dd>{{data()?.cluster}}</dd><dt>Application</dt><dd>{{data()?.application}} · {{data()?.environment}}</dd></dl><div class="actions"><button class="primary-button" [disabled]="cloud.busy() || !data()?.canDeploy || !data()?.capacityAvailable" (click)="review()">Review deployment</button><button class="secondary-button" [disabled]="cloud.busy() || !data()?.canDeploy" (click)="editingDestination.set(true)">Change destination</button></div></div>
+          }
+        }
+      </div>
+      <aside class="cloud-summary" aria-label="Cloud resources"><div class="card"><span class="step-label">Organization & plan</span><h2>{{organization()?.name}}</h2><div class="plan-line"><strong>{{organization()?.plan}}</strong><span>{{organization()?.role}}</span></div><dl><dt>Applications</dt><dd>{{organization()?.applications}} / {{organization()?.limit}}</dd><dt>Cluster</dt><dd>{{data()?.cluster || 'Not selected'}}</dd><dt>Source</dt><dd>{{data()?.repository || 'Not connected'}}</dd></dl></div>
+        @if(data()?.cluster){<div class="card resources"><span class="step-label">This application</span><div><i class="bi bi-box" aria-hidden="true"></i><span><strong>{{data()?.application}}</strong><small>{{healthy() ? '1 healthy instance · 512 MiB' : '1 instance · 512 MiB planned'}}</small></span></div>@for(domain of data()?.domains;track domain.kind){<div><i class="bi" [class.bi-globe2]="domain.kind==='application'" [class.bi-shield-check]="domain.kind==='auth'" [class.bi-envelope]="domain.kind==='email'" aria-hidden="true"></i><span><strong>{{domain.kind==='application' ? 'App domain' : domain.kind==='auth' ? 'Sign-in' : 'Email'}}</strong><small>{{domain.status==='not_configured' ? 'Not configured' : domain.hostname}}</small></span><i class="bi" [class.bi-check-circle]="domain.status==='ready'" [class.bi-clock]="domain.status==='pending'" aria-hidden="true"></i></div>}</div>}
+      </aside>
+    </div>
+  }
+</section>
+@if(reviewing() && data()?.proposal;as proposal){
+  <div class="modal-backdrop"><section class="cloud-proposal dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="proposal-title"><header><span class="step-label">Deployment proposal</span><h2 id="proposal-title">Deploy {{proposal.application}}?</h2><p>Review where this version will run.</p></header><dl class="summary"><dt>Organization</dt><dd>{{proposal.organization}}</dd><dt>Destination</dt><dd>{{proposal.cluster}} · {{proposal.environment}}</dd><dt>Source</dt><dd>{{proposal.repository}} · {{proposal.branch}} · <code>{{proposal.commit}}</code></dd><dt>Changes</dt><dd>{{proposal.change}}</dd><dt>Plan impact</dt><dd>{{proposal.planImpact}}</dd></dl><p class="proposal-note">The GitHub pipeline builds and publishes this version using its Integration.</p>@if(cloud.error()){<p class="notice warning" role="alert">{{cloud.error()}}</p>}<footer class="dialog-actions"><button class="dialog-cancel secondary-button" type="button" [disabled]="cloud.busy()" (click)="closeDialog()">Cancel</button><button class="primary-button" type="button" [disabled]="cloud.busy()" (click)="deploy()">{{cloud.busy() ? 'Starting…' : 'Deploy this version'}}</button></footer></section></div>
+}
+@if(appPreview()) {<div class="modal-backdrop"><section class="dialog app-demo" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="app-demo-title"><span class="step-label">Deployed app preview · demo</span><h2 id="app-demo-title">{{data()?.application}}</h2><i class="bi bi-check-circle-fill" aria-hidden="true"></i><p>Your application is up and responding.</p><code>{{data()?.deployment?.url}}</code><footer class="dialog-actions"><button class="dialog-cancel secondary-button" (click)="closeDialog()">Close</button></footer></section></div>}
+
+@if(provider()){<div class="modal-backdrop"><section class="dialog provider-dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="provider-title"><span class="step-label">GitHub connection · demo</span><h2 id="provider-title">Choose repository access in GitHub</h2><p>You choose which repositories Fluxzero can access. Your existing CI Integration handles build and deployment.</p><footer class="dialog-actions"><button class="dialog-cancel secondary-button" [disabled]="cloud.busy()" (click)="cancelProvider()">Cancel</button><button class="primary-button" [disabled]="cloud.busy()" (click)="connectProvider()">Continue to GitHub</button></footer></section></div>}
