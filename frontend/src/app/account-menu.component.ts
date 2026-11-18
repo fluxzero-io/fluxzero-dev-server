@@ -10,8 +10,9 @@ export type {AccountStatus} from './account-connection';
   @if(open()) {
     <div #panel id="dev-account-menu" class="account-menu" role="menu" aria-label="Fluxzero account">
       @if(signedIn()) {
-        <div class="account-identity" role="presentation"><strong>{{account()?.displayName || 'Fluxzero account'}}</strong>
+        <div class="account-identity" role="group" aria-label="Signed-in account"><div class="account-identity-text"><strong>{{account()?.displayName || 'Fluxzero account'}}</strong>
           @if(account()?.email) {<span>{{account()?.email}}</span>}
+          </div><button type="button" class="switch-account" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-left-right" aria-hidden="true"></i></button>
         </div>
       }
       @if(message() || account()?.message && !signingOutEverywhere()) {<p class="account-message" role="status">{{message() || account()?.message}}</p>}
@@ -19,19 +20,16 @@ export type {AccountStatus} from './account-connection';
         <p class="account-message" role="status">Finish signing in in your browser.</p>
         <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('cancel')">Cancel sign-in</button>
       } @else if(signedIn()) {
-        <div class="profile-actions" role="group" aria-label="Profile actions">
-          @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
-          <button type="button" class="switch-account" [class.icon-only]="!!accountUrl()" role="menuitem" tabindex="-1" title="Use another account" aria-label="Use another account" [disabled]="busy() || signingOutEverywhere()" (click)="act('login-another')"><i class="bi bi-arrow-left-right" aria-hidden="true"></i>@if(!accountUrl()) {<span>Use another account</span>}</button>
-        </div>
+        @if(accountUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-person" aria-hidden="true"></i><span>Profile</span></a>}
         @if(dashboardUrl(); as url) {<a role="menuitem" tabindex="-1" [href]="url" target="_blank" rel="noopener noreferrer" (click)="close(true)"><i class="bi bi-speedometer2" aria-hidden="true"></i><span>Dashboard</span></a>}
         @if(issue() === 'storage_locked') {<button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" (click)="act('check-interactive')">Unlock secure storage</button>}
         @if(signingOutEverywhere()) {
           <p class="account-progress" role="status"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>Confirm sign-out in your browser…</span></p>
         }
         <div class="signout-actions" role="group" aria-label="Sign-out options" (pointerleave)="leaveMore()" (pointerenter)="keepMore()">
-          <button type="button" role="menuitem" tabindex="-1" [disabled]="busy()" [attr.aria-busy]="connection.activeAction() === 'logout' ? 'true' : null" (click)="act('logout')">
+          <button type="button" role="menuitem" tabindex="-1" title="Sign out on this computer only" [disabled]="busy()" [attr.aria-busy]="connection.activeAction() === 'logout' ? 'true' : null" (click)="act('logout')">
             @if(connection.activeAction() === 'logout') {<span class="spinner-border spinner-border-sm" aria-hidden="true"></span>} @else {<i class="bi bi-box-arrow-right" aria-hidden="true"></i>}
-            <span>{{connection.activeAction() === 'logout' ? 'Signing out…' : 'Sign out on this computer'}}</span>
+            <span>{{connection.activeAction() === 'logout' ? 'Signing out…' : 'Sign out'}}</span>
           </button>
           <button #moreTrigger class="more-signout" type="button" role="menuitem" tabindex="-1" title="More sign-out options" aria-label="More sign-out options" aria-haspopup="menu" [attr.aria-expanded]="more()" aria-controls="more-signout-menu" [disabled]="busy() || signingOutEverywhere()" (pointerenter)="hoverMore($event)" (click)="toggleMore()"><i class="bi bi-three-dots" aria-hidden="true"></i></button>
           @if(more()) {<div id="more-signout-menu" role="menu" aria-label="More sign-out options" class="more-signout-menu" (pointerenter)="keepMore()">
@@ -52,16 +50,15 @@ export type {AccountStatus} from './account-connection';
     box-sizing:border-box;padding:6px;display:flex;flex-direction:column;gap:4px;color:var(--dashboard-text);
     background:var(--dashboard-popover-bg);border:1px solid var(--dashboard-border);border-radius:10px;
     box-shadow:var(--dashboard-popover-shadow);font-size:14px;line-height:1.5;}
-  .account-identity {display:flex;flex-direction:column;gap:2px;padding:8px 10px 12px;margin-bottom:4px;
+  .account-identity {display:flex;align-items:center;gap:8px;padding:8px 10px 12px;margin-bottom:4px;
     border-bottom:1px solid var(--dashboard-border);overflow-wrap:anywhere;}
-  .account-identity span {color:var(--dashboard-muted);font-size:12px;}
+  .account-identity-text {display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
+  .account-identity-text > span {color:var(--dashboard-muted);font-size:12px;}
   .account-message {margin:0;padding:8px 10px;font-size:13px;}
   [role=menuitem] {display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;min-height:38px;padding:8px 10px;
     color:var(--dashboard-text);background:transparent;border:0;border-radius:5px;text-decoration:none;text-align:left;font:inherit;font-size:13px;}
-  .profile-actions,.signout-actions {display:flex;align-items:stretch;position:relative;}
-  .profile-actions > a {flex:1;min-width:0;}
-  .profile-actions .switch-account {flex:1;min-width:0;}
-  .profile-actions .switch-account.icon-only {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
+  .signout-actions {display:flex;align-items:stretch;position:relative;}
+  .account-identity .switch-account {flex:0 0 36px;width:36px;justify-content:center;padding:8px;}
   .account-progress {display:flex;align-items:center;gap:10px;margin:0;padding:8px 10px;color:var(--dashboard-muted);font-size:13px;}
   .account-progress .spinner-border {flex-shrink:0;}
   .signout-actions > button:first-child {flex:1;min-width:0;}
@@ -75,7 +72,7 @@ export type {AccountStatus} from './account-connection';
   [role=menuitem] i {font-size:16px;}
   button:focus-visible,a:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3px;}
   button:disabled {opacity:.65;cursor:wait;}
-  @media(pointer:coarse) {.signout-actions .more-signout,.profile-actions .switch-account.icon-only {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
+  @media(pointer:coarse) {.signout-actions .more-signout,.account-identity .switch-account {flex-basis:44px;width:44px;}.account-trigger {width:44px;height:44px;}[role=menuitem] {min-height:44px;}}
 `})
 export class AccountMenuComponent implements OnInit, OnDestroy {
   readonly open = signal(false);

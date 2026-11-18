@@ -52,21 +52,24 @@ describe('Optional Fluxzero account', () => {
     await open();
     fixture.componentInstance.account.set({state: 'signed_in', displayName: 'Marty', email: 'marty@example.test', accountUrl: 'https://login.example.test/account', dashboardUrl:'https://cloud.example.test'});
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelector('.profile-actions .switch-account').getAttribute('aria-label')).toBe('Use another account');
+    expect(fixture.nativeElement.querySelector('.account-identity .switch-account').getAttribute('aria-label')).toBe('Use another account');
     expect(fixture.nativeElement.querySelector('a[href="https://cloud.example.test/"]')?.textContent).toContain('Dashboard');
     expect(fixture.nativeElement.textContent).toContain('Marty');
     expect(fixture.nativeElement.querySelector('.account-trigger .bi-person-fill')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.account-trigger').getAttribute('aria-label')).toContain('Marty');
     expect(fixture.nativeElement.textContent).toContain('Profile');
-    expect(fixture.nativeElement.textContent).toContain('Sign out on this computer');
+    const signOut:HTMLButtonElement=fixture.nativeElement.querySelector('.signout-actions > button');
+    expect(signOut.textContent.trim()).toBe('Sign out');
+    expect(signOut.title).toBe('Sign out on this computer only');
     const link: HTMLAnchorElement = fixture.nativeElement.querySelector('a');
     expect(link.rel).toContain('noopener');
     fixture.componentInstance.account.set({state: 'signed_in', accountUrl: 'javascript:alert(1)'});
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('a')).toBeNull();
     const switchAccount:HTMLButtonElement=fixture.nativeElement.querySelector('.switch-account');
-    expect(switchAccount.textContent).toContain('Use another account');
-    expect(switchAccount.classList.contains('icon-only')).toBeFalse();
+    expect(switchAccount.textContent.trim()).toBe('');
+    expect(switchAccount.title).toBe('Use another account');
+    expect(switchAccount.closest('.account-identity')).not.toBeNull();
   });
 
   it('supports menu navigation and closes on Tab without invoking an action', async () => {

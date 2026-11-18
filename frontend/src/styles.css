@@ -46,8 +46,8 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 @keyframes spinner-border {to {transform:rotate(360deg);}}
 @media (prefers-reduced-motion:reduce) {.spinner-border {animation-duration:1.5s;}}
 main { min-width: 0; flex: 1; }
-main.cloud-data {background:#f1f7f8;}
-[data-bs-theme="dark"] main.cloud-data {background:#122532;}
+main.cloud-data {background:var(--dashboard-cloud-bg);}
+.cloud-navigation .dashboard-nav-link:is(:hover,.active),.cloud-navigation .dashboard-section-toggle:hover {background:var(--dashboard-cloud-bg);}
 .connection { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .sidebar-footer .connection {margin-right:auto;}
 .connection i {font-size:16px;color:var(--dashboard-muted);}
