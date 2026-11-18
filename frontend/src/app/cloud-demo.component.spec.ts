@@ -20,7 +20,7 @@ describe('Cloud journey design fixture',()=>{
     http.expectNone(request=>request.url.startsWith('account/'));
   });
   it('reviews before applying and cancelling a proposal never starts deployment',async()=>{
-    const fixture=TestBed.createComponent(CloudDemoComponent);fixture.componentRef.setInput('projectName','Local draft');fixture.detectChanges();
+    const fixture=TestBed.createComponent(CloudDemoComponent);fixture.componentRef.setInput('publishing',true);fixture.componentRef.setInput('projectName','Local draft');fixture.detectChanges();
     http.expectOne('cloud-demo/action').flush(state());await fixture.whenStable();fixture.detectChanges();
     (fixture.nativeElement.querySelector('.workspace-content .primary-button') as HTMLButtonElement).click();
     const review=http.expectOne('cloud-demo/action');expect(review.request.body).toEqual({action:'review'});

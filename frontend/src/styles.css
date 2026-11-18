@@ -47,7 +47,7 @@ nav { overflow-y: auto; flex: 1; scrollbar-width: thin; }
 @media (prefers-reduced-motion:reduce) {.spinner-border {animation-duration:1.5s;}}
 main { min-width: 0; flex: 1; }
 main.cloud-data {background:var(--dashboard-cloud-bg);}
-.cloud-navigation .dashboard-nav-link:is(:hover,.active),.cloud-navigation .dashboard-section-toggle:hover {background:var(--dashboard-cloud-bg);}
+.publish-nav-link:is(:hover,.active),.cloud-navigation .dashboard-nav-link:is(:hover,.active),.cloud-navigation .dashboard-section-toggle:hover {background:var(--dashboard-cloud-bg);}
 .connection { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .sidebar-footer .connection {margin-right:auto;}
 .connection i {font-size:16px;color:var(--dashboard-muted);}
@@ -424,3 +424,11 @@ body:has(.preview-expanded) {overflow:hidden;}
 .application-component .component-memory::before {display:none;}
 .component-memory-heading {display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;margin-bottom:8px;color:var(--dashboard-muted);font-size:12px;}
 .sdk-badge {display:inline-flex;align-items:center;padding:2px 6px;border:1px solid var(--dashboard-border);border-radius:5px;background:var(--dashboard-panel-soft);font-size:11px;line-height:1.4;white-space:nowrap;}
+
+.publish-steps {display:flex;align-items:center;gap:24px;list-style:none;padding:0;margin:0 0 24px;color:var(--dashboard-muted);font-size:13px;}
+.publish-steps li {display:flex;align-items:center;gap:8px;}
+.publish-steps li > span {display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border:1px solid var(--dashboard-border);border-radius:50%;font-size:12px;}
+.publish-steps .current {color:var(--dashboard-text);font-weight:600;}
+.publish-steps .current > span {background:var(--dashboard-surface);border-color:var(--dashboard-control-icon);}
+.publish-steps .done > span {background:var(--dashboard-status-success-bg);color:var(--dashboard-success-text);}
+@media(max-width:600px){.publish-steps{gap:10px;flex-wrap:wrap;font-size:12px;}}

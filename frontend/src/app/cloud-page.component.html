@@ -1,7 +1,8 @@
 <section class="cloud-page" aria-labelledby="cloud-title">
-  <header><div><span class="eyebrow">Fluxzero Cloud</span><h1 id="cloud-title" tabindex="-1">{{page().label}}</h1></div>
+  <header><div><span class="eyebrow">Fluxzero Cloud</span><h1 id="cloud-title" tabindex="-1">{{publishing() ? 'Publish live' : page().label}}</h1></div>
     @if(account.signedIn() && dashboardUrl();as url){<a class="secondary-button" [href]="url" target="_blank" rel="noopener noreferrer">Dashboard<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
   </header>
+  @if(publishing()){<ol class="publish-steps" aria-label="Publishing steps">@for(step of publicationSteps;track step;let i=$index){<li [class.done]="i===0 && account.signedIn()" [class.current]="i===(account.signedIn() ? 1 : 0)" [attr.aria-current]="i===(account.signedIn() ? 1 : 0) ? 'step' : null"><span>{{i+1}}</span>{{step}}</li>}</ol>}
   @if(projectName()) {
     <div class="local-project" aria-label="Local project">
       <i class="bi bi-folder2" aria-hidden="true"></i><div><span>Local project</span><strong>{{projectName()}}</strong></div>
@@ -20,8 +21,8 @@
       <p>Continue in your browser.</p><button type="button" class="secondary-button" [disabled]="account.busy()" (click)="account.act('cancel')">Cancel sign-in</button>
     </div>
   } @else if(!account.signedIn()) {
-    <div class="cloud-card recovery"><i class="bi bi-cloud cloud-symbol" aria-hidden="true"></i><h2>{{signInRequired() ? 'Sign in again' : 'Sign in to Fluxzero Cloud'}}</h2>
-      <p>{{signInRequired() ? 'Reconnect your account to continue in Cloud.' : 'Manage your organizations, applications and clusters.'}}</p>
+    <div class="cloud-card recovery"><i class="bi bi-cloud cloud-symbol" aria-hidden="true"></i><h2>{{signInRequired() ? 'Sign in again' : publishing() ? 'Sign in to publish live' : 'Sign in to Fluxzero Cloud'}}</h2>
+      <p>{{signInRequired() ? 'Reconnect your account to continue in Cloud.' : publishing() ? 'Choose the account you want to publish with.' : 'Manage your organizations, applications and clusters.'}}</p>
       <button type="button" class="primary-button" [disabled]="account.busy()" (click)="account.act('login')">{{account.busy() ? 'Opening sign-in…' : signInRequired() ? 'Sign in again' : 'Sign in'}}</button>
     </div>
   } @else if(account.account()?.pendingAction === 'sign_out_everywhere') {
@@ -40,8 +41,8 @@
           @if(dashboardUrl();as url){<a class="primary-button" [href]="url" target="_blank" rel="noopener noreferrer">Choose organization<i class="bi bi-box-arrow-up-right" aria-hidden="true"></i></a>}
           @else{<p class="configuration-note">Dashboard is unavailable for this connection.</p>}
         </div>
-        <div class="cloud-card journey-card"><h2>From development to deployment</h2><ul>
-          @for(step of journey;track step.key){<li><a [href]="'#cloud/' + step.key" (click)="navigate($event,'cloud/' + step.key)"><i [class]="'bi bi-' + step.icon" aria-hidden="true"></i><span><strong>{{step.label}}</strong><small>{{step.description}}</small></span><i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>}
+        <div class="cloud-card journey-card"><h2>{{publishing() ? 'Set up publishing' : 'From development to deployment'}}</h2><ul>
+          @for(step of journey;track step.key){<li><a [href]="(publishing() ? '#publish/' : '#cloud/') + step.key" (click)="navigate($event,'cloud/' + step.key)"><i [class]="'bi bi-' + step.icon" aria-hidden="true"></i><span><strong>{{step.label}}</strong><small>{{step.description}}</small></span><i class="bi bi-chevron-right" aria-hidden="true"></i></a></li>}
         </ul></div>
       </div>
     } @else {

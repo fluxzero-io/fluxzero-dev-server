@@ -79,6 +79,26 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.sdk-badge').getAttribute('aria-label')).toBe('Fluxzero SDK 2.29.1');
     expect(fixture.nativeElement.querySelector('.infrastructure-section').textContent).toContain('Fluxzero Test Server 2.29.2');
   });
+  it('offers Publish live below Startup while signed out and starts with account sign-in', async () => {
+    const root:HTMLElement=fixture.nativeElement;
+    const publish=root.querySelector<HTMLAnchorElement>('nav a[href="#publish"]')!;
+    expect(publish.previousElementSibling?.getAttribute('href')).toBe('#startup');
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    publish.click();await fixture.whenStable();fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('publish');
+    expect(root.querySelector('h1')?.textContent).toBe('Publish live');
+    expect(root.textContent).toContain('Sign in to publish live');
+    expect(root.querySelector('.publish-steps [aria-current=step]')?.textContent).toContain('Sign in');
+    TestBed.inject(HttpTestingController).expectNone('account/login');
+    (root.querySelector('dev-cloud-page .primary-button') as HTMLButtonElement).click();
+    const login=TestBed.inject(HttpTestingController).expectOne('account/login');
+    expect(login.request.body.returnTo).toContain('#publish');
+    login.flush({account:{state:'signing_in'}});await fixture.whenStable();fixture.detectChanges();
+    expect(root.textContent).toContain('Finish signing in');
+    fixture.componentInstance.navigateFromPublish('cloud/integrations');fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('publish/integrations');
+    expect(publish.getAttribute('aria-current')).toBe('page');
+  });
   it('opens each Cloud page through navigation and retains the local preview frame', async () => {
     TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex'});fixture.detectChanges();
     const root: HTMLElement = fixture.nativeElement;
@@ -416,7 +436,7 @@ describe('Dev console navigation', () => {
     // Moving the menu must also be safe while a background account check is pending.
     (root.querySelector('.sidebar-footer .account-trigger') as HTMLButtonElement).click();
     const pending=http.expectOne('account/status');
-    app.togglePinnedNavigation();fixture.detectChanges();
+    app.sidebarCollapsed.set(true);fixture.detectChanges();
     const settling=TestBed.inject(AccountConnection).load();
     pending.flush({account:{state:'signed_in',displayName:'Alex'}});
     await settling;await fixture.whenStable();fixture.detectChanges();
@@ -472,7 +492,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Progress', 'Tests', 'Startup']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Progress', 'Tests', 'Startup', 'Publish live']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');

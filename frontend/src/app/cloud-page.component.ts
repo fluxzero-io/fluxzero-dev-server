@@ -22,6 +22,8 @@ export function dashboardDestination(base: string | undefined, destination: 'org
 @Component({selector:'dev-cloud-page',standalone:true,templateUrl:'./cloud-page.component.html',styleUrl:'./cloud-page.component.scss'})
 export class CloudPageComponent {
   readonly section=input('overview');
+  readonly publishing=input(false);
+  readonly publicationSteps=['Sign in','Set up','Review','Publish'];
   readonly projectName=input('');
   readonly pageChanged=output<string>();
   readonly page=computed(()=>cloudPages.find(page=>page.key===this.section()) || cloudPages[0]);

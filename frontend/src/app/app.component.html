@@ -33,6 +33,7 @@
       <a class="dashboard-nav-link" href="#progress" (click)="link($event, 'progress')" [class.active]="route() === 'progress'" [attr.aria-current]="route() === 'progress' ? 'page' : null"><i class="bi bi-list-check"></i><span>Progress</span>@if(progressBadge(); as badge) {<span class="nav-result-badge" [class.in-progress]="badge.done < badge.total" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.percent}}%</span>}</a>
       <a class="dashboard-nav-link" href="#tests" (click)="link($event, 'tests')" [class.active]="route() === 'tests'" [attr.aria-current]="route() === 'tests' ? 'page' : null"><i class="bi bi-check2-circle"></i><span>Tests</span>@if(testBadge(); as badge) {<span class="nav-result-badge split-result" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">@for(segment of badge.segments; track segment.state) {<span [class]="'nav-result-segment nav-result-' + segment.state" aria-hidden="true">{{segment.value}}</span>}</span>}</a>
       <a class="dashboard-nav-link" href="#startup" (click)="link($event, 'startup')" [class.active]="route() === 'startup'" [attr.aria-current]="route() === 'startup' ? 'page' : null"><i class="bi bi-database-check"></i><span>Startup</span>@if(startupBadge(); as badge) {<span class="nav-result-badge" [class.failed]="badge.failed" [attr.aria-label]="badge.label" [title]="badge.label">{{badge.value}}</span>}</a>
+      <a class="dashboard-nav-link publish-nav-link" href="#publish" (click)="link($event, 'publish')" [class.active]="isPublishing()" [attr.aria-current]="isPublishing() ? 'page' : null"><i class="bi bi-cloud-upload" aria-hidden="true"></i><span>Publish live</span></a>
       <div class="dashboard-nav-section">
         <button class="dashboard-section-label dashboard-section-toggle" type="button" (click)="toggleMonitoring()" [title]="monitoringExpanded() ? 'Collapse Monitoring' : 'Expand Monitoring'" [attr.aria-expanded]="monitoringExpanded()" aria-controls="monitoring-menu"><span>Monitoring</span><i class="bi bi-chevron-right" [class.expanded]="monitoringExpanded()" aria-hidden="true"></i></button>
         <div id="monitoring-menu" class="dashboard-section-items" [hidden]="!monitoringExpanded()">
@@ -53,10 +54,14 @@
     <div class="sidebar-footer-group"><dev-server-update (updated)="showUpdateNotice($event)" [status]="status()" [connected]="connected()"/><div class="sidebar-footer">@if(!navigationHidden()){<dev-account-menu/><ng-container [ngTemplateOutlet]="localConnection"/>}<dev-theme-menu [theme]="themePreference()"/></div></div>
   </aside>
   @if(!sidebarCollapsed() && !mobileNavigation()) {<button class="sidebar-resizer" type="button" role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="520" [attr.aria-valuenow]="sidebarWidth()" title="Drag to resize; drag left to hide navigation" (pointerdown)="startSidebarResize($event)" (keydown)="resizeNavigationWithKeyboard($event)"></button>}
-  <main [class.cloud-data]="isCloud()" [attr.inert]="menuOpen() ? '' : null">
+  <main [class.cloud-data]="isCloud() || isPublishing()" [attr.inert]="menuOpen() ? '' : null">
     @if(sidebarCollapsed() || mobileNavigation()) {<div class="navigation-bar"><button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button>@if(navigationHidden() && !previewExpanded()){<div class="navigation-account"><ng-container [ngTemplateOutlet]="localConnection"/><dev-account-menu placement="below"/></div>}</div>}
 
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
+    @if(isPublishing()) {
+      @if(cloudDemo){<dev-cloud-demo [publishing]="true" [section]="publishSection()" [projectName]="currentName()" (pageChanged)="navigateFromPublish($event)"/>}
+      @else{<dev-cloud-page [publishing]="true" [section]="publishSection()" [projectName]="currentName()" (pageChanged)="navigateFromPublish($event)"/>}
+    }
     @if(isCloud()) {
       @if(cloudDemo){<dev-cloud-demo [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
       @else{<dev-cloud-page [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}

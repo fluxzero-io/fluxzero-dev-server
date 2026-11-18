@@ -4,6 +4,9 @@ import {CloudConnection} from './cloud-api';
 @Component({selector:'dev-cloud-demo',standalone:true,templateUrl:'./cloud-demo.component.html',styleUrl:'./cloud-demo.component.scss'})
 export class CloudDemoComponent {
   readonly section=input('overview');
+  readonly publishing=input(false);
+  readonly publicationSteps=['Sign in','Set up','Review','Publish'];
+  readonly publicationStage=computed(()=>this.data()?.account !== 'signed_in' ? 0 : this.reviewing() ? 2 : this.data()?.deployment ? 3 : 1);
   readonly projectName=input('');
   readonly pageChanged=output<string>();
   readonly cloud=inject(CloudConnection);
@@ -11,7 +14,7 @@ export class CloudDemoComponent {
   readonly organization=computed(()=>this.data()?.organizations.find(o=>o.id===this.data()?.organizationId));
   readonly healthy=computed(()=>this.data()?.deployment?.state==='healthy');
   readonly sourceNeeded=computed(()=>!this.data()?.githubConnected || !this.data()?.repository);
-  readonly title=computed(()=>({overview:'Overview',applications:'Applications',clusters:'Clusters',integrations:'Git & CI',domains:'Domains & email'}[this.section()] || 'Overview'));
+  readonly title=computed(()=>this.publishing() ? 'Publish live' : ({overview:'Overview',applications:'Applications',clusters:'Clusters',integrations:'Git & CI',domains:'Domains & email'}[this.section()] || 'Overview'));
   readonly organizationName=signal('My team');
   readonly repository=signal('acme/parcel-service');
   readonly branch=signal('main');

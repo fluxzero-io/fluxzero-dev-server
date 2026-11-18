@@ -11,7 +11,8 @@ FLUXZERO_CLOUD_DEMO=true java -jar target/fluxzero-dev-server-1-SNAPSHOT-standal
 ```
 
 Cloud navigation is revealed after sign-in, without navigating away from the local page. The navigation has one
-entry; the scenario toolbar stays inside the Cloud page. Open the advertised Devboard URL and choose Fluxzero Cloud. Scenario selection resets only process-local fixture
+entry; the scenario toolbar stays inside the design pages. Open the advertised Devboard URL and choose Publish live
+below Startup. This entry is available while signed out and starts with sign-in; Cloud shows live status and resources. Scenario selection resets only process-local fixture
 state; browser refresh preserves it until the process stops. Local app state and files are independent. This does
 not contact Cloud, GitHub, IDP, DNS, a cluster, a registry, billing or SMTP. Example DNS records, image digests,
 URLs and account identities are illustrative. The application preview is a local dialog; no example hostname is
@@ -75,7 +76,8 @@ The first Cloud target is one Fluxzero application, including its frontend. A st
 in the local Workspace overview; deploying it independently is outside this Cloud journey. Use a real Maven/SDK
 fixture with a managed Test Server to review the first deployment route, rather than a frontend-only process.
 
-The route is organization → GitHub source/CI → destination → reviewed deployment → progress and checked URL.
+The Publish live route is sign-in → organization → GitHub source/CI → destination → reviewed deployment → progress
+and checked URL. Setup and review remain under publish routes; App preview and Progress receive no publication toolbar.
 New organizations in this fixture use Starter capacity, a default team and a proposed new cluster. Starter exists
 in Dashboard's versioned capacity catalog with one Starter app and cluster; the catalog entry is not activated.
 The fixture asserts no live offer, price, billing activation or provisioned capacity. Existing targets are reused.
