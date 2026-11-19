@@ -18,6 +18,7 @@ import java.io.IOException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.ClosedWatchServiceException;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
 import java.nio.file.StandardWatchEventKinds;
@@ -93,9 +94,21 @@ final class SourceWatcher implements AutoCloseable {
                     boolean projectRoot = dir.toAbsolutePath().normalize()
                             .equals(directory.toAbsolutePath().normalize());
                     if (projectRoot || !ignored(dir)) {
-                        registerDirectory(dir);
+                        try {
+                            registerDirectory(dir);
+                        } catch (NoSuchFileException removedDuringRegistration) {
+                            return FileVisitResult.SKIP_SUBTREE;
+                        }
                     }
                     return !projectRoot && ignored(dir) ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
+                }
+
+                @Override
+                public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException {
+                    if (failure instanceof NoSuchFileException) {
+                        return FileVisitResult.CONTINUE;
+                    }
+                    return super.visitFileFailed(file, failure);
                 }
 
                 @Override
@@ -128,7 +141,8 @@ final class SourceWatcher implements AutoCloseable {
                             continue;
                         }
                         Path changed = directory.resolve((Path) event.context()).toAbsolutePath().normalize();
-                        if (Files.isDirectory(changed) && event.kind() == StandardWatchEventKinds.ENTRY_CREATE) {
+                        if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE && !ignored(changed)
+                            && Files.isDirectory(changed)) {
                             registerIfDirectory(changed, true);
                         }
                         if (!Files.isDirectory(changed) && !ignored(changed) && relevant(changed)) {
