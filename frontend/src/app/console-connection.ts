@@ -1,4 +1,4 @@
-import {Injectable, InjectionToken, inject} from '@angular/core';
+import {Injectable, InjectionToken, inject, signal} from '@angular/core';
 import {Environment, Status, TestOutputLine} from './models';
 import {appendSample, ResourceSample} from './resource-history';
 
@@ -23,6 +23,8 @@ export class ConsoleConnection {
   private destroyed = true;
   private sequence = -1;
   private state?: ConsoleState;
+  readonly connecting = signal(false);
+  private lastMessageAt = 0;
   private onUpdate?: (state: ConsoleState) => void;
   private onConnected?: (connected: boolean) => void;
 
@@ -32,13 +34,24 @@ export class ConsoleConnection {
     this.delay = 1000;
     this.onUpdate = onUpdate;
     this.onConnected = onConnected;
+    window.addEventListener('online', this.resume);
+    window.addEventListener('focus', this.resume);
+    document.addEventListener('visibilitychange', this.resume);
     this.open();
   }
 
   close() {
     this.destroyed = true;
+    this.connecting.set(false);
+    window.removeEventListener('online', this.resume);
+    window.removeEventListener('focus', this.resume);
+    document.removeEventListener('visibilitychange', this.resume);
     clearTimeout(this.retry);
     clearTimeout(this.watchdog);
+    this.closeSocket();
+  }
+
+  private closeSocket() {
     if (this.socket) {
       this.socket.onclose = null;
       this.socket.onmessage = null;
@@ -48,10 +61,22 @@ export class ConsoleConnection {
     this.socket = undefined;
   }
 
+  private readonly resume = () => {
+    if (this.destroyed || document.visibilityState === 'hidden') return;
+    if (this.socket && Date.now() - this.lastMessageAt < 30_000) return;
+    clearTimeout(this.retry);
+    clearTimeout(this.watchdog);
+    this.closeSocket();
+    this.delay = 1000;
+    this.open();
+  };
+
   private open() {
     if (this.destroyed) return;
     this.sequence = -1;
     this.state = undefined;
+    this.lastMessageAt = Date.now();
+    this.connecting.set(true);
     this.onConnected?.(false);
     try {
       const url = new URL('updates', document.baseURI);
@@ -72,6 +97,7 @@ export class ConsoleConnection {
         if (this.socket !== socket || this.destroyed) return;
         try {
           this.accept(JSON.parse(event.data));
+          this.lastMessageAt = Date.now();
           this.armWatchdog(disconnected);
         } catch { disconnected(); }
       };
@@ -87,6 +113,7 @@ export class ConsoleConnection {
       this.state = {status: update.status as Status, environments: update.environments};
       this.sequence = update.sequence;
       this.delay = 1000;
+      this.connecting.set(false);
       this.onUpdate?.(this.state);
       this.onConnected?.(true);
       return;
@@ -116,6 +143,7 @@ export class ConsoleConnection {
   private scheduleRetry() {
     clearTimeout(this.watchdog);
     clearTimeout(this.retry);
+    this.connecting.set(false);
     this.onConnected?.(false);
     if (this.destroyed) return;
     this.retry = setTimeout(() => this.open(), this.delay);

@@ -102,8 +102,8 @@ monitoring:
   enabled: false
 ```
 
-Set `enabled: true` to enable it again. The Monitoring overview's **Monitoring settings** disclosure
-shows these instructions; Devboard does not currently change this configuration through a live toggle.
+Set `enabled: true` to enable it again. This is project/development-profile configuration;
+Devboard does not currently edit it through a live toggle.
 Restarting the Dev Server resets in-memory application data.
 
 You can customize retention or storage without providing artifact paths:

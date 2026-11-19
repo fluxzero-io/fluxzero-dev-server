@@ -2,14 +2,12 @@
   <header class="page-heading"><div><h1 class="page-title" id="local-monitoring-title">Monitoring</h1><p class="page-description">Understand what happens inside your local app while you develop.</p></div></header>
   <div class="service-summary" aria-label="Local monitoring services">
     @for(service of services();track service.id){
-      <article class="service-card" [attr.aria-label]="service.name"><i [class]="'bi bi-'+service.icon+' service-icon'" aria-hidden="true"></i><div class="service-info"><h2>{{service.name}}@if(service.version){<span class="service-version">{{service.version}}</span>}</h2><span class="service-state" [class.running]="service.state==='running'" [class.failed]="service.state==='failed' || service.state==='degraded'">{{service.label}}</span></div></article>
+      <article class="service-card" [attr.aria-label]="service.name"><i [class]="'bi bi-'+service.icon+' service-icon'" aria-hidden="true"></i><div class="service-info"><h2 [title]="service.name">{{service.name}}</h2><div class="service-version-slot">@if(service.version){<span class="service-version">{{service.version}}</span>}</div><span class="service-state" [class.running]="service.state==='running'" [class.failed]="service.state==='failed' || service.state==='degraded'">{{service.label}}</span></div></article>
     }
   </div>
   @if(!connected()){<p class="monitoring-note" role="status">Reconnect to the local Dev Server to see current service status.</p>}
   @else if(!status()?.monitoring?.enabled){<p class="monitoring-note">Local monitoring is disabled in this project's configuration.</p>}
   @else if(status()?.maintenance?.workspaceStopped || status()?.state==='shutdown'){<p class="monitoring-note">Start your workspace to collect local activity again.</p>}
-  <details class="monitoring-settings"><summary>Monitoring settings</summary><p>Monitoring starts by default for local Fluxzero backend apps. In <code>.fluxzero/dev.yaml</code> or your development profile, use:</p><pre>monitoring:
-  enabled: true</pre><p>Set <code>enabled: false</code> to turn it off. Restart the Dev Server after changing this setting. Restarting resets in-memory app data.</p></details>
   <div class="monitoring-views" aria-label="Explore local monitoring">
     @for(view of views;track view.key){
       <a class="monitoring-card" [href]="'#monitoring/'+view.key" (click)="navigate($event,view.key)"><i [class]="'bi bi-'+view.icon+' view-icon'" aria-hidden="true"></i><span class="view-copy"><strong>{{view.label}}</strong><small>{{view.description}}</small></span><i class="bi bi-arrow-right view-arrow" aria-hidden="true"></i></a>

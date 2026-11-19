@@ -33,6 +33,10 @@ removes local access for the CLI and Devboards sharing that account configuratio
 computer-only scope. Connected describes the local Dev Server connection separately. When navigation is hidden,
 the connection status and profile icon appear at the top right, with the same account menu opening below.
 Account actions keep the current page and App preview in place.
+When local updates disconnect, Devboard marks the last received data and keeps retrying. Click **Disconnected**
+in the footer or hidden-navigation header to retry immediately and see recovery guidance. Returning to the browser
+or restoring the network also retries a missing or stale connection. Reconnecting keeps the current preview;
+if the Dev Server has stopped, start the project again with your agent or `fz dev`.
 
 **Publish live**, directly below Startup, stays available while signed out. Its first step is account sign-in;
 a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
@@ -74,8 +78,8 @@ Monitoring starts collapsed unless you saved a preference.
 Its heading opens a local overview with Test Server and Auditlog status and links explaining each monitoring view;
 the separate chevron only expands or collapses navigation. The overview remains useful with monitoring disabled
 or the workspace stopped and does not load Auditlog or request Cloud access.
-Its Monitoring settings disclosure explains enabling/disabling monitoring in project configuration and restarting
-the Dev Server; this is not a live toggle. Auditlog uses the same marketplace icon as Dashboard.
+Monitoring remains an observation page; monitoring configuration belongs to the project/development profile.
+Auditlog uses the same marketplace icon as Dashboard. Service versions have a separate aligned position.
 
 Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
 when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.

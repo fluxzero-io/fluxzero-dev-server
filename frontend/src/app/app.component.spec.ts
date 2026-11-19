@@ -1,5 +1,6 @@
 import {AccountConnection} from './account-connection';
 import {TestBed, ComponentFixture} from '@angular/core/testing';
+import {signal} from '@angular/core';
 import {provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
 import {ProjectManagerComponent} from './project-manager.component';
@@ -26,7 +27,7 @@ describe('Dev console navigation', () => {
     localStorage.setItem('devConfirmTruncate', 'false');
     history.replaceState(null, '', location.pathname + '#projects');
     TestBed.configureTestingModule({imports: [AppComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
-      {provide: ConsoleConnection, useValue: {initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
+      {provide: ConsoleConnection, useValue: {connecting:signal(false),initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
     fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
@@ -696,6 +697,41 @@ describe('Dev console navigation', () => {
     expect(fixture.componentInstance.status()?.resourceHistory?.length).toBe(2);
     TestBed.inject(HttpTestingController).expectNone('status.json');
     TestBed.inject(HttpTestingController).expectNone('environments.json');
+  });
+  it('explains stale local data and retries from Disconnected without replacing the preview or using account APIs', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement,connection=TestBed.inject(ConsoleConnection);
+    app.status.update(state=>({...state!,frontend:'running',frontends:[{id:'frontend',path:'/',state:'running'}]}));
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    connected(false);fixture.detectChanges();
+    expect(root.querySelector('.connection-notice')?.textContent).toContain('last received data');
+    expect(root.querySelector('.application-empty h2')?.textContent).toBe('App preview paused');
+    const reconnect=spyOn(connection,'initialise').and.callThrough();
+    const trigger=root.querySelector<HTMLButtonElement>('.connection-retry')!;
+    trigger.click();fixture.detectChanges();
+    const dialog=root.querySelector<HTMLDialogElement>('.connection-help')!;
+    expect(dialog.open).toBeTrue();expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(dialog.textContent).toContain('If your Dev Server has stopped');
+    expect(dialog.textContent).toContain('fz dev');
+    connection.connecting.set(true);fixture.detectChanges();
+    expect(dialog.querySelector<HTMLButtonElement>('.primary-button')!.disabled).toBeTrue();
+    connection.connecting.set(false);connected(true);fixture.detectChanges();
+    expect(dialog.textContent).toContain('Connection restored');
+    expect(root.querySelector('.connection-notice')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    expect(app.route()).toBe('application');
+    app.closeConnectionHelp();fixture.detectChanges();
+    expect(dialog.open).toBeFalse();
+    TestBed.inject(HttpTestingController).expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('actions/'));
+  });
+  it('offers the same connection recovery in the hidden-navigation header and restores focus after Escape', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.sidebarCollapsed.set(true);connected(false);fixture.detectChanges();
+    const trigger=root.querySelector<HTMLButtonElement>('.navigation-account .connection-retry')!;
+    trigger.click();fixture.detectChanges();
+    const dialog=root.querySelector<HTMLDialogElement>('.connection-help')!;
+    dialog.dispatchEvent(new Event('cancel'));fixture.detectChanges();
+    expect(dialog.open).toBeFalse();expect(document.activeElement).toBe(trigger);
   });
   it('keeps the known total throughout full and selective reruns, completion, skips and interruption', () => {
     const state=fixture.componentInstance.status()!;

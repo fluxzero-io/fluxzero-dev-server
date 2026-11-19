@@ -55,6 +55,7 @@
     @if(sidebarCollapsed() || mobileNavigation()) {<div class="navigation-bar"><button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button>@if(navigationHidden() && !previewExpanded()){<div class="navigation-account"><ng-container [ngTemplateOutlet]="localConnection"/><dev-account-menu placement="below"/></div>}</div>}
 
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
+    @if(status() && !connected()){<div class="connection-notice" role="status"><span>{{status()?.state==='shutdown' ? 'The Dev Server has stopped.' : 'Live updates are disconnected. Showing the last received data.'}}</span><button type="button" class="secondary-button" (click)="showConnectionHelp($event)">{{connectionConnecting() ? 'Reconnecting…' : 'Reconnect…'}}</button></div>}
     @if(isPublishing()) {<dev-publish-setup [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
     @if(isCloud()) {
       @if(cloudDemo){<dev-cloud-resources [section]="cloudSection()" (pageChanged)="navigateFromCloud($event)"/>}
@@ -89,7 +90,7 @@
         <iframe [hidden]="previewUnavailable()" #applicationFrame name="dev-application" (load)="applicationLoaded()" [title]="currentName() + ' application'" [src]="source"></iframe>
       }
       @if(previewUnavailable()) {
-        <div class="application-empty" role="status"><h2>{{activeFrontend()?.id}} is {{activeFrontend()?.state}}</h2><p>Check its status on the Workspace page or select another ready frontend.</p></div>
+        <div class="application-empty" role="status"><h2>{{!connected() ? 'App preview paused' : activeFrontend()?.id + ' is ' + (status()?.maintenance?.workspaceStopped ? 'stopped' : activeFrontend()?.state)}}</h2><p>{{!connected() ? 'Reconnect to the local Dev Server to continue here. Your current preview is kept.' : 'Check its status on the Workspace page or select another ready frontend.'}}</p></div>
       } @else if(!applicationSource()) {
         <div class="application-empty" role="status"><h2>Application is not available yet</h2><p>Start the application to preview it here. You can check its status on the Workspace page.</p></div>
       }
@@ -105,6 +106,17 @@
   </main>
 </div>
 
+<dialog #connectionHelp id="connection-help" class="connection-help" aria-labelledby="connection-help-title" (cancel)="closeConnectionHelp()" (close)="connectionHelpOpen.set(false)">
+  <h2 id="connection-help-title">Local Dev Server connection</h2>
+  @if(connected()){<p role="status">Connection restored. Devboard is showing live data again.</p>}
+  @else{
+    <p role="status">{{connectionConnecting() ? 'Trying to reconnect…' : 'Devboard cannot reach the local Dev Server.'}}</p>
+    <p>Devboard retries automatically and keeps your current page open. The values on screen are the last received data.</p>
+    <p>If your Dev Server has stopped, ask your agent to start this project again, or run <code>fz dev</code> in the project folder.</p>
+  }
+  <div class="dialog-actions"><button type="button" class="secondary-button dialog-cancel" (click)="closeConnectionHelp()">Close</button>@if(!connected()){<button type="button" class="primary-button" [disabled]="connectionConnecting()" (click)="reconnectConsole()">{{connectionConnecting() ? 'Reconnecting…' : 'Reconnect now'}}</button>}</div>
+</dialog>
+
 <div class="update-notice-region" role="status" aria-live="polite">
   @if(updateNotice()) {
     <div class="update-notice"><i class="bi bi-check-circle" aria-hidden="true"></i><span>{{updateNotice()}}</span>
@@ -113,4 +125,4 @@
   }
 </div>
 
-<ng-template #localConnection><span class="connection" role="status" [class.connected]="connected()" [title]="connected() ? 'Connected to the local Dev Server' : 'Disconnected from the local Dev Server'" [attr.aria-label]="connected() ? 'Connected to the local Dev Server' : 'Disconnected from the local Dev Server'"><i class="bi" [class.bi-plug-fill]="connected()" [class.bi-plug]="!connected()" aria-hidden="true"></i>{{connected() ? 'Connected' : 'Disconnected'}}</span></ng-template>
+<ng-template #localConnection>@if(connected()){<span class="connection connected" role="status" title="Connected to the local Dev Server" aria-label="Connected to the local Dev Server"><i class="bi bi-plug-fill" aria-hidden="true"></i>Connected</span>}@else{<button class="connection connection-retry" type="button" title="Reconnect to the local Dev Server or see how to start it" aria-haspopup="dialog" aria-controls="connection-help" [attr.aria-expanded]="connectionHelpOpen()" (click)="showConnectionHelp($event)"><i class="bi" [class.bi-plug]="!connectionConnecting()" [class.bi-arrow-repeat]="connectionConnecting()" [class.reconnect-spin]="connectionConnecting()" aria-hidden="true"></i>{{connectionConnecting() ? 'Reconnecting…' : 'Disconnected'}}</button>}</ng-template>

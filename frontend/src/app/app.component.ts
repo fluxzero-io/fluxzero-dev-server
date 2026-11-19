@@ -34,6 +34,10 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly injector = inject(Injector);
   private readonly http = inject(HttpClient);
   private readonly connection = inject(ConsoleConnection);
+  readonly connectionConnecting = this.connection.connecting;
+  @ViewChild('connectionHelp') connectionHelp?: ElementRef<HTMLDialogElement>;
+  readonly connectionHelpOpen = signal(false);
+  private connectionTrigger?: HTMLElement;
   private readonly sanitizer = inject(DomSanitizer);
   @ViewChild('frame') frame?: ElementRef<HTMLIFrameElement>;
   readonly status = signal<Status | undefined>(undefined);
@@ -262,9 +266,22 @@ export class AppComponent implements OnInit, OnDestroy {
     this.setTheme(theme && ['light', 'dark', 'system'].includes(theme) ? theme : 'system');
     this.systemTheme.addEventListener('change', this.systemThemeChanged);
     this.readRoute();
+    this.reconnectConsole();
+  }
+  reconnectConsole() {
     this.connection.initialise(
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
+  }
+  showConnectionHelp(event:Event) {
+    this.connectionTrigger=event.currentTarget as HTMLElement;
+    this.connectionHelpOpen.set(true);
+    this.connectionHelp?.nativeElement.showModal();
+    if(!this.connectionConnecting()) this.reconnectConsole();
+  }
+  closeConnectionHelp() {
+    this.connectionHelp?.nativeElement.close();this.connectionHelpOpen.set(false);
+    if(this.connectionTrigger?.isConnected) this.connectionTrigger.focus();
   }
   ngOnDestroy() { clearTimeout(this.updateNoticeTimer); clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
