@@ -373,6 +373,10 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .nav-backdrop {display:block;position:fixed;inset:0;background:#10203955;border:0;z-index:19;cursor:default;}
 .navigation-bar {position:relative;height:48px;display:flex;align-items:center;padding:0 16px;background:var(--dashboard-sidebar-bg);border-bottom:1px solid var(--dashboard-border);}
 .navigation-account {display:flex;align-items:center;gap:12px;margin-left:auto;color:var(--dashboard-muted);font-size:12px;}
+.navigation-bar.cloud-context-bar {height:auto;min-height:48px;gap:12px;padding:6px 20px;}
+.cloud-context-bar dev-cloud-context {flex:1;min-width:0;}
+.cloud-context-bar .navigation-account {flex-shrink:0;}
+@media(max-width:500px){.navigation-bar.cloud-context-bar{gap:8px;padding:6px 12px;}.cloud-context-bar .navigation-account{gap:6px;}}
 .navigation-launcher {width:36px;height:36px;font-size:20px;}
 .dashboard-section-toggle {min-height:36px;padding:0 10px;gap:8px;}
 .dashboard-section-toggle:hover {background:var(--dashboard-active-soft);}

@@ -12,7 +12,7 @@ export interface CloudProposal {
   id:string;revision:number;expiresAt:number;organization:string;team?:string;plan:string;cluster:string;application:string;
   environment:string;repository:string;branch:string;commit:string;change:string;planImpact:string;
 }
-export interface CloudSetup {applicationConfigured:boolean;size:string;pipelineConfigured:boolean;workflowPath:string;workflowStatus:'not_checked'|'checked';}
+export interface CloudSetup {applicationConfigured:boolean;size:string;pipelineConfigured:boolean;workflowPath:string;workflowStatus:'not_checked'|'checked';workflowApplication?:string;workflowCluster?:string;}
 export interface CloudState {
   version:1;mode:'demo';revision:number;scenario:string;scenarios:{id:string;label:string;group:string}[];
   account:'signed_out'|'signed_in'|'expired'|'locked';accountName:string;availability:'available'|'offline'|'forbidden';

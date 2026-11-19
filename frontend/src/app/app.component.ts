@@ -1,6 +1,7 @@
 import {ServerUpdateComponent} from './server-update.component';
 import {CloudPageComponent, cloudPages, dashboardDestination} from './cloud-page.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
+import {CloudContextComponent} from './cloud-context.component';
 import {PublishSetupComponent} from './publish-setup.component';
 import {MonitoringOverviewComponent} from './monitoring-overview.component';
 import {CLOUD_DEMO_ENABLED} from './cloud-api';
@@ -26,7 +27,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudContextComponent, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {

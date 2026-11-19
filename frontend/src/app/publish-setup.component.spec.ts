@@ -4,6 +4,7 @@ import {HttpTestingController, provideHttpClientTesting} from '@angular/common/h
 import {CLOUD_API, CLOUD_DEMO_ENABLED, CloudCommand, CloudState} from './cloud-api';
 import {PublishSetupComponent} from './publish-setup.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
+import {CloudContextComponent} from './cloud-context.component';
 import {AccountConnection} from './account-connection';
 import {CloudConnection} from './cloud-api';
 
@@ -56,12 +57,21 @@ describe('Publication setup checklist',()=>{
     expect(fixture.nativeElement.textContent).toContain('Build and push status is not connected yet');
     expect(fixture.nativeElement.querySelector('.status.running')).toBeNull();
     expect(fixture.nativeElement.querySelector('.application-url')).toBeNull();
-    expect(fixture.nativeElement.querySelector('.plan-badge').textContent).toContain('Starter');
+    fixture.destroy();
+  });
+  it('renders the saved existing cluster when its options appear after Cloud discovery',async()=>{
+    state={...initial(),account:'signed_in',organizationId:'acme',cluster:'shared-01',availableClusters:['shared-01'],setup:{...initial().setup!,applicationConfigured:true}};
+    const fixture=TestBed.createComponent(PublishSetupComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    fixture.componentInstance.edit(2);fixture.detectChanges();
+    const select=fixture.nativeElement.querySelector('.setup-timeline > li:nth-child(3) details select') as HTMLSelectElement;
+    expect(fixture.componentInstance.cluster()).toBe('existing');
+    expect(select.value).toBe('existing');
+    expect(select.selectedOptions[0].textContent).toBe('shared-01');
     fixture.destroy();
   });
   it('shows only an explicitly known organization plan and never infers Free from sign-in',async()=>{
     state={...initial(),account:'signed_in',organizationId:'acme'};
-    const fixture=TestBed.createComponent(CloudResourcesComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
+    const fixture=TestBed.createComponent(CloudContextComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
     const cloud=TestBed.inject(CloudConnection);
     for(const plan of ['Free','Starter','Pro']) {
       cloud.state.set({...state,organizations:[{...state.organizations[0],plan}]});fixture.detectChanges();

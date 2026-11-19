@@ -59,6 +59,25 @@ describe('Dev console navigation', () => {
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
   });
+  it('combines Cloud context and hidden navigation into one bar while preserving the local preview',()=>{
+    const root:HTMLElement=fixture.nativeElement, app=fixture.componentInstance;
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    app.navigate('cloud/overview');fixture.detectChanges();
+    expect(root.querySelectorAll('.navigation-bar').length).toBe(1);
+    expect(root.querySelectorAll('dev-cloud-context').length).toBe(1);
+    expect(root.querySelector('.navigation-launcher')).toBeNull();
+    app.sidebarCollapsed.set(true);fixture.detectChanges();
+    expect(root.querySelectorAll('.navigation-bar').length).toBe(1);
+    expect(root.querySelectorAll('dev-cloud-context').length).toBe(1);
+    expect(root.querySelector('.navigation-launcher')).not.toBeNull();
+    expect(root.querySelectorAll('.account-trigger').length).toBe(1);
+    expect(root.querySelector('.plan-badge')).toBeNull();
+    app.navigate('application');fixture.detectChanges();
+    expect(root.querySelector('dev-cloud-context')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    TestBed.inject(HttpTestingController).expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('cloud'));
+  });
   it('reveals Cloud only after login without replacing the local preview', () => {
     const root:HTMLElement=fixture.nativeElement;
     fixture.componentInstance.navigate('application');fixture.detectChanges();

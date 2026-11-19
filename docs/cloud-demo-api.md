@@ -50,6 +50,13 @@ Legacy review/deploy commands and seeded scenarios retain their simulated clock-
 The current checklist never invokes them and reports no build/push success. It performs no work on user code. Proposal expiry, changed organization/configuration, permission loss and capacity
 checks reject stale application; repeating an accepted proposal returns the same operation.
 
+The additive `setup.workflowApplication` and `setup.workflowCluster` fields preserve the destination last saved
+with `configure-pipeline`. Editing application settings keeps that baseline for the proposed Actions-variable diff;
+changing repository/branch or organization clears it. These are fixture setup values, not observed GitHub variables.
+The workflow popup shows deployment-step examples and those proposed variable changes. It neither reads nor writes
+the local workflow or provider settings. Actual file discovery, Git diffs and agent-assisted edits belong to the live
+Git/CI adapter, and must distinguish YAML changes from Actions variables and secret references.
+
 ## Data and actions required from live Cloud
 
 The UI review should settle these boundaries before building the live adapter:

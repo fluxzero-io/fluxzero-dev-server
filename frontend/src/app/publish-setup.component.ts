@@ -3,8 +3,9 @@ import {AccountConnection} from './account-connection';
 import {CloudConnection} from './cloud-api';
 import {dashboardDestination} from './cloud-page.component';
 import {DashboardLinkComponent} from './dashboard-link.component';
+import {WorkflowPreviewComponent} from './workflow-preview.component';
 
-@Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
+@Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent,WorkflowPreviewComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
 export class PublishSetupComponent {
   readonly projectName=input('');
   readonly showProjectContext=input(false);

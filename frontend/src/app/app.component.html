@@ -52,7 +52,11 @@
   </aside>
   @if(!sidebarCollapsed() && !mobileNavigation()) {<button class="sidebar-resizer" type="button" role="separator" aria-label="Resize navigation" aria-orientation="vertical" aria-valuemin="260" aria-valuemax="520" [attr.aria-valuenow]="sidebarWidth()" title="Drag to resize; drag left to hide navigation" (pointerdown)="startSidebarResize($event)" (keydown)="resizeNavigationWithKeyboard($event)"></button>}
   <main [class.cloud-data]="isCloud() || isPublishing()" [attr.inert]="menuOpen() ? '' : null">
-    @if(sidebarCollapsed() || mobileNavigation()) {<div class="navigation-bar"><button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button>@if(navigationHidden() && !previewExpanded()){<div class="navigation-account"><ng-container [ngTemplateOutlet]="localConnection"/><dev-account-menu placement="below"/></div>}</div>}
+    @if(sidebarCollapsed() || mobileNavigation() || isCloud()) {<div class="navigation-bar" [class.cloud-context-bar]="isCloud()">
+      @if(sidebarCollapsed() || mobileNavigation()){<button class="icon-button navigation-launcher" type="button" (click)="openNavigation()" aria-label="Open navigation" title="Open navigation" aria-controls="devboard-navigation" [attr.aria-expanded]="menuOpen()"><i class="bi bi-list" aria-hidden="true"></i></button>}
+      @if(isCloud()){<dev-cloud-context/>}
+      @if(navigationHidden() && !previewExpanded()){<div class="navigation-account"><ng-container [ngTemplateOutlet]="localConnection"/><dev-account-menu placement="below"/></div>}
+    </div>}
 
     @if(actionError()) {<div class="error-banner" role="alert">{{actionError()}}</div>}
     @if(status() && !connected()){<div class="connection-notice" role="status"><span>{{status()?.state==='shutdown' ? 'The Dev Server has stopped.' : 'Live updates are disconnected. Showing the last received data.'}}</span><button type="button" class="secondary-button" (click)="showConnectionHelp($event)">{{connectionConnecting() ? 'Reconnecting…' : 'Reconnect…'}}</button></div>}

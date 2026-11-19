@@ -30,7 +30,8 @@ final class CloudDemo {
     record Proposal(String id, long revision, long expiresAt, String organization, String team, String plan, String cluster,
                     String application, String environment, String repository, String branch, String commit,
                     String change, String planImpact) {}
-    record Setup(boolean applicationConfigured, String size, boolean pipelineConfigured, String workflowPath, String workflowStatus) {}
+    record Setup(boolean applicationConfigured, String size, boolean pipelineConfigured, String workflowPath, String workflowStatus,
+                 String workflowApplication, String workflowCluster) {}
     record Snapshot(int version, String mode, long revision, String scenario, List<Scenario> scenarios,
                     String account, String accountName, String availability, List<Organization> organizations,
                     String organizationId, String team, String plannedPlan, boolean canDeploy, boolean capacityAvailable, boolean githubConnected,
@@ -65,6 +66,7 @@ final class CloudDemo {
     private List<Organization> organizations;
     private boolean githubConnected, authTested, planChanged, applicationConfigured, pipelineConfigured;
     private String applicationSize = "Starter";
+    private String workflowApplication = "", workflowCluster = "";
     private Proposal proposal;
     private String acceptedProposal, operation, deployedApplication, deployedCluster;
     private Instant started;
@@ -140,7 +142,9 @@ final class CloudDemo {
                     require(REPOSITORIES.contains(repo), "Choose a repository you can access.");
                     String branch = text(request, "branch", "main");
                     require(Set.of("main", "release").contains(branch), "Choose main or release.");
-                    if (!repo.equals(repository) || !branch.equals(this.branch)) pipelineConfigured = false;
+                    if (!repo.equals(repository) || !branch.equals(this.branch)) {
+                        pipelineConfigured = false; workflowApplication = ""; workflowCluster = "";
+                    }
                     repository = repo; this.branch = branch; environment = "Production";
                 }
                 case "configure-application" -> {
@@ -160,6 +164,7 @@ final class CloudDemo {
                 case "configure-pipeline" -> {
                     require(applicationConfigured && githubConnected && !repository.isEmpty(), "Configure the application and connect its repository first.");
                     pipelineConfigured = true;
+                    workflowApplication = application; workflowCluster = cluster;
                     message = "Workflow settings saved. Commit and push the workflow to start GitHub Actions.";
                 }
                 case "configure" -> {
@@ -254,6 +259,7 @@ final class CloudDemo {
         proposal = null; acceptedProposal = null; operation = null; started = null; deployedApplication = ""; deployedCluster = "";
         planChanged = false; authTested = false; emailPreview = Map.of();
         applicationConfigured = !repository.isEmpty(); pipelineConfigured = applicationConfigured; applicationSize = "Starter";
+        workflowApplication = pipelineConfigured ? application : ""; workflowCluster = pipelineConfigured ? cluster : "";
         domains = List.of(domain("application", "app.acme.example", "not_configured"), domain("auth", "auth.acme.example", "not_configured"), domain("email", "mail.acme.example", "not_configured"));
         if (Set.of("deploying", "live", "dns-pending", "email-pending", "build-failed", "rollout-failed").contains(id)) {
             operation = UUID.randomUUID().toString(); deployedApplication = application; deployedCluster = cluster; started = clock.get().minusSeconds(id.equals("deploying") ? 0 : 30);
@@ -271,6 +277,7 @@ final class CloudDemo {
         githubConnected = false; repository = ""; cluster = ""; proposal = null; operation = null; started = null;
         authTested = false; emailPreview = Map.of(); planChanged = false; deployedApplication = ""; deployedCluster = "";
         applicationConfigured = false; pipelineConfigured = false; applicationSize = "Starter";
+        workflowApplication = ""; workflowCluster = "";
         domains = domains.stream().map(d -> domain(d.kind(), d.hostname(), "not_configured")).toList();
     }
     private List<String> availableClusters() {return clusters.containsKey(organizationId) ? List.of(clusters.get(organizationId)) : List.of();}
@@ -283,7 +290,8 @@ final class CloudDemo {
                 organizations, organizationId, "default", planChanged ? "Pro" : "", organization() != null && !organization().role().equals("Viewer") && !fault.equals("forbidden"), capacity(), githubConnected,
                 REPOSITORIES, repository, branch, repository.isEmpty() ? "" : "GitHub Actions Integration", availableClusters(), cluster, application, environment,
                 proposal, deployment(), domains, emailPreview, authTested, message,
-                new Setup(applicationConfigured, applicationSize, pipelineConfigured, ".github/workflows/deploy.yml", "not_checked"));
+                new Setup(applicationConfigured, applicationSize, pipelineConfigured, ".github/workflows/deploy.yml", "not_checked",
+                        workflowApplication, workflowCluster));
     }
     private Deployment deployment() {
         if (operation == null || !application.equals(deployedApplication) || !cluster.equals(deployedCluster)) return null;

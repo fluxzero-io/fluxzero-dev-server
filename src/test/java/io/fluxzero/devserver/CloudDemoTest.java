@@ -74,6 +74,25 @@ class CloudDemoTest {
         assertFalse(call("{\"action\":\"select-source\",\"repository\":\"acme/parcel-service\",\"branch\":\"release\"}").setup().pipelineConfigured());
     }
 
+    @Test void keepsTheSavedWorkflowDestinationUntilNewSettingsAreConfirmed() throws Exception {
+        call("{\"action\":\"scenario\",\"scenario\":\"ready\"}");
+        var changed = call("{\"action\":\"configure-application\",\"application\":\"parcels\",\"cluster\":\"automatic\"}");
+        assertEquals("parcel-service", changed.setup().workflowApplication());
+        assertEquals("shared-01", changed.setup().workflowCluster());
+        assertEquals("parcels", changed.application());
+        assertEquals("parcels-01", changed.cluster());
+        assertFalse(changed.setup().pipelineConfigured());
+        assertEquals(changed.setup(), call("{}").setup());
+        var saved = call("{\"action\":\"configure-pipeline\"}");
+        assertEquals("parcels", saved.setup().workflowApplication());
+        assertEquals("parcels-01", saved.setup().workflowCluster());
+        assertEquals("not_checked", saved.setup().workflowStatus());
+        assertNull(saved.deployment());
+        var anotherSource = call("{\"action\":\"select-source\",\"repository\":\"acme/customer-portal\",\"branch\":\"main\"}");
+        assertEquals("", anotherSource.setup().workflowApplication());
+        assertEquals("", anotherSource.setup().workflowCluster());
+    }
+
     @Test void doesNotTreatAnExistingReleaseAsANewApplicationsDeployment() throws Exception {
         call("{\"action\":\"scenario\",\"scenario\":\"live\"}");
         var existing = call("{}").deployment();

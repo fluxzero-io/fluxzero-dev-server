@@ -47,15 +47,20 @@ Fluxzero Cloud opens the overview and expands its submenu; the separate chevron 
 The heading shares one green hover surface, with a separate highlight on its chevron. Its submenu contains Clusters, Applications and Integrations. Integrations
 uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
 and planned resources remain distinct.
-Cloud pages share the local page gutters and title style. The header aligns organization and plan at the right,
-and Overview offers the configured Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
+Cloud pages share the local page gutters and title style. A shared toolbar keeps organization and plan together
+at the left; when navigation is hidden it shares the hamburger/account bar. Overview offers the configured
+Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
 Dashboard and Integrations open in a new browser tab, keeping Devboard available. Dashboard and plan pills share
 the same size, with tooltips identifying the online destination, selected organization and known plan.
 Workspace shows the local development profile beside project details, including when navigation is hidden.
 Without a named profile it shows Default configuration; this does not depend on account or Cloud access.
 Workspace stacks Restart apps and Stop at the right of the project details, below the project title. On narrow
 cards the actions move below the details and stay right-aligned. Publish live shows its project/preview context
-only when navigation is hidden. Cloud headers keep the organization name and plan together while wrapping.
+only when navigation is hidden.
+The GitHub workflow step offers an external Integrations handoff when no integration is selected. The fixture's
+workflow link opens deployment steps and a diff of proposed Actions variables against the saved publishing setup.
+App/cluster names use Actions variables, so changing them need not change the workflow YAML. This is a settings
+preview: it does not read or modify a local workflow, inspect GitHub settings, commit files or start CI.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.
