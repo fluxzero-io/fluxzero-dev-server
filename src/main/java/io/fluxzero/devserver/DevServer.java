@@ -2496,6 +2496,7 @@ public class DevServer implements AutoCloseable {
                         }
                         return;
                     }
+                    boolean commandsRequestedByReload = false;
                     if (result.success()) {
                         if (result.snapshot() == null && result.detail().startsWith("app compile skipped")) {
                             updateCompileStatus(id, previousCompileStatus);
@@ -2511,6 +2512,7 @@ public class DevServer implements AutoCloseable {
                                                         "starting " + applicationCount + " application"
                                                         + (applicationCount == 1 ? "" : "s"));
                             ReloadTiming reloadTiming = startCandidateApps(this, result.snapshot());
+                            commandsRequestedByReload = reloadTiming != null;
                             if (existingEnvironment && reloadTiming != null
                                 && "succeeded".equals(projectReloadStatuses.get(id).state())) {
                                 List<String> details = new java.util.ArrayList<>();
@@ -2549,7 +2551,7 @@ public class DevServer implements AutoCloseable {
                             testPipeline.request(changes);
                         }
                     }
-                    if (containsDevCommandChange(changes)) {
+                    if (!commandsRequestedByReload && containsDevCommandChange(changes)) {
                         commandPipeline.requestRun();
                     }
                     synchronized (compileLock) {

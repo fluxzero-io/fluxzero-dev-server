@@ -19,14 +19,17 @@ import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -145,6 +148,43 @@ class SourceWatcherTest {
             Files.move(stagedDirectory, source.getParent(), StandardCopyOption.ATOMIC_MOVE);
             assertTrue(await(() -> batches.stream().flatMap(Set::stream)
                     .anyMatch(source.toAbsolutePath().normalize()::equals)));
+        } finally {
+            scheduler.shutdownNow();
+        }
+    }
+
+    @Test
+    void keepsWatchingWhenAFileDisappearsDuringDirectoryRegistration(@TempDir Path project) throws Exception {
+        Path sources = Files.createDirectories(project.resolve("src/main/java"));
+        Path staging = Files.createDirectories(project.resolve("target/staged"));
+        Files.writeString(staging.resolve("A.java"), "class A {}");
+        Files.writeString(staging.resolve("B.java"), "class B {}");
+        Path feature = sources.resolve("feature");
+        Path later = sources.resolve("Later.java");
+        var removed = new CompletableFuture<Void>();
+        List<Set<Path>> batches = new CopyOnWriteArrayList<>();
+        var scheduler = Executors.newSingleThreadScheduledExecutor();
+        DevServerConfig config = new DevServerConfig(
+                project, null, "test", null, true, false, false,
+                DevServerConfig.DEFAULT_STARTUP_TIMEOUT,
+                DevServerConfig.DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                Duration.ofMillis(50), FrontendConfig.none(), List.of());
+        try (SourceWatcher watcher = new SourceWatcher(config, scheduler, path -> {
+            if (path.getParent().equals(feature) && !removed.isDone()) {
+                Path sibling = feature.resolve(path.endsWith("A.java") ? "B.java" : "A.java");
+                try {
+                    Files.delete(sibling);
+                    removed.complete(null);
+                } catch (IOException e) {
+                    removed.completeExceptionally(e);
+                }
+            }
+        }, batches::add)) {
+            watcher.start();
+            Files.move(staging, feature, StandardCopyOption.ATOMIC_MOVE);
+            removed.get(3, TimeUnit.SECONDS);
+            Files.writeString(later, "class Later {}");
+            assertTrue(await(() -> batches.stream().anyMatch(batch -> batch.contains(later))));
         } finally {
             scheduler.shutdownNow();
         }
