@@ -13,12 +13,13 @@ import {ProjectRenameComponent} from './project-rename.component';
 import {StartedAgoComponent} from './started-ago.component';
 
 @Component({selector: 'dev-environment', standalone: true, imports: [ProjectRenameComponent, StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
-  @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
+  @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading">
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title">{{displayName() || state.project}}</h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
       <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
+    <div class="workspace-summary">
     <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
     <div class="workspace-details">
       @if(state.startedAt && !state.maintenance?.workspaceStopped && !fullyStopped()){<div class="workspace-started"><i class="bi bi-clock" aria-hidden="true"></i><dev-started-ago [startedAt]="state.startedAt"/></div>}

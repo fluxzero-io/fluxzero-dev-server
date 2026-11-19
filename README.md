@@ -53,6 +53,9 @@ Dashboard and Integrations open in a new browser tab, keeping Devboard available
 the same size, with tooltips identifying the online destination, selected organization and known plan.
 Workspace shows the local development profile beside project details, including when navigation is hidden.
 Without a named profile it shows Default configuration; this does not depend on account or Cloud access.
+Workspace stacks Restart apps and Stop at the right of the project details, below the project title. On narrow
+cards the actions move below the details and stay right-aligned. Publish live shows its project/preview context
+only when navigation is hidden. Cloud headers keep the organization name and plan together while wrapping.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.

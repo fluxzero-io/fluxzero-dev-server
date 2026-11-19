@@ -1,6 +1,6 @@
 <section class="page publish-setup">
   <header class="page-heading"><div><h1 class="page-title" tabindex="-1">Publish live</h1><p>Connect GitHub to build and deploy your app.</p></div></header>
-  <div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>
+  @if(showProjectContext()){<div class="project-context"><i class="bi bi-folder2" aria-hidden="true"></i><strong>{{projectName() || 'Your project'}}</strong><a href="#application" (click)="navigate($event,'application')">App preview</a></div>}
   @if(account.message()){<p class="notice" role="status">{{account.message()}}</p>}
   @if(cloud.error()){<p class="notice" role="alert">{{cloud.error()}}</p>}
   @if(data()?.availability==='forbidden'){<p class="notice" role="status">Your access to this organization has changed. Choose another organization or ask its owner.</p>}

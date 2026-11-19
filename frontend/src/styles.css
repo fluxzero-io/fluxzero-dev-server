@@ -305,25 +305,20 @@ select:focus-visible {outline:2px solid var(--dashboard-active);outline-offset:3
 .component-table tbody .component-app-restart {grid-column:2;grid-row:2;justify-content:flex-end;}
 .component-app-restart .dashboard-action {height:32px;font-size:12px;}
 .workspace-actions {margin:0;justify-self:end;}
-.workspace-action-buttons {display:flex;align-items:center;gap:8px;}
+.workspace-action-buttons {display:grid;gap:8px;width:max-content;max-width:100%;}
+.workspace-action-buttons .split-action {width:100%;}
 .current-project {container-type:inline-size;}
-.workspace-summary {flex:1;min-width:0;}
-.workspace-actions {flex-shrink:0;}
-.workspace-heading {display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start;}
-.workspace-heading > .workspace-summary {display:contents;}
-.workspace-heading > .workspace-actions {grid-column:1;grid-row:2;}
-.workspace-heading .project-title-row {grid-column:1;grid-row:1;min-width:0;margin:0;align-items:flex-start;}
+.workspace-heading {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px 24px;align-items:start;}
+.workspace-heading > .workspace-summary {display:grid;gap:12px;grid-column:1;grid-row:2;min-width:0;}
+.workspace-heading > .workspace-actions {grid-column:2;grid-row:2;}
+.workspace-heading .project-title-row {grid-column:1/-1;grid-row:1;min-width:0;margin:0;align-items:flex-start;}
 .workspace-heading .project-title-row :is(h1,h3){min-width:0;overflow-wrap:anywhere;line-height:1.3;}
 .workspace-heading dev-project-rename{flex:0 0 26px;margin-top:1px;}
-.workspace-heading .project-path {grid-column:1/-1;margin:0;}
-.workspace-heading .workspace-details {margin:0;}
-@container(min-width:900px){
-  .current-project > .workspace-heading {grid-template-columns:minmax(0,1fr) auto;}
-  .workspace-heading > .workspace-actions {grid-column:2;grid-row:1;}
-}
-@container(max-width:420px){
-  .workspace-actions {justify-self:start;}
-  .workspace-action-buttons {flex-direction:column;align-items:flex-start;}
+.workspace-heading .project-path {margin:0;}
+.workspace-heading .workspace-details {grid-column:auto;margin:0;}
+@container(max-width:520px){
+  .workspace-heading {grid-template-columns:minmax(0,1fr);}
+  .workspace-heading > .workspace-actions {grid-column:1;grid-row:3;}
 }
 
 .workspace-stopped {margin:24px 0 0;padding:20px 24px;border:1px solid var(--dashboard-border);border-radius:16px;background:var(--dashboard-surface);font-size:13px;line-height:1.6;}

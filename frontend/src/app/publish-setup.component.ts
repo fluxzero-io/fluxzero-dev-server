@@ -7,6 +7,7 @@ import {DashboardLinkComponent} from './dashboard-link.component';
 @Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
 export class PublishSetupComponent {
   readonly projectName=input('');
+  readonly showProjectContext=input(false);
   readonly pageChanged=output<string>();
   readonly account=inject(AccountConnection);
   readonly cloud=inject(CloudConnection);
