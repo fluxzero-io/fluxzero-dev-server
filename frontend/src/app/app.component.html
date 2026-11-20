@@ -62,8 +62,7 @@
     @if(status() && !connected()){<div class="connection-notice" role="status"><span>{{status()?.state==='shutdown' ? 'The Dev Server has stopped.' : 'Live updates are disconnected. Showing the last received data.'}}</span><button type="button" class="secondary-button" (click)="showConnectionHelp($event)">{{connectionConnecting() ? 'Reconnecting…' : 'Reconnect…'}}</button></div>}
     @if(isPublishing()) {<dev-publish-setup [projectName]="currentName()" [showProjectContext]="navigationHidden()" (pageChanged)="navigateFromCloud($event)"/>}
     @if(isCloud()) {
-      @if(cloudDemo){<dev-cloud-resources [section]="cloudSection()" (pageChanged)="navigateFromCloud($event)"/>}
-      @else{<dev-cloud-page [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>}
+      <dev-cloud-resources [section]="cloudSection()" [projectName]="currentName()" (pageChanged)="navigateFromCloud($event)"/>
     }
     @if(route() === 'projects') {<dev-projects [status]="status()" [current]="current()"/>}
     @if(route() === 'tests') {<dev-tests [status]="status()"/>}

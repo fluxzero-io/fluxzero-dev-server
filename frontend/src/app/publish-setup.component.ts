@@ -4,8 +4,9 @@ import {CloudConnection} from './cloud-api';
 import {dashboardDestination} from './cloud-page.component';
 import {DashboardLinkComponent} from './dashboard-link.component';
 import {WorkflowPreviewComponent} from './workflow-preview.component';
+import {CloudContextComponent} from './cloud-context.component';
 
-@Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent,WorkflowPreviewComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
+@Component({selector:'dev-publish-setup',standalone:true,imports:[DashboardLinkComponent,WorkflowPreviewComponent,CloudContextComponent],templateUrl:'./publish-setup.component.html',styleUrl:'./publish-setup.component.scss'})
 export class PublishSetupComponent {
   readonly projectName=input('');
   readonly showProjectContext=input(false);
@@ -23,26 +24,27 @@ export class PublishSetupComponent {
   readonly current=computed(()=>!this.accountReady() ? 0 : !this.organization() ? 1 : !this.applicationReady() ? 2 : !this.deliveryReady() ? 3 : 4);
   readonly editing=signal<number|null>(null);
   readonly expanded=computed(()=>this.editing() ?? this.current());
-  readonly organizationName=signal('My team');
-  readonly application=signal('parcel-service');
-  readonly size=signal('Starter');
+  readonly organizationName=signal('');
+  readonly application=signal('');
+  readonly size=signal('');
   readonly cluster=signal('automatic');
-  readonly repository=signal('acme/parcel-service');
-  readonly branch=signal('main');
+  readonly repository=signal('');
+  readonly branch=signal('');
   private context?:string;
   private readonly element=inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector=inject(Injector);
   private focusCurrent(){afterNextRender(()=>this.element.nativeElement.querySelector<HTMLElement>('.setup-timeline .current .primary-button,.setup-timeline .current .sign-in-action,.setup-timeline .current input,.setup-timeline .current select')?.focus({preventScroll:true}),{injector:this.injector});}
   constructor(){
     this.account.initialize();
+    this.cloud.initialize();
     effect(()=>{
       const state=this.data();
-      const context=state && state.scenario+':'+state.organizationId;
+      const context=state?.organizationId;
       if(state && context!==this.context){
         this.context=context;this.editing.set(null);
-        this.application.set(state.application);this.size.set(state.setup?.size || 'Starter');
+        this.application.set(state.application);this.size.set(state.setup?.size || state.applicationSizes?.[0] || '');
         this.cluster.set(state.availableClusters.includes(state.cluster) ? 'existing' : 'automatic');
-        this.repository.set(state.repository || state.repositories[0]);this.branch.set(state.branch);
+        this.repository.set(state.repository || state.repositories[0] || '');this.branch.set(state.branch);
       }
     });
   }

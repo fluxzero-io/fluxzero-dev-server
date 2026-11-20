@@ -1,5 +1,6 @@
 import {DestroyRef, Injectable, computed, effect, inject, signal} from '@angular/core';
 import {CloudConnection} from './cloud-api';
+import {CLOUD_DEMO_ENABLED, DemoCloudApi, fixtureAccountStatus} from './cloud-demo-api';
 import {HttpClient} from '@angular/common/http';
 import {firstValueFrom, timeout} from 'rxjs';
 
@@ -38,6 +39,8 @@ export class AccountConnection {
   readonly signedIn = computed(() => this.account()?.state === 'signed_in');
   private readonly http = inject(HttpClient);
   private readonly cloudDemo = inject(CloudConnection);
+  private readonly fixtureEnabled=inject(CLOUD_DEMO_ENABLED);
+  private readonly fixture=inject(DemoCloudApi);
   private timer?: ReturnType<typeof setTimeout>;
   private statusRequest?: Promise<void>;
   private started = false;
@@ -46,11 +49,10 @@ export class AccountConnection {
   private readonly returned = () => {if(document.visibilityState !== 'hidden') void this.load(true);};
 
   constructor() {
-    if(this.cloudDemo.enabled) effect(()=>{
-      const state=this.cloudDemo.state();
+    if(this.fixtureEnabled) effect(()=>{
+      const state=this.fixture.session();
       if(state) {
-        this.account.set({state:state.account === 'expired' ? 'sign_in_required' : state.account === 'signed_out' ? 'signed_out' : 'signed_in',
-          displayName:state.accountName,email:'alex@acme.example',environment:'Cloud demo',issue:state.account === 'locked' ? 'storage_locked' : undefined});
+        this.account.set(fixtureAccountStatus(state));
         this.issue.set(state.account === 'locked' ? 'storage_locked' : '');
       }
     });
@@ -62,17 +64,22 @@ export class AccountConnection {
       document.removeEventListener('visibilitychange', this.returned);
     });
   }
-  initialize() {if(!this.started) {this.started = true;if(this.cloudDemo.enabled) this.cloudDemo.initialize();else void this.load();}}
+  initialize() {if(!this.started) {this.started = true;if(this.fixtureEnabled) this.cloudDemo.initialize();else void this.load();}}
   async load(checkPending = false) {
-    if(this.cloudDemo.enabled) {await this.cloudDemo.call({action:'status'});return;}
+    if(this.fixtureEnabled) {await this.cloudDemo.call({action:'status'});return;}
     if(this.busy() || this.destroyed) return;
     const pending = this.statusRequest ||= this.call('status');
     try {await pending;} finally {if(this.statusRequest === pending) this.statusRequest = undefined;}
   }
   async act(action: AccountAction) {
-    if(this.cloudDemo.enabled) {
+    if(this.fixtureEnabled) {
+      if(this.busy() || this.destroyed)return;
       const mapped=action === 'logout' || action === 'logout-everywhere' ? 'sign-out' : action === 'check-interactive' ? 'unlock' : action.startsWith('login') ? 'sign-in' : 'status';
-      await this.cloudDemo.call({action:mapped});return;
+      this.busy.set(true);
+      try{await this.cloudDemo.call({action:mapped});if(this.cloudDemo.error())this.message.set(this.cloudDemo.error());}
+      catch{this.message.set('Account features are unavailable. Try again shortly.');}
+      finally{this.busy.set(false);}
+      return;
     }
     if(this.busy() || this.destroyed) return;
     this.busy.set(true);

@@ -1,10 +1,9 @@
 import {ServerUpdateComponent} from './server-update.component';
-import {CloudPageComponent, cloudPages, dashboardDestination} from './cloud-page.component';
+import {cloudPages, dashboardDestination} from './cloud-page.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
 import {CloudContextComponent} from './cloud-context.component';
 import {PublishSetupComponent} from './publish-setup.component';
 import {MonitoringOverviewComponent} from './monitoring-overview.component';
-import {CLOUD_DEMO_ENABLED} from './cloud-api';
 import {AccountConnection} from './account-connection';
 import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
@@ -27,7 +26,7 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudContextComponent, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, CloudPageComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudContextComponent, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
@@ -127,7 +126,6 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly menuOpen = signal(false);
   readonly cloudPages = cloudPages;
   readonly cloudMenuPages = ['clusters','applications'].map(key=>cloudPages.find(page=>page.key===key)!);
-  readonly cloudDemo = inject(CLOUD_DEMO_ENABLED);
   readonly accountConnection = inject(AccountConnection);
   readonly cloudDashboardUrl = computed(()=>dashboardDestination(this.accountConnection.dashboardUrl()));
   openIntegrations(event:MouseEvent) {if(!this.cloudDashboardUrl()) this.link(event,'cloud/integrations');}

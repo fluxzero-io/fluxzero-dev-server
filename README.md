@@ -50,6 +50,8 @@ and planned resources remain distinct.
 Cloud pages share the local page gutters and title style. A shared toolbar keeps organization and plan together
 at the left; when navigation is hidden it shares the hamburger/account bar. Overview offers the configured
 Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
+The compact plan disc precedes the organization name, using the same quiet text size. A small selector appears
+when more than one organization is available. Publish live step two uses this same organization context.
 Dashboard and Integrations open in a new browser tab, keeping Devboard available. Dashboard and plan pills share
 the same size, with tooltips identifying the online destination, selected organization and known plan.
 Workspace shows the local development profile beside project details, including when navigation is hidden.
@@ -60,7 +62,8 @@ only when navigation is hidden.
 The GitHub workflow step offers an external Integrations handoff when no integration is selected. The fixture's
 workflow link opens deployment steps and a diff of proposed Actions variables against the saved publishing setup.
 App/cluster names use Actions variables, so changing them need not change the workflow YAML. This is a settings
-preview: it does not read or modify a local workflow, inspect GitHub settings, commit files or start CI.
+preview when the adapter supplies suggested content. A provider may supply read-only local or GitHub workflow
+contents with explicit provenance. Opening the viewer does not modify settings, commit files or start CI.
 
 Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
 include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.
@@ -112,6 +115,9 @@ Account actions in that UI never access native credentials; the normal account f
 option is absent. The demo contacts no external providers and sends no email. Local App preview remains independent.
 Cloud pages use a subtly different background from local development pages.
 See [the demo protocol and required live Cloud capabilities](docs/cloud-demo-api.md).
+The ordinary UI uses the same replaceable [Cloud adapter contract](docs/cloud-ui-adapter.md), with no scenario
+branches or example application/repository defaults. Choices and supported actions come from the adapter.
+Without a connected adapter, resources stay unknown and the UI offers Dashboard handoffs.
 
 ## Devboard
 

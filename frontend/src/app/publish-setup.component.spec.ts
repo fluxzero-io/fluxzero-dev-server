@@ -1,20 +1,22 @@
+import {signal} from '@angular/core';
+import {DemoCloudApi, DemoCloudState, cloudFixtureState} from './cloud-demo-api';
 import {TestBed} from '@angular/core/testing';
 import {provideHttpClient} from '@angular/common/http';
 import {HttpTestingController, provideHttpClientTesting} from '@angular/common/http/testing';
-import {CLOUD_API, CLOUD_DEMO_ENABLED, CloudCommand, CloudState} from './cloud-api';
+import {CLOUD_API, CLOUD_DEMO_ENABLED, CloudCommand} from './cloud-api';
 import {PublishSetupComponent} from './publish-setup.component';
 import {CloudResourcesComponent} from './cloud-resources.component';
 import {CloudContextComponent} from './cloud-context.component';
 import {AccountConnection} from './account-connection';
 import {CloudConnection} from './cloud-api';
 
-function initial():CloudState{return {version:1,mode:'demo',revision:1,scenario:'local',scenarios:[],account:'signed_out',accountName:'Alex',availability:'available',organizations:[{id:'acme',name:'Acme Studio',plan:'Starter',applications:0,limit:1,role:'Owner'}],organizationId:'',plannedPlan:'',canDeploy:true,capacityAvailable:true,githubConnected:false,repositories:['acme/parcel-service'],repository:'',branch:'main',integration:'',availableClusters:[],cluster:'',application:'parcel-service',environment:'Production',proposal:null,deployment:null,domains:[],emailPreview:{},authTested:false,message:'',setup:{applicationConfigured:false,size:'Starter',pipelineConfigured:false,workflowPath:'.github/workflows/deploy.yml',workflowStatus:'not_checked'}};}
+function initial():DemoCloudState{return {version:1,mode:'demo',revision:1,scenario:'local',scenarios:[],account:'signed_out',accountName:'Alex',availability:'available',organizations:[{id:'acme',name:'Acme Studio',plan:'Starter',applications:0,limit:1,role:'Owner'}],organizationId:'',plannedPlan:'',canDeploy:true,capacityAvailable:true,githubConnected:false,repositories:['acme/parcel-service'],repository:'',branch:'main',integration:'',availableClusters:[],cluster:'',application:'parcel-service',environment:'Production',proposal:null,deployment:null,domains:[],emailPreview:{},authTested:false,message:'',setup:{applicationConfigured:false,size:'Starter',pipelineConfigured:false,workflowPath:'.github/workflows/deploy.yml',workflowStatus:'not_checked'}};}
 
 describe('Publication setup checklist',()=>{
-  let state:CloudState,calls:CloudCommand[];
+  let state:DemoCloudState,calls:CloudCommand[];
   beforeEach(()=>{
     state=initial();calls=[];
-    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),{provide:CLOUD_DEMO_ENABLED,useValue:true},{provide:CLOUD_API,useValue:{call:async(command:CloudCommand)=>{
+    const api={session:signal<DemoCloudState|undefined>(undefined),call:async(command:CloudCommand)=>{
       calls.push(command);
       if(command.action==='sign-in')state={...state,account:'signed_in'};
       if(command.action==='select-organization')state={...state,organizationId:command['organizationId']};
@@ -22,8 +24,9 @@ describe('Publication setup checklist',()=>{
       if(command.action==='connect-github')state={...state,githubConnected:true};
       if(command.action==='select-source')state={...state,repository:command['repository'],branch:command['branch']};
       if(command.action==='configure-pipeline')state={...state,setup:{...state.setup!,pipelineConfigured:true}};
-      return state;
-    }}}]});
+      api.session.set(state);return cloudFixtureState(state);
+    }};
+    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),{provide:CLOUD_DEMO_ENABLED,useValue:true},{provide:DemoCloudApi,useValue:api},{provide:CLOUD_API,useValue:api}]});
   });
   it('finishes setup with a Cloud handoff and never claims a build, push or deployment',async()=>{
     const fixture=TestBed.createComponent(PublishSetupComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
@@ -74,11 +77,11 @@ describe('Publication setup checklist',()=>{
     const fixture=TestBed.createComponent(CloudContextComponent);fixture.detectChanges();await fixture.whenStable();fixture.detectChanges();
     const cloud=TestBed.inject(CloudConnection);
     for(const plan of ['Free','Starter','Pro']) {
-      cloud.state.set({...state,organizations:[{...state.organizations[0],plan}]});fixture.detectChanges();
+      cloud.state.set(cloudFixtureState({...state,organizations:[{...state.organizations[0],plan}]}));fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.plan-badge')?.textContent).toContain(plan);
     }
     for(const snapshot of [{...state,organizationId:''},{...state,organizations:[{...state.organizations[0],plan:''}]},{...state,availability:'offline' as const},{...state,account:'signed_out' as const}]) {
-      cloud.state.set(snapshot);fixture.detectChanges();expect(fixture.nativeElement.querySelector('.plan-badge')).toBeNull();
+      cloud.state.set(cloudFixtureState(snapshot));if(snapshot.account==='signed_out')TestBed.inject(AccountConnection).account.set({state:'signed_out'});fixture.detectChanges();expect(fixture.nativeElement.querySelector('.plan-badge')).toBeNull();
     }
     fixture.destroy();
   });
