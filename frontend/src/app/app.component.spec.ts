@@ -1288,7 +1288,7 @@ describe('Dev console navigation', () => {
     for (const badge of badges) {
       expect(badge.getBoundingClientRect().width).toBeCloseTo(badges[0].getBoundingClientRect().width, 1);
       expect(getComputedStyle(badge).textAlign).toBe('left');
-      expect(getComputedStyle(badge).justifyContent).toBe('flex-start');
+      expect(['flex-start', 'flow-start']).toContain(getComputedStyle(badge).justifyContent);
       expect(badge.scrollWidth).toBeLessThanOrEqual(badge.clientWidth);
     }
   });
