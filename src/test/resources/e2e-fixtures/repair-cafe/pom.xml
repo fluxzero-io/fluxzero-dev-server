@@ -187,7 +187,7 @@
       <plugin>
         <groupId>io.fluxzero.tools</groupId>
         <artifactId>fluxzero-maven-plugin</artifactId>
-        <version>1.15.0</version>
+        <version>1.21.36</version>
         <configuration>
           <packageName>repair-cafe</packageName>
           <images>
