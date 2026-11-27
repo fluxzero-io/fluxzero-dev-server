@@ -39,7 +39,7 @@
         <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
-        <fluxzero.version>2.29.11</fluxzero.version>
+        <fluxzero.version>2.29.14</fluxzero.version>
         <fluxzero-idp.version>0.28.1</fluxzero-idp.version>
         <jackson.version>2.23.0</jackson.version>
         <jetty.version>12.1.15</jetty.version>
