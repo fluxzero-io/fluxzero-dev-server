@@ -425,6 +425,8 @@ describe('Dev console navigation', () => {
     await fixture.whenStable(); fixture.detectChanges();
     expect(select.textContent).toContain('demo'); expect(select.disabled).toBeFalse();
     expect(refresh).toHaveBeenCalledTimes(1);
+    // A periodic account refresh is independent from the profile-switch request.
+    http.match('account/status').forEach(request => request.flush({account: {state: 'signed_out'}}));
     http.verify();
   });
   it('shows profile errors and retains the active choice when switching is rejected', async () => {

@@ -47,12 +47,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: ece6c67be7d869a8b5db064b9c7ca6523d1fd6e1
-          path: target/account-source
+          ref: cded652932215c8ea45efd721f32679e2631fed8
+          path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
         run: |
-          cd target/account-source
+          cd .private/account-source
           ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Build and test
         timeout-minutes: 20
@@ -91,12 +91,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: ece6c67be7d869a8b5db064b9c7ca6523d1fd6e1
-          path: target/account-source
+          ref: cded652932215c8ea45efd721f32679e2631fed8
+          path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
         run: |
-          cd target/account-source
+          cd .private/account-source
           ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Disable compiler annotations for negative tests
         run: echo "::remove-matcher owner=maven-javac::"
@@ -139,12 +139,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: ece6c67be7d869a8b5db064b9c7ca6523d1fd6e1
-          path: target/account-source
+          ref: cded652932215c8ea45efd721f32679e2631fed8
+          path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
         run: |
-          cd target/account-source
+          cd .private/account-source
           ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Test Vite and Angular workflows
         run: ./mvnw -B verify -Pdev-server-frontend-e2e
@@ -168,12 +168,12 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: ece6c67be7d869a8b5db064b9c7ca6523d1fd6e1
-          path: target/account-source
+          ref: cded652932215c8ea45efd721f32679e2631fed8
+          path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
         run: |
-          cd target/account-source
+          cd .private/account-source
           ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Set local qualification version
         run: ./mvnw -B versions:set -DnewVersion=0.0.0
