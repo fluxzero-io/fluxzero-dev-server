@@ -7,7 +7,7 @@ import {sendCommand} from './dom-handlers';
 type Folder = {path:string; parent:string; folders:{name:string;path:string}[]; truncated:boolean; project:boolean; ancestors:{name:string;path:string}[]};
 @Component({selector:'dev-project-manager',standalone:true,template:`
   <dialog #dialog aria-labelledby="manage-projects-title" (pointerdown)="backdropPressed = isBackdrop($event)" (click)="dismissBackdrop($event)" (cancel)="cancel($event)" (close)="restoreFocus()" (keydown)="$event.stopPropagation()">
-    <header><h2 id="manage-projects-title">{{mode() === 'list' ? 'Manage projects' : mode() === 'new' ? 'New project' : 'Open other project'}}</h2>
+    <header><h2 id="manage-projects-title">{{mode() === 'list' ? 'Manage local projects' : mode() === 'new' ? 'New project' : 'Open other project'}}</h2>
       <button class="icon-button" aria-label="Close project manager" [disabled]="isBusy()" (click)="dialog.close()"><i class="bi bi-x-lg" aria-hidden="true"></i></button></header>
     @if(error() || workspaceError()) {<p class="error" role="alert">{{error() || workspaceError()}}</p>}
     @if(mode() === 'list') {

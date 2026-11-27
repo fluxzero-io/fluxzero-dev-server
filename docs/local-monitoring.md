@@ -54,7 +54,7 @@ to use the active environment's UI inside the dev console. The iframe uses the p
 application URL on the current gateway, so application routes, API calls, login and frontend
 hot reload use their normal origin. The app stays mounted when switching to Dev environment or
 Monitoring, preserving its navigation and form state. A reload button resets the preview;
-**Open application full page** opens the app in the current tab without relying on pop-ups.
+**Open application full page** opens the app in a new browser tab, keeping Devboard available.
 If no application URL is available, the console shows an unavailable state.
 
 The console only embeds application URLs on its own origin and rejects its reserved routes.
@@ -101,6 +101,10 @@ To opt out, put this in `.fluxzero/dev.yaml` or the selected profile, then resta
 monitoring:
   enabled: false
 ```
+
+Set `enabled: true` to enable it again. This is project/development-profile configuration;
+Devboard does not currently edit it through a live toggle.
+Restarting the Dev Server resets in-memory application data.
 
 You can customize retention or storage without providing artifact paths:
 

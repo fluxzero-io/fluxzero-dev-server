@@ -22,6 +22,7 @@ import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.server.ServerConnector;
 import org.eclipse.jetty.server.handler.ContextHandler;
 import org.eclipse.jetty.util.Callback;
+
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.server.WebSocketUpgradeHandler;
 import org.junit.jupiter.api.Test;
@@ -36,6 +37,8 @@ import java.net.http.WebSocket;
 import java.net.http.WebSocketHandshakeException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -55,6 +58,85 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class DevGatewayTest {
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(2)).build();
+
+    @Test
+    void dashboardEntryUsesOptionalConfigurationWithoutOpeningCredentials(@org.junit.jupiter.api.io.TempDir Path directory) throws Exception {
+        String previousUrl = System.getProperty("fluxzero.account.dashboardUrl");
+        String previousDirectory = System.getProperty("fluxzero.account.directory");
+        Path accountDirectory = directory.resolve("unused-account");
+        System.setProperty("fluxzero.account.directory", accountDirectory.toString());
+        try (var console = new DevConsole(java.util.Map::of, null, new DevEnvironmentRegistry(directory.resolve("registry")));
+             TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                     "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+            System.setProperty("fluxzero.account.dashboardUrl", "http://dashboard.fluxzero.localhost:4200/?private-context=omit-this");
+            String shell = request(gateway.url() + DevConsole.ROOT, "text/html", null).body();
+            assertTrue(shell.contains("window.fluxzeroDashboardUrl=\"http://dashboard.fluxzero.localhost:4200/\""));
+            assertFalse(shell.contains("omit-this"));
+            System.setProperty("fluxzero.account.dashboardUrl", "javascript:alert(1)");
+            var response = request(gateway.url() + DevConsole.ROOT, "text/html", null);
+            assertEquals(200, response.statusCode());
+            assertTrue(response.body().contains("window.fluxzeroDashboardUrl=null"));
+            assertFalse(Files.exists(accountDirectory));
+        } finally {
+            if (previousUrl == null) System.clearProperty("fluxzero.account.dashboardUrl"); else System.setProperty("fluxzero.account.dashboardUrl", previousUrl);
+            if (previousDirectory == null) System.clearProperty("fluxzero.account.directory"); else System.setProperty("fluxzero.account.directory", previousDirectory);
+        }
+    }
+
+    @Test
+    void cloudDemoRequiresExplicitOptInAndTheLocalConsoleOrigin(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String previous = System.getProperty("fluxzero.cloud.demo");
+        try {
+            for (boolean enabled : List.of(false, true)) {
+                System.setProperty("fluxzero.cloud.demo", String.valueOf(enabled));
+                var console = new DevConsole(java.util.Map::of, null, new DevEnvironmentRegistry(directory.resolve("registry")));
+                try (TestUpstream backend = TestUpstream.start("backend");
+                     DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                             "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+                    String url = gateway.url() + DevConsole.ROOT + "cloud-demo/action";
+                    assertEquals(enabled ? 405 : 404, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+                    assertEquals(enabled ? 403 : 404, projectPost(url, "https://untrusted.example", true).statusCode());
+                    assertEquals(enabled ? 200 : 404, renamePost(url, gateway.url(), "{\"action\":\"status\"}").statusCode());
+                    if (enabled) {
+                        assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+                        assertEquals(413, renamePost(url, gateway.url(), " ".repeat(4097)).statusCode());
+                        assertEquals(400, renamePost(url, gateway.url(), "{\"action\":\"status\",\"token\":\"unused\"}").statusCode());
+                        assertTrue(request(gateway.url() + DevConsole.ROOT, "text/html", null).body().contains("window.fluxzeroCloudDemo=true"));
+                    }
+                    assertEquals(200, request(gateway.url() + "/api/orders", "application/json", null).statusCode());
+                } finally {console.close();}
+            }
+        } finally {
+            if (previous == null) System.clearProperty("fluxzero.cloud.demo"); else System.setProperty("fluxzero.cloud.demo", previous);
+        }
+    }
+
+    @Test
+    void accountActionsRequireConsoleOriginAndAccountFailureDoesNotInterruptTheApp(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        String originalIssuer = System.getProperty("fluxzero.account.issuer");
+        System.setProperty("fluxzero.account.issuer", "invalid-account-configuration");
+        var console = new DevConsole(() -> java.util.Map.of("project", "example"), null,
+                new DevEnvironmentRegistry(directory.resolve("registry")));
+        try (TestUpstream backend = TestUpstream.start("backend");
+             DevGateway gateway = DevGateway.start(backend.url(), List.of(new DevGateway.FrontendRoute(
+                     "application", "/", backend.url(), () -> true)), () -> true, List.of("/api"), 0, () -> {}, true, console)) {
+            String url = gateway.url() + DevConsole.ROOT + "account/status";
+            assertEquals(405, HTTP_CLIENT.send(HttpRequest.newBuilder(URI.create(url)).GET().build(), HttpResponse.BodyHandlers.ofString()).statusCode());
+            assertEquals(403, projectPost(url, null, true).statusCode());
+            assertEquals(403, projectPost(url, "https://untrusted.example.test", true).statusCode());
+            assertEquals(403, projectPost(url, gateway.url(), false).statusCode());
+            var failure = projectPost(url, gateway.url(), true);
+            assertEquals(200, failure.statusCode());
+            assertTrue(failure.body().contains("You can keep working locally"));
+            assertFalse(failure.body().contains("invalid-account-configuration"));
+            assertEquals(200, request(gateway.url() + "/api/orders", "application/json", null).statusCode());
+        } finally {
+            console.close();
+            if (originalIssuer == null) System.clearProperty("fluxzero.account.issuer");
+            else System.setProperty("fluxzero.account.issuer", originalIssuer);
+        }
+    }
 
     @Test
     void isolatesManagedIdpRoutesFromApplicationDiscovery() throws Exception {

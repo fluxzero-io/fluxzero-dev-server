@@ -13,13 +13,18 @@ import {ProjectRenameComponent} from './project-rename.component';
 import {StartedAgoComponent} from './started-ago.component';
 
 @Component({selector: 'dev-environment', standalone: true, imports: [ProjectRenameComponent, StartedAgoComponent, WorkspaceStopComponent, WorkspaceRestartComponent, NgTemplateOutlet, ProjectPathComponent, ResourceDetailComponent, ResourceGraphComponent], template: `
-  @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading"><div class="workspace-summary">
+  @if(status(); as state) {<section [class.page]="!embedded()" [class.current-project]="embedded()" aria-label="Current project"><div class="page-heading workspace-heading">
     <div class="project-title-row">
       @if(embedded()) {<h3 class="current-project-title">{{displayName() || state.project}}</h3>}
       @else {<h1>{{displayName() || state.project}}</h1>}
       <dev-project-rename [id]="projectId()" [name]="displayName() || state.project"/>
     </div>
-    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/>@if(!state.maintenance?.workspaceStopped && !fullyStopped()) {<dev-started-ago [startedAt]="state.startedAt"/>}</div>
+    <div class="workspace-summary">
+    <div class="project-path"><dev-project-path [path]="state.projectDirectory" [id]="projectId()" [exists]="directoryExists()"/></div>
+    <div class="workspace-details">
+      @if(state.startedAt && !state.maintenance?.workspaceStopped && !fullyStopped()){<div class="workspace-started"><i class="bi bi-clock" aria-hidden="true"></i><dev-started-ago [startedAt]="state.startedAt"/></div>}
+      <div class="workspace-profile"><i class="bi bi-sliders2" aria-hidden="true"></i><div><span>Development profile</span><strong>{{state.profiles?.active?.trim() || 'Default configuration'}}</strong></div></div>
+    </div>
     </div>
     <div class="workspace-actions">
       <div class="workspace-action-buttons">
@@ -30,23 +35,25 @@ import {StartedAgoComponent} from './started-ago.component';
     @if(state.workspaceIssue && !state.maintenance?.workspaceStopped && !fullyStopped()) {<p class="workspace-issue" role="status"><i class="bi bi-exclamation-circle" aria-hidden="true"></i>{{state.workspaceIssue}}</p>}
     <ng-template #componentCard let-component>
     <div class="component-table-scroll"><table role="table" class="component-table" [attr.aria-label]="component.application ? 'Application resources' : 'Infrastructure resources'">
-      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(component.application) {<th role="columnheader" scope="col" aria-label="Restart app"></th>}@if(!component.application) {<th role="columnheader" scope="col">Monitoring storage</th>}</tr></thead>
+      <thead role="rowgroup"><tr role="row"><th role="columnheader" scope="col">Component</th><th role="columnheader" scope="col">Status</th><th role="columnheader" scope="col">Memory</th>@if(component.application) {<th role="columnheader" scope="col" aria-label="Restart app"></th>}@if(!component.application && component.id!=='testserver') {<th role="columnheader" scope="col">Monitoring storage</th>}</tr></thead>
       <tbody role="rowgroup">
-        <tr role="row" [class.application-component]="component.application">
-          <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i>{{component.name}}
-          </th>
+        <tr role="row" [class.application-component]="component.application" [class.testserver-component]="component.id==='testserver'">
+          <th role="rowheader" scope="row" class="component-name"><i class="bi" [class.bi-window]="component.application" [class.bi-hdd-stack]="!component.application" aria-hidden="true"></i><span>{{component.name}}
+            @if(component.id==='testserver' && component.version){<small class="component-sdk">{{component.version}}</small>}
+          </span></th>
           <td role="cell" class="component-status">
             @if(component.application) {<span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span>}
             @else {<dev-resource-detail [components]="component.components" kind="status"><span class="badge" [class.running]="component.state === 'running'" [class.starting]="component.state === 'starting'" [class.degraded]="component.state === 'degraded'" [class.failed]="component.state === 'failed'">{{component.state}}</span></dev-resource-detail>}
           </td>
-          <td role="cell" class="component-memory" [attr.data-label]="component.application ? 'Memory' : 'Total memory'">
+          <td role="cell" class="component-memory" [attr.data-label]="component.application ? null : 'Total memory'">
+            @if(component.application){<div class="component-memory-heading"><span>Memory</span>@if(component.sdkVersion){<span class="sdk-badge" [attr.aria-label]="'Fluxzero SDK ' + component.sdkVersion" title="Fluxzero SDK version from the project build">SDK {{component.sdkVersion}}</span>}</div>}
             <div class="resource-reading">
               @if(component.application) {<span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span>}
               @else {<dev-resource-detail [components]="component.components" [samples]="state.resourceHistory || []" kind="memory"><span class="resource-value">{{formatBytes(component.memoryBytes)}}@if(component.memoryMaxBytes != null) { / {{formatBytes(component.memoryMaxBytes)}}}</span></dev-resource-detail>}
-              <dev-resource-graph [title]="component.name + ' · Memory'" [samples]="state.resourceHistory || []" [metric]="component.application ? 'applicationMemory' : 'devserverMemory'" [componentId]="component.application ? component.id : undefined" [current]="component.memoryBytes" [limit]="component.memoryMaxBytes"/>
+              <dev-resource-graph [title]="component.name + ' · Memory'" [samples]="component.id==='devserver' ? infrastructureSamples() : state.resourceHistory || []" [metric]="component.application ? 'applicationMemory' : 'devserverMemory'" [componentId]="component.application || component.id==='testserver' ? component.id : undefined" [current]="component.memoryBytes" [limit]="component.memoryMaxBytes"/>
             </div>
           </td>
-          @if(!component.application) {<td role="cell" class="component-storage" data-label="Monitoring storage">
+          @if(!component.application && component.id!=='testserver') {<td role="cell" class="component-storage" data-label="Monitoring storage">
             <div class="resource-reading"><span class="resource-value">{{formatBytes(state.monitoring.resources?.storageDiskBytes)}}@if(state.monitoring.resources?.diskRetentionThresholdBytes != null) { / {{formatBytes(state.monitoring.resources?.diskRetentionThresholdBytes)}}}</span>
               <dev-resource-graph title="Monitoring storage" [samples]="state.resourceHistory || []" metric="monitoringStorage" [current]="state.monitoring.resources?.storageDiskBytes" [limit]="state.monitoring.resources?.diskRetentionThresholdBytes"/>
             </div>
@@ -80,11 +87,12 @@ import {StartedAgoComponent} from './started-ago.component';
       <div class="application-overview">
         @for(application of applications(); track application.id) {
           <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: application}"/>
-        } @empty {<p class="applications-empty">No applications configured for this environment.</p>}
+        } @empty {<p class="applications-empty">No applications configured for this project.</p>}
       </div>
     </section>
     <section class="infrastructure-section" aria-labelledby="infrastructure-title">
       <header><h2 id="infrastructure-title">Dev resources</h2></header>
+      @if(testServer();as server){<ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: server}"/>}
       <ng-container [ngTemplateOutlet]="componentCard" [ngTemplateOutletContext]="{$implicit: infrastructure()}"/>
     @if(state.monitoring.resources; as r) {
       @if(r.diskThresholdExceeded) {<p role="status">Disk retention threshold exceeded; recent partitions are retained.</p>}
@@ -98,18 +106,36 @@ export class EnvironmentComponent {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
   status = input<Status>();
   displayName = input('');
-  readonly applications = computed(() => (this.status()?.components || []).filter(c => c.application && !c.id.startsWith('frontend-')).map(c => ({
+  private readonly appComponents = computed(() => {
+    const apps=(this.status()?.components || []).filter(c=>c.application);
+    const backends=apps.filter(c=>!c.id.startsWith('frontend-'));
+    return backends.length ? backends : apps;
+  });
+  readonly applications = computed(() => this.appComponents().map(c => ({
     ...c, memoryBytes: usedMemory(c)
   })));
+  readonly testServer = computed(() => {
+    const server=this.status()?.components?.find(c=>c.id==='testserver');
+    return server ? {...server,name:'Fluxzero Test Server',components:[server],memoryBytes:usedMemory(server)} : undefined;
+  });
   readonly infrastructure = computed(() => {
-    const components = (this.status()?.components || []).filter(c => !c.application || c.id.startsWith('frontend-'));
+    const appIds=new Set(this.appComponents().map(c=>c.id));
+    const components = (this.status()?.components || []).filter(c=>!appIds.has(c.id) && c.id!=='testserver');
     const running = components.reduce((sum, c) => sum + (c.runningProcesses ?? (c.state === 'running' ? 1 : 0)), 0);
     const total = components.reduce((sum, c) => sum + (c.totalProcesses ?? 1), 0);
     return {
-      id: 'devserver', application: false, components, name: 'All services',
+      id: 'devserver', application: false, components, name: this.testServer() ? 'Other dev services' : 'All services',
       state: running > 0 && running < total ? 'degraded' : components.some(c => c.state === 'failed') ? 'failed' : components.some(c => c.state === 'starting') ? 'starting' : total > 0 && running === total ? 'running' : 'stopped',
       memoryBytes: totalMemory(components), memoryMaxBytes: totalMemory(components, true)
     };
+  });
+  readonly infrastructureSamples = computed(() => {
+    const components=this.infrastructure().components;
+    return (this.status()?.resourceHistory || []).map(sample=>{
+      const sum=(values:Record<string,number|null>|undefined) => components.some(c=>values?.[c.id]==null)
+        ? null : components.reduce((total,c)=>total+values![c.id]!,0);
+      return this.testServer() ? {...sample,devserverMemory:sum(sample.componentMemory),devserverMemoryMax:sum(sample.componentMemoryMax)} : sample;
+    });
   });
   embedded = input(false);
   port = input<number | null>(null);

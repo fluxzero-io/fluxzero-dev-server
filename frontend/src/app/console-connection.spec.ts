@@ -67,4 +67,34 @@ describe('Console push connection', () => {
     jasmine.clock().tick(1000);sockets[1].receive({...snapshot(),version:2});
     expect(sockets[1].closed).toBeTrue();expect(updates.length).toBe(0);
   });
+  it('retries immediately on network recovery and ignores wake events for a fresh connection or closed client',()=>{
+    sockets[0].receive(snapshot());
+    expect(service.connecting()).toBeFalse();
+    window.dispatchEvent(new Event('online'));expect(sockets.length).toBe(1);
+    sockets[0].onerror?.();expect(service.connecting()).toBeFalse();
+    window.dispatchEvent(new Event('online'));
+    expect(sockets.length).toBe(2);expect(service.connecting()).toBeTrue();
+    sockets[1].receive(snapshot(9));expect(service.connecting()).toBeFalse();
+    jasmine.clock().tick(1000);expect(sockets.length).toBe(2);
+    service.close();
+    window.dispatchEvent(new Event('focus'));window.dispatchEvent(new Event('online'));document.dispatchEvent(new Event('visibilitychange'));
+    jasmine.clock().tick(60000);expect(sockets.length).toBe(2);
+  });
+  it('replaces a stale socket on browser resume before suspended watchdog timers have run',()=>{
+    sockets[0].receive(snapshot());
+    jasmine.clock().mockDate(new Date(Date.now()+31000));
+    window.dispatchEvent(new Event('focus'));
+    expect(sockets[0].closed).toBeTrue();expect(sockets.length).toBe(2);
+    sockets[1].receive(snapshot(10));expect(states.at(-1)).toBeTrue();
+  });
+  it('cancels pending retries and stale callbacks when the user explicitly reinitialises the connection',()=>{
+    sockets[0].receive(snapshot());
+    const stale=sockets[0].onmessage!;
+    sockets[0].onerror?.();
+    service.initialise(state=>updates.push(state),value=>states.push(value));
+    expect(sockets.length).toBe(2);
+    stale({data:JSON.stringify(snapshot(99))});expect(updates.length).toBe(1);
+    sockets[1].receive(snapshot(2));expect(updates.length).toBe(2);
+    jasmine.clock().tick(1000);expect(sockets.length).toBe(2);
+  });
 });

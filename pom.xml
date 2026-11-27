@@ -40,6 +40,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <fluxzero.version>2.29.11</fluxzero.version>
+        <fluxzero-local-account.version>1-SNAPSHOT</fluxzero-local-account.version>
         <fluxzero-idp.version>0.28.1</fluxzero-idp.version>
         <jackson.version>2.23.0</jackson.version>
         <jetty.version>12.1.15</jetty.version>
@@ -115,6 +116,11 @@
     </dependencyManagement>
 
     <dependencies>
+        <dependency>
+            <groupId>io.fluxzero.tools</groupId>
+            <artifactId>fluxzero-local-account</artifactId>
+            <version>${fluxzero-local-account.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>

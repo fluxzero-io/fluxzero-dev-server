@@ -1,7 +1,15 @@
 import {ServerUpdateComponent} from './server-update.component';
+import {cloudPages, dashboardDestination} from './cloud-page.component';
+import {CloudResourcesComponent} from './cloud-resources.component';
+import {CloudContextComponent} from './cloud-context.component';
+import {PublishSetupComponent} from './publish-setup.component';
+import {MonitoringOverviewComponent} from './monitoring-overview.component';
+import {AccountConnection} from './account-connection';
+import {AccountMenuComponent} from './account-menu.component';
 import {ProgressPageComponent, progressCount} from './progress-page.component';
 import {PreviewNavigation} from './preview-navigation';
-import {Component, ElementRef, HostListener, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
+import {NgTemplateOutlet} from '@angular/common';
+import {Component, ElementRef, HostListener, Injector, afterNextRender, inject, computed, signal, ViewChild, OnInit, OnDestroy} from '@angular/core';
 import {HttpClient} from '@angular/common/http';
 import {DomSanitizer, SafeResourceUrl} from '@angular/platform-browser';
 import {firstValueFrom} from 'rxjs';
@@ -18,13 +26,18 @@ import {ConsoleConnection, ConsoleState} from './console-connection';
 
 type ResultBadge = {value:string; failed:boolean; label:string};
 
-@Component({selector: 'dev-root', standalone: true, imports: [ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
+@Component({selector: 'dev-root', standalone: true, imports: [NgTemplateOutlet, CloudContextComponent, MonitoringOverviewComponent, CloudResourcesComponent, PublishSetupComponent, AccountMenuComponent, ServerUpdateComponent, ProgressPageComponent, StartupPageComponent, ProfileSelectorComponent, ProjectsComponent, EnvironmentComponent, TestsComponent, ThemeMenuComponent, EnvironmentSelectorComponent],
   templateUrl: './app.component.html'})
 @Handler()
 export class AppComponent implements OnInit, OnDestroy {
   readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
   private readonly http = inject(HttpClient);
   private readonly connection = inject(ConsoleConnection);
+  readonly connectionConnecting = this.connection.connecting;
+  @ViewChild('connectionHelp') connectionHelp?: ElementRef<HTMLDialogElement>;
+  readonly connectionHelpOpen = signal(false);
+  private connectionTrigger?: HTMLElement;
   private readonly sanitizer = inject(DomSanitizer);
   @ViewChild('frame') frame?: ElementRef<HTMLIFrameElement>;
   readonly status = signal<Status | undefined>(undefined);
@@ -111,7 +124,29 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly systemTheme = matchMedia('(prefers-color-scheme: dark)');
   private readonly systemThemeChanged = () => { if (this.themePreference() === 'system') this.applyTheme(this.systemTheme.matches); };
   readonly menuOpen = signal(false);
-  readonly monitoringExpanded = signal(this.preference('devboard.monitoringExpanded') !== 'false');
+  readonly cloudPages = cloudPages;
+  readonly cloudMenuPages = ['clusters','applications'].map(key=>cloudPages.find(page=>page.key===key)!);
+  readonly accountConnection = inject(AccountConnection);
+  readonly cloudDashboardUrl = computed(()=>dashboardDestination(this.accountConnection.dashboardUrl()));
+  openIntegrations(event:MouseEvent) {if(!this.cloudDashboardUrl()) this.link(event,'cloud/integrations');}
+  readonly cloudVisible = computed(() => {
+    const account=this.accountConnection.account();
+    return account?.state === 'signed_in' || account?.state === 'sign_in_required';
+  });
+  readonly cloudExpanded = signal(this.preference('devboard.cloudExpanded') !== 'false');
+  toggleCloud() {this.cloudExpanded.update(value=>!value);this.savePreference('devboard.cloudExpanded',String(this.cloudExpanded()));}
+  openCloudOverview(event:MouseEvent) {
+    if(event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    this.cloudExpanded.set(true);this.savePreference('devboard.cloudExpanded','true');
+    this.link(event,'cloud/overview');
+  }
+  cloudSection() {return this.route().substring('cloud/'.length);}
+  isCloud() {return this.route().startsWith('cloud/');}
+  private isPublishRoute(route:string) {return route === 'publish' || cloudPages.some(page=>'publish/' + page.key === route);}
+  isPublishing() {return this.isPublishRoute(this.route());}
+  publishSection() {return this.route() === 'publish' ? 'overview' : this.route().substring('publish/'.length);}
+  navigateFromPublish(route:string) {this.navigateFromCloud(route === 'cloud/overview' ? 'publish' : route.replace(/^cloud\//,'publish/'));}
+  readonly monitoringExpanded = signal(this.preference('devboard.monitoringExpanded') === 'true');
   readonly sidebarCollapsed = signal(this.preference('devboard.sidebarCollapsed') === 'true');
   readonly sidebarWidth = signal(Math.max(260, Math.min(520, Number(this.preference('devboard.sidebarWidth')) || 300)));
   readonly mobileNavigation = signal(matchMedia('(max-width: 650px)').matches);
@@ -123,6 +158,11 @@ export class AppComponent implements OnInit, OnDestroy {
   toggleMonitoring() {
     this.monitoringExpanded.update(value=>!value);
     this.savePreference('devboard.monitoringExpanded',String(this.monitoringExpanded()));
+  }
+  openMonitoringOverview(event:MouseEvent) {
+    if(event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    this.monitoringExpanded.set(true);this.savePreference('devboard.monitoringExpanded','true');
+    this.link(event,'monitoring');
   }
   togglePinnedNavigation() {
     if(this.mobileNavigation()) {this.closeNavigation();return;}
@@ -225,9 +265,22 @@ export class AppComponent implements OnInit, OnDestroy {
     this.setTheme(theme && ['light', 'dark', 'system'].includes(theme) ? theme : 'system');
     this.systemTheme.addEventListener('change', this.systemThemeChanged);
     this.readRoute();
+    this.reconnectConsole();
+  }
+  reconnectConsole() {
     this.connection.initialise(
       state => publishEvent(this.elementRef.nativeElement, 'consoleUpdate', state),
       connected => this.error.set(connected ? '' : 'Disconnected'));
+  }
+  showConnectionHelp(event:Event) {
+    this.connectionTrigger=event.currentTarget as HTMLElement;
+    this.connectionHelpOpen.set(true);
+    this.connectionHelp?.nativeElement.showModal();
+    if(!this.connectionConnecting()) this.reconnectConsole();
+  }
+  closeConnectionHelp() {
+    this.connectionHelp?.nativeElement.close();this.connectionHelpOpen.set(false);
+    if(this.connectionTrigger?.isConnected) this.connectionTrigger.focus();
   }
   ngOnDestroy() { clearTimeout(this.updateNoticeTimer); clearTimeout(this.previewCopyTimer); this.preview.dispose(); this.connection.close(); this.systemTheme.removeEventListener('change', this.systemThemeChanged); }
 
@@ -256,10 +309,18 @@ export class AppComponent implements OnInit, OnDestroy {
       if (!path) return;
       const key = path.split(/[/?#]/)[1];
       route = 'monitoring' + (path === '/' + key ? this.paths.get(key) || path : path);
-    } else if (!['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) return;
+    } else if (!this.isPublishRoute(route) && !cloudPages.some(page => 'cloud/' + page.key === route)
+      && !['projects', 'environment', 'application', 'tests', 'startup', 'progress', 'monitoring'].includes(route)) return;
     if (location.hash !== '#' + route) history.pushState(null, '', '#' + route);
     this.readRoute();
     this.menuOpen.set(false);
+  }
+  navigateFromCloud(route:string) {
+    this.navigate(route);
+    afterNextRender(()=>{
+      if(this.route() !== route) return;
+      this.elementRef.nativeElement.querySelector<HTMLElement>(route === 'application' ? '.application-page' : 'dev-cloud-page h1, dev-cloud-resources h1, dev-publish-setup h1')?.focus();
+    },{injector:this.injector});
   }
   @HandleCommand('openEnvironment') openEnvironment(environment: Environment) {
     const url = environmentConsoleUrl(environment);
@@ -359,9 +420,8 @@ export class AppComponent implements OnInit, OnDestroy {
       route = 'projects';
       history.replaceState(null, '', '#projects');
     }
-    if (route === 'monitoring') route = 'monitoring/messages';
-    if (route.startsWith('monitoring') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
-    if (!route.startsWith('monitoring/') && !['projects', 'environment', 'application', 'tests', 'startup', 'progress'].includes(route)) route = 'projects';
+    if (route.startsWith('monitoring/') && !monitoringPath(route.substring('monitoring'.length))) route = 'projects';
+    if (!route.startsWith('monitoring/') && !this.isPublishRoute(route) && !cloudPages.some(page=>'cloud/'+page.key===route) && !['projects', 'environment', 'application', 'tests', 'startup', 'progress', 'monitoring'].includes(route)) route = 'projects';
     this.route.set(route);
     if (route !== 'application') this.previewExpanded.set(false);
     if (route === 'application') this.applicationOpened.set(true);

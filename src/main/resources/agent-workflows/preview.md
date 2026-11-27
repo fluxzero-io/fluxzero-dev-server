@@ -36,7 +36,11 @@ default workflow, not a restriction on choosing the right testing surface.
    A configured public ingress serves the application, not Devboard. If neither is available, explain that
    this server does not expose a supported Devboard instead of guessing.
 4. Open the requested page: `#application` for App preview (the default),
-   `#projects` for Workspace, `#progress`, `#tests`, or `#startup`.
+   `#projects` for Workspace, `#progress`, `#tests`, `#startup`, or `#publish`
+   for Publish live. Publish live is available while signed out; it starts account
+   sign-in only after explicit user intent. It prepares delivery and hands off
+   to Cloud; do not infer a pushed workflow, successful build, or running app
+   without corresponding provider or Cloud evidence.
    Reuse a matching browser tab when possible. Respect the user's chosen browser;
    otherwise use the host's available browser-opening tool. Verify the resulting
    page when browser inspection is available and leave it open for the user.

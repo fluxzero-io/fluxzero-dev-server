@@ -102,7 +102,7 @@ belong behind the existing opt-in profiles unless their cost can be reduced enou
   Progress is persistent functional history in `.fluxzero/progress.yaml`, not live health or an engineering
   task list. Show its completion percentage in navigation with the completed/total count on hover; keep it
   available while the workspace is stopped. Only Planned, In progress and Done are supported.
-- Keep Monitoring expanded by default and persist the user's last choice in browser storage. Persist desktop
+- Keep Monitoring collapsed by default and persist the user's last choice in browser storage. Persist desktop
   navigation width and collapsed state; mobile uses a temporary drawer without changing the desktop preference.
   Keep a visible hamburger when hidden, a pin/hide toggle, and an accessible draggable resize edge.
 - Use shared quiet action styles: a very light blue surface, visible hover/pressed states, and content-sized

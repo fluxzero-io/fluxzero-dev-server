@@ -1,4 +1,6 @@
+import {AccountConnection} from './account-connection';
 import {TestBed, ComponentFixture} from '@angular/core/testing';
+import {signal} from '@angular/core';
 import {provideHttpClient} from '@angular/common/http';
 import {provideHttpClientTesting, HttpTestingController} from '@angular/common/http/testing';
 import {ProjectManagerComponent} from './project-manager.component';
@@ -16,7 +18,7 @@ describe('Dev console navigation', () => {
   const originalConfirmation = localStorage.getItem('devConfirmTruncate');
   const originalRestartScope = localStorage.getItem('devRestartScope');
   const originalTheme = localStorage.getItem('dashboardTheme');
-  const navigationKeys=['devboard.monitoringExpanded','devboard.sidebarCollapsed','devboard.sidebarWidth'];
+  const navigationKeys=['devboard.cloudExpanded','devboard.monitoringExpanded','devboard.sidebarCollapsed','devboard.sidebarWidth'];
   const navigationPreferences=navigationKeys.map(key=>localStorage.getItem(key));
   beforeEach(async () => {
     localStorage.removeItem('devRestartScope');
@@ -25,10 +27,11 @@ describe('Dev console navigation', () => {
     localStorage.setItem('devConfirmTruncate', 'false');
     history.replaceState(null, '', location.pathname + '#projects');
     TestBed.configureTestingModule({imports: [AppComponent], providers: [provideHttpClient(), provideHttpClientTesting(),
-      {provide: ConsoleConnection, useValue: {initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
+      {provide: ConsoleConnection, useValue: {connecting:signal(false),initialise: (update: typeof push, connection: typeof connected) => {push = update; connected = connection;}, close: () => {}}}]});
     fixture = TestBed.createComponent(AppComponent);
     fixture.detectChanges();
     const http = TestBed.inject(HttpTestingController);
+    http.expectOne('account/status').flush({account: {state: 'signed_out'}});
     const status: Status = {resourceHistory: [], project: 'repair-cafe', projectDirectory: '/projects/repair-cafe', state: 'running',
       runtime: 'running', applications: 'running', tests: 'passed', frontend: 'stopped', monitoring: {enabled: false},
       maintenance: {busy: false, stopSupported: true, resetSupported: true, restartSupported: true, applicationRestartSupported: true, error: ''},
@@ -55,6 +58,124 @@ describe('Dev console navigation', () => {
     history.replaceState(null, '', originalLocation);
     if (originalTheme == null) localStorage.removeItem('dashboardTheme');
     else localStorage.setItem('dashboardTheme', originalTheme);
+  });
+  it('combines Cloud context and hidden navigation into one bar while preserving the local preview',()=>{
+    const root:HTMLElement=fixture.nativeElement, app=fixture.componentInstance;
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    app.navigate('cloud/overview');fixture.detectChanges();
+    expect(root.querySelectorAll('.navigation-bar').length).toBe(1);
+    expect(root.querySelectorAll('dev-cloud-context').length).toBe(1);
+    expect(root.querySelector('.navigation-launcher')).toBeNull();
+    app.sidebarCollapsed.set(true);fixture.detectChanges();
+    expect(root.querySelectorAll('.navigation-bar').length).toBe(1);
+    expect(root.querySelectorAll('dev-cloud-context').length).toBe(1);
+    expect(root.querySelector('.navigation-launcher')).not.toBeNull();
+    expect(root.querySelectorAll('.account-trigger').length).toBe(1);
+    expect(root.querySelector('.plan-badge')).toBeNull();
+    app.navigate('application');fixture.detectChanges();
+    expect(root.querySelector('dev-cloud-context')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    TestBed.inject(HttpTestingController).expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('cloud'));
+  });
+  it('reveals Cloud only after login without replacing the local preview', () => {
+    const root:HTMLElement=fixture.nativeElement;
+    fixture.componentInstance.navigate('application');fixture.detectChanges();
+    const frame=root.querySelector('iframe[name="dev-application"]');
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex'});fixture.detectChanges();
+    expect(root.querySelector('.cloud-navigation')).not.toBeNull();
+    expect(fixture.componentInstance.route()).toBe('application');
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    TestBed.inject(AccountConnection).account.set({state:'signed_out'});fixture.detectChanges();
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+  });
+  it('shows the application build SDK beside the separate Test Server version', () => {
+    fixture.componentInstance.status.update(s=>s ? {...s,components:s.components!.map(c=>c.application ? {...c,sdkVersion:'2.29.1'} : c.id==='testserver' ? {...c,version:'2.29.2'} : c)} : s);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.application-overview .component-name').textContent).not.toContain('2.29.1');
+    expect(fixture.nativeElement.querySelector('.component-memory-heading .sdk-badge').textContent).toBe('SDK 2.29.1');
+    expect(fixture.nativeElement.querySelector('.sdk-badge').getAttribute('aria-label')).toBe('Fluxzero SDK 2.29.1');
+    expect(fixture.nativeElement.querySelector('.infrastructure-section').textContent).toContain('Fluxzero Test Server 2.29.2');
+  });
+  it('offers Publish live below Startup while signed out and starts with account sign-in', async () => {
+    const root:HTMLElement=fixture.nativeElement;
+    const publish=root.querySelector<HTMLAnchorElement>('nav a[href="#publish"]')!;
+    expect(publish.previousElementSibling?.getAttribute('href')).toBe('#startup');
+    expect(root.querySelector('.cloud-navigation')).toBeNull();
+    publish.click();await fixture.whenStable();fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('publish');
+    expect(root.querySelector('h1')?.textContent).toBe('Publish live');
+    expect(root.textContent).toContain('Sign in to choose where your app will run.');
+    expect(root.querySelector('.setup-timeline li.current')?.textContent).toContain('Fluxzero account');
+    TestBed.inject(HttpTestingController).expectNone('account/login');
+    (root.querySelector('dev-publish-setup .sign-in-action') as HTMLButtonElement).click();
+    const login=TestBed.inject(HttpTestingController).expectOne('account/login');
+    expect(login.request.body.returnTo).toContain('#publish');
+    login.flush({account:{state:'signing_in'}});await fixture.whenStable();fixture.detectChanges();
+    expect(root.textContent).toContain('Finish signing in');
+    fixture.componentInstance.navigateFromPublish('cloud/integrations');fixture.detectChanges();
+    expect(fixture.componentInstance.route()).toBe('publish/integrations');
+    expect(publish.getAttribute('aria-current')).toBe('page');
+  });
+  it('opens each Cloud page through navigation and retains the local preview frame', async () => {
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex'});fixture.detectChanges();
+    const root: HTMLElement = fixture.nativeElement;
+    (root.querySelector('nav a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    const frame = root.querySelector('iframe[name="dev-application"]');
+    fixture.componentInstance.cloudExpanded.set(false);fixture.detectChanges();
+    (root.querySelector('nav a[href="#cloud/overview"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    expect(fixture.componentInstance.cloudExpanded()).toBeTrue();
+    (root.querySelector('.cloud-toggle') as HTMLButtonElement).click();fixture.detectChanges();
+    expect(fixture.componentInstance.cloudExpanded()).toBeFalse();
+    expect(fixture.componentInstance.route()).toBe('cloud/overview');
+    (root.querySelector('.cloud-toggle') as HTMLButtonElement).click();fixture.detectChanges();
+    for(const page of ['overview', 'applications', 'clusters', 'integrations']) {
+      (root.querySelector(`nav a[href="#cloud/${page}"]`) as HTMLAnchorElement).click();fixture.detectChanges();
+      expect(fixture.componentInstance.route()).toBe('cloud/' + page);
+      expect(root.querySelector('dev-cloud-page')).not.toBeNull();
+      expect(root.querySelector('.local-project')?.textContent).toContain('repair-cafe');
+      expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    }
+    (root.querySelector('.local-project a[href="#application"]') as HTMLAnchorElement).click();fixture.detectChanges();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(frame);
+    expect(root.querySelector('.application-page')?.hasAttribute('hidden')).toBeFalse();
+    expect(Array.from(root.querySelectorAll('#cloud-menu a span')).map(span=>span.textContent)).toEqual(['Clusters','Applications','Integrations']);
+    TestBed.inject(AccountConnection).account.set({state:'signed_in',displayName:'Alex',dashboardUrl:'http://dashboard.fluxzero.localhost:4200/'});fixture.detectChanges();
+    const integrations=root.querySelector<HTMLAnchorElement>('#cloud-menu a:last-child')!;
+    expect(integrations.href).toBe('http://dashboard.fluxzero.localhost:4200/');
+    expect(integrations.target).toBe('_blank');expect(integrations.rel).toContain('noopener');
+    await fixture.whenStable();
+    await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
+    expect(document.activeElement).toBe(root.querySelector('.application-page'));
+  });
+  it('shows the local development profile in Workspace with navigation hidden and no account', () => {
+    const app=fixture.componentInstance;
+    app.route.set('projects');app.sidebarCollapsed.set(true);
+    app.status.update(state=>state ? {...state,profiles:{active:'development',available:['development'],switchSupported:false}} : state);
+    fixture.detectChanges();
+    const profile=fixture.nativeElement.querySelector('.workspace-profile');
+    expect(profile.textContent).toContain('Development profile');
+    expect(profile.textContent).toContain('development');
+    app.status.update(state=>state ? {...state,profiles:undefined} : state);fixture.detectChanges();
+    expect(profile.textContent).toContain('Default configuration');
+    TestBed.inject(HttpTestingController).expectNone('account/login');
+  });
+  it('shows standalone frontends as local applications without counting their resources twice', () => {
+    const app=fixture.componentInstance;
+    app.status.update(s=>s ? {...s,components:[
+      {id:'devserver',name:'Fluxzero Dev Server',state:'running',application:false,memoryBytes:20*1048576},
+      {id:'frontend-store',name:'Store frontend',state:'running',application:true,memoryBytes:10*1048576},
+      {id:'frontend-admin',name:'Admin frontend',state:'stopped',application:true,memoryBytes:null}
+    ]} : s);
+    fixture.detectChanges();
+    const workspace=fixture.debugElement.query(By.directive(EnvironmentComponent)).componentInstance as EnvironmentComponent;
+    expect(workspace.applications().map(c=>c.name)).toEqual(['Store frontend','Admin frontend']);
+    expect(workspace.infrastructure().components.map(c=>c.id)).toEqual(['devserver']);
+    expect(workspace.infrastructure().memoryBytes).toBe(20*1048576);
+    expect(fixture.nativeElement.querySelector('.applications-empty')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.applications-section').textContent).toContain('Store frontend');
   });
   it('rebases an initially selected frontend when the ingress restarts on a different port', () => {
     const app=fixture.componentInstance;
@@ -304,6 +425,8 @@ describe('Dev console navigation', () => {
     await fixture.whenStable(); fixture.detectChanges();
     expect(select.textContent).toContain('demo'); expect(select.disabled).toBeFalse();
     expect(refresh).toHaveBeenCalledTimes(1);
+    // A periodic account refresh is independent from the profile-switch request.
+    http.match('account/status').forEach(request => request.flush({account: {state: 'signed_out'}}));
     http.verify();
   });
   it('shows profile errors and retains the active choice when switching is rejected', async () => {
@@ -341,17 +464,46 @@ describe('Dev console navigation', () => {
   });
   it('restores Monitoring and pinned navigation choices after recreating the UI', () => {
     const app=fixture.componentInstance;
-    expect(app.monitoringExpanded()).toBeTrue();
+    expect(app.monitoringExpanded()).toBeFalse();
     app.toggleMonitoring();app.togglePinnedNavigation();
     app.resizeNavigationWithKeyboard(new KeyboardEvent('keydown',{key:'End'}));
     const restored=TestBed.createComponent(AppComponent);
-    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    expect(restored.componentInstance.monitoringExpanded()).toBeTrue();
     expect(restored.componentInstance.sidebarCollapsed()).toBeTrue();
     expect(restored.componentInstance.sidebarWidth()).toBe(520);
     history.replaceState(null,'','#monitoring/logs');
     restored.componentInstance.readRoute();
-    expect(restored.componentInstance.monitoringExpanded()).toBeFalse();
+    expect(restored.componentInstance.monitoringExpanded()).toBeTrue();
     restored.destroy();
+  });
+  it('moves one shared account menu and local connection into the hidden-navigation bar', async () => {
+    const app=fixture.componentInstance,root=fixture.nativeElement as HTMLElement;
+    const http=TestBed.inject(HttpTestingController);
+    // Moving the menu must also be safe while a background account check is pending.
+    (root.querySelector('.sidebar-footer .account-trigger') as HTMLButtonElement).click();
+    const pending=http.expectOne('account/status');
+    app.sidebarCollapsed.set(true);fixture.detectChanges();
+    const settling=TestBed.inject(AccountConnection).load();
+    pending.flush({account:{state:'signed_in',displayName:'Alex'}});
+    await settling;await fixture.whenStable();fixture.detectChanges();
+    expect(root.querySelectorAll('dev-account-menu').length).toBe(1);
+    expect(root.querySelector('.sidebar-footer dev-account-menu')).toBeNull();
+    const trigger=root.querySelector('.navigation-bar .account-trigger') as HTMLButtonElement;
+    expect(trigger.getAttribute('aria-label')).toContain('Alex');
+    expect(root.querySelector('.navigation-bar .connection')?.getAttribute('aria-label')).toBe('Connected to the local Dev Server');
+    trigger.click();http.expectOne('account/status').flush({account:{state:'signed_in',displayName:'Alex'}});
+    await fixture.whenStable();fixture.detectChanges();
+    const panel=root.querySelector<HTMLElement>('.navigation-bar [role=menu]')!;
+    expect(panel.getBoundingClientRect().top).toBeGreaterThan(trigger.getBoundingClientRect().bottom);
+    expect(root.querySelectorAll('#dev-account-menu').length).toBe(1);
+    app.openNavigation();fixture.detectChanges();
+    expect(root.querySelectorAll('dev-account-menu').length).toBe(1);
+    expect(root.querySelector('.sidebar-footer .account-trigger')?.getAttribute('aria-label')).toContain('Alex');
+    expect(root.querySelector('.navigation-bar .account-trigger')).toBeNull();
+    http.expectNone('account/status');
+    app.closeNavigation();app.error.set('Connection lost');fixture.detectChanges();
+    expect(root.querySelector('.navigation-bar .connection')?.textContent).toContain('Disconnected');
+    http.verify();
   });
   it('opens a temporary drawer without changing the saved pinned state and closes on Escape', () => {
     const app=fixture.componentInstance;
@@ -386,7 +538,7 @@ describe('Dev console navigation', () => {
   });
   it('scopes the menu and project page to the selected dev server', () => {
     const root: HTMLElement = fixture.nativeElement;
-    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Progress', 'Tests', 'Startup']);
+    expect(Array.from(root.querySelectorAll('nav > a')).map(a => a.querySelector('span')?.textContent?.trim())).toEqual(['App preview', 'Workspace', 'Progress', 'Tests', 'Startup', 'Publish live']);
     expect(root.querySelector('nav a[href="#projects"]')?.getAttribute('aria-current')).toBe('page');
     expect(root.querySelector('nav a[href="#monitoring/visualize"]')).toBeNull();
     expect(root.querySelector('h1')?.textContent).toBe('Workspace');
@@ -567,6 +719,41 @@ describe('Dev console navigation', () => {
     TestBed.inject(HttpTestingController).expectNone('status.json');
     TestBed.inject(HttpTestingController).expectNone('environments.json');
   });
+  it('explains stale local data and retries from Disconnected without replacing the preview or using account APIs', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement,connection=TestBed.inject(ConsoleConnection);
+    app.status.update(state=>({...state!,frontend:'running',frontends:[{id:'frontend',path:'/',state:'running'}]}));
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    connected(false);fixture.detectChanges();
+    expect(root.querySelector('.connection-notice')?.textContent).toContain('last received data');
+    expect(root.querySelector('.application-empty h2')?.textContent).toBe('App preview paused');
+    const reconnect=spyOn(connection,'initialise').and.callThrough();
+    const trigger=root.querySelector<HTMLButtonElement>('.connection-retry')!;
+    trigger.click();fixture.detectChanges();
+    const dialog=root.querySelector<HTMLDialogElement>('.connection-help')!;
+    expect(dialog.open).toBeTrue();expect(reconnect).toHaveBeenCalledTimes(1);
+    expect(dialog.textContent).toContain('If your Dev Server has stopped');
+    expect(dialog.textContent).toContain('fz dev');
+    connection.connecting.set(true);fixture.detectChanges();
+    expect(dialog.querySelector<HTMLButtonElement>('.primary-button')!.disabled).toBeTrue();
+    connection.connecting.set(false);connected(true);fixture.detectChanges();
+    expect(dialog.textContent).toContain('Connection restored');
+    expect(root.querySelector('.connection-notice')).toBeNull();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    expect(app.route()).toBe('application');
+    app.closeConnectionHelp();fixture.detectChanges();
+    expect(dialog.open).toBeFalse();
+    TestBed.inject(HttpTestingController).expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('actions/'));
+  });
+  it('offers the same connection recovery in the hidden-navigation header and restores focus after Escape', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.sidebarCollapsed.set(true);connected(false);fixture.detectChanges();
+    const trigger=root.querySelector<HTMLButtonElement>('.navigation-account .connection-retry')!;
+    trigger.click();fixture.detectChanges();
+    const dialog=root.querySelector<HTMLDialogElement>('.connection-help')!;
+    dialog.dispatchEvent(new Event('cancel'));fixture.detectChanges();
+    expect(dialog.open).toBeFalse();expect(document.activeElement).toBe(trigger);
+  });
   it('keeps the known total throughout full and selective reruns, completion, skips and interruption', () => {
     const state=fixture.componentInstance.status()!;
     const root:HTMLElement=fixture.nativeElement;
@@ -698,6 +885,40 @@ describe('Dev console navigation', () => {
     expect(location.hash).toBe('#monitoring/logs');
     expect(link.getAttribute('aria-current')).toBe('page');
     expect(fixture.nativeElement.textContent).toContain('Monitoring is not configured');
+  });
+  it('opens a local Monitoring overview without an Auditlog or account and toggles navigation separately', async () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.navigate('application');fixture.detectChanges();
+    const preview=root.querySelector('iframe[name="dev-application"]');
+    expect(app.monitoringExpanded()).toBeFalse();
+    root.querySelector<HTMLAnchorElement>('nav a[href="#monitoring"]')!.click();
+    await fixture.whenStable();fixture.detectChanges();
+    expect(app.route()).toBe('monitoring');
+    expect(app.monitoringExpanded()).toBeTrue();
+    expect(root.querySelector('dev-monitoring-overview h1')?.textContent).toBe('Monitoring');
+    expect(root.querySelector('[aria-label="Fluxzero Test Server"]')?.textContent).toContain('Running');
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Not enabled');
+    expect(app.frameSource).toBeUndefined();
+    expect(root.querySelector('iframe[name="dev-application"]')).toBe(preview);
+    root.querySelector<HTMLButtonElement>('[aria-label="Toggle Monitoring navigation"]')!.click();fixture.detectChanges();
+    expect(app.monitoringExpanded()).toBeFalse();expect(app.route()).toBe('monitoring');
+    const http=TestBed.inject(HttpTestingController);
+    http.expectNone(request=>request.url.startsWith('account/') || request.url.startsWith('cloud'));
+    root.querySelector<HTMLAnchorElement>('dev-monitoring-overview a[href="#monitoring/logs"]')!.click();
+    await fixture.whenStable();fixture.detectChanges();
+    expect(app.route()).toBe('monitoring/logs');
+  });
+  it('keeps Monitoring purposes visible after stopping or losing the local connection', () => {
+    const app=fixture.componentInstance,root:HTMLElement=fixture.nativeElement;
+    app.status.update(status=>({...status!,monitoring:{enabled:true,state:'running'},components:[...status!.components!,{id:'auditlog',name:'Fluxzero Auditlog',version:'1.2.3',state:'running',application:false,memoryBytes:null}]}));
+    app.navigate('monitoring');fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('1.2.3');
+    app.status.update(status=>({...status!,maintenance:{...status!.maintenance!,workspaceStopped:true}}));fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Stopped');
+    connected(false);fixture.detectChanges();
+    expect(root.querySelector('[aria-label="Fluxzero Auditlog"]')?.textContent).toContain('Disconnected');
+    expect(root.querySelectorAll('dev-monitoring-overview .monitoring-card').length).toBe(6);
+    expect(app.frameSource).toBeUndefined();
   });
   it('opens known folders and forgets stopped projects through DOM commands', async () => {
     const http = TestBed.inject(HttpTestingController);
@@ -862,7 +1083,7 @@ describe('Dev console navigation', () => {
     expect((dialog.querySelector('.dialog-actions .primary-button') as HTMLButtonElement).disabled).toBeTrue();
     http.expectNone('projects/create');
     (dialog.querySelector('.dialog-cancel') as HTMLButtonElement).click();fixture.detectChanges();
-    expect(dialog.textContent).toContain('Manage projects');
+    expect(dialog.textContent).toContain('Manage local projects');
   });
 
   it('renames the current project and keeps a rejected draft available', async () => {
@@ -905,7 +1126,8 @@ describe('Dev console navigation', () => {
     expect(root.querySelector('.applications-section')?.contains(root.querySelector('.infrastructure-section'))).toBeFalse();
     expect(root.querySelector('.component-table tbody tr th')?.textContent).toContain('Repair Café');
     expect(root.querySelector('.application-actions .application-link')).toBeNull();
-    expect(root.querySelector('.infrastructure-section .component-table')?.textContent).toContain('120.0 MiB');
+    expect(root.querySelectorAll('.infrastructure-section .component-table')[0]?.textContent).toContain('100.0 MiB');
+    expect(root.querySelectorAll('.infrastructure-section .component-table')[1]?.textContent).toContain('20.0 MiB');
     const componentRows = root.querySelectorAll('.component-table tbody tr');
     expect(componentRows[0].querySelector('.component-restart')).toBeNull();
     expect(root.querySelector('.workspace-actions .restart-action')?.getAttribute('aria-label')).toBe('Restart apps');
@@ -958,14 +1180,14 @@ describe('Dev console navigation', () => {
     expect(fixture.nativeElement.querySelector('.applications-empty').textContent).toContain('No applications configured');
     expect(fixture.nativeElement.querySelectorAll('.environment-tests').length).toBe(0);
   });
-  it('keeps preview available for a frontend-only environment without a backend card', () => {
+  it('shows a standalone frontend as a local app and keeps its preview available', () => {
     fixture.componentInstance.status.update(s => s ? {...s, frontend:'running', components:[
       {id:'frontend-store',name:'Frontend (store)',state:'running',application:true,memoryBytes:4194304,url:location.origin + '/'}
     ]} : s);
     fixture.detectChanges();
-    expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(0);
+    expect(fixture.nativeElement.querySelectorAll('.application-overview .component-table').length).toBe(1);
     expect(fixture.nativeElement.querySelector('nav a[href="#application"]')).not.toBeNull();
-    expect(fixture.nativeElement.querySelector('.infrastructure-section .resource-value').textContent).toBe('4.0 MiB');
+    expect(fixture.nativeElement.querySelector('.application-overview .resource-value').textContent).toBe('4.0 MiB');
   });
   it('restarts only the selected backend app without a separate data reset action', async () => {
     fixture.componentInstance.status.update(s => s ? {...s, components:[
@@ -1034,7 +1256,7 @@ describe('Dev console navigation', () => {
   });
   it('keeps resource columns equal while adapting to longer formatted values', () => {
     const root: HTMLElement = fixture.nativeElement;
-    const cells = root.querySelector('.infrastructure-section .component-table tbody tr')!.children;
+    const cells = root.querySelector('.infrastructure-section .component-table tbody tr:not(.testserver-component)')!.children;
     const initialWidth = cells[2].getBoundingClientRect().width;
     expect(initialWidth).toBeGreaterThan(0);
     expect(cells[3].getBoundingClientRect().width).toBe(initialWidth);
@@ -1200,14 +1422,15 @@ describe('Dev console navigation', () => {
       ]} : s);
     fixture.detectChanges();
     const rows = root.querySelectorAll('.component-table tbody tr');
-    expect(rows.length).toBe(2);
+    expect(rows.length).toBe(3);
     expect(rows[0].querySelector('th')?.textContent).toContain('fluxzero-dev-server-monitoring');
     expect(rows[0].querySelector('.badge')?.textContent).toBe('stopped');
     expect(rows[0].querySelector('dev-resource-detail')).toBeNull();
     expect(rows[0].querySelector('.application-link')).toBeNull();
     expect((root.querySelector('[aria-label="Restart apps"]') as HTMLButtonElement).disabled).toBeTrue();
     expect(rows[1].querySelector('.badge')?.textContent).toBe('running');
-    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('120.0 MiB');
+    expect(rows[1].querySelector('.component-memory')?.textContent).toBe('100.0 MiB');
+    expect(rows[2].querySelector('.component-memory')?.textContent).toBe('20.0 MiB');
   });
   it('groups processes and exposes component counts and memory in tooltips', () => {
     const root: HTMLElement = fixture.nativeElement;
@@ -1226,7 +1449,7 @@ describe('Dev console navigation', () => {
     statusDetail.dispatchEvent(new MouseEvent('mouseenter')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('Monitoring database');
     expect(statusDetail.querySelector('[role=tooltip]')?.textContent).toContain('failed');
-    expect(statusDetail.querySelector('.resource-version')).toBeNull();
+    expect(statusDetail.querySelector('.resource-version')?.textContent).toBe('1.2.3');
     statusDetail.dispatchEvent(new MouseEvent('mouseleave')); fixture.detectChanges();
     expect(statusDetail.querySelector('[role=tooltip]')).toBeNull();
     const memoryDetail = rows[1].querySelector('.component-memory dev-resource-detail')!;

@@ -74,7 +74,7 @@ class DevMcpServerTest {
 
                 Set<String> tools = client.listTools().tools().stream().map(McpSchema.Tool::name).collect(
                         java.util.stream.Collectors.toSet());
-                assertEquals(Set.of("get_workflow", "get_status", "get_active_problems", "get_logs", "get_test_status",
+                assertEquals(Set.of("get_account", "start_login", "logout", "get_workflow", "get_status", "get_active_problems", "get_logs", "get_test_status",
                                     "wait_for_change", "get_progress", "upsert_progress_milestone", "upsert_progress_feature",
                                     "delete_progress_feature", "delete_progress_milestone",
                                     "search_audit_trail", "search_application_logs", "get_message", "get_trace", "list_issues",
@@ -308,7 +308,7 @@ class DevMcpServerTest {
                 assertEquals("fluxzero-dev-stdio", client.getServerInfo().name());
                 assertEquals("development", client.getServerInfo().version());
                 assertEquals(DevMcpStdioMain.INSTRUCTIONS, client.getServerInstructions());
-                assertEquals(32, client.listTools().tools().size());
+                assertEquals(35, client.listTools().tools().size());
                 assertEquals(DevMcpServer.DIAGNOSTICS_RESOURCE,
                              client.listResources().resources().getFirst().uri());
                 McpSchema.CallToolResult result = client.callTool(

@@ -25,13 +25,109 @@ replacing the MCP session. Non-empty directories without a build root remain inv
 For independent full suites and dependency changes while using a frontend watcher, see
 [external verification and build isolation](docs/external-verification.md).
 
+## Optional account connection
+
+The profile icon beside **Connected** opens a compact account menu. Its outline means signed out; the filled
+icon means a remembered sign-in. Sign in opens the browser, Profile opens account settings, and Sign out
+removes local access for the CLI and Devboards sharing that account configuration. Its tooltip clarifies the
+computer-only scope. Connected describes the local Dev Server connection separately. When navigation is hidden,
+the connection status and profile icon appear at the top right, with the same account menu opening below.
+Account actions keep the current page and App preview in place.
+When local updates disconnect, Devboard marks the last received data and keeps retrying. Click **Disconnected**
+in the footer or hidden-navigation header to retry immediately and see recovery guidance. Returning to the browser
+or restoring the network also retries a missing or stale connection. Reconnecting keeps the current preview;
+if the Dev Server has stopped, start the project again with your agent or `fz dev`.
+
+**Publish live**, directly below Startup, stays available while signed out. Its first step is account sign-in;
+a remembered sign-in continues to setup. Outside the fixture, organization, GitHub and deployment setup
+continue through existing Dashboard handoffs. The opt-in Cloud fixture provides a six-step vertical checklist:
+account, organization, application, GitHub workflow, commit/push, and live applications. Sign-in is offered at
+step one; the final step links to Applications or the online Dashboard. It does not start a pipeline or infer deployment success.
+Fluxzero Cloud opens the overview and expands its submenu; the separate chevron only toggles navigation.
+The heading shares one green hover surface, with a separate highlight on its chevron. Its submenu contains Clusters, Applications and Integrations. Integrations
+uses the account-configured Dashboard URL; without one, the local integration summary stays available. Known
+and planned resources remain distinct.
+Cloud pages share the local page gutters and title style. A shared toolbar keeps organization and plan together
+at the left; when navigation is hidden it shares the hamburger/account bar. Overview offers the configured
+Dashboard link. Sign-in alone never establishes a Free plan; unknown plan information stays unknown.
+The compact plan disc precedes the organization name, using the same quiet text size. A small selector appears
+when more than one organization is available. Publish live step two uses this same organization context.
+Dashboard and Integrations open in a new browser tab, keeping Devboard available. Dashboard and plan pills share
+the same size, with tooltips identifying the online destination, selected organization and known plan.
+Workspace shows the local development profile beside project details, including when navigation is hidden.
+Without a named profile it shows Default configuration; this does not depend on account or Cloud access.
+Workspace stacks Restart apps and Stop at the right of the project details, below the project title. On narrow
+cards the actions move below the details and stay right-aligned. Publish live shows its project/preview context
+only when navigation is hidden.
+The GitHub workflow step offers an external Integrations handoff when no integration is selected. The fixture's
+workflow link opens deployment steps and a diff of proposed Actions variables against the saved publishing setup.
+App/cluster names use Actions variables, so changing them need not change the workflow YAML. This is a settings
+preview when the adapter supplies suggested content. A provider may supply read-only local or GitHub workflow
+contents with explicit provenance. Opening the viewer does not modify settings, commit files or start CI.
+
+Local account return pages use the Devboard logo, favicon and theme-aware styling. Actions started in Devboard
+include an **Open Devboard** link to the original local page. It opens in the browser displaying the return page.
+The destination is validated against this Devboard's origin, stays in memory and is never sent to the IDP.
+CLI and local MCP actions show terminal- or agent-specific return guidance; agent-host deep links are not inferred.
+
+The switch icon beside the account name requests a fresh browser sign-in; Dashboard opens the configured Cloud dashboard.
+The three-dot action beside local sign-out opens a small submenu only on click or keyboard activation.
+**Sign out everywhere…** opens a focused IDP confirmation using the existing authenticated logout-all action.
+A spinner shows that confirmation is pending. Confirmation or cancellation returns automatically to local
+development; a proof-bound session check verifies this native account before clearing it. Passive status polling
+does not access credentials or Cloud. Network failures preserve the remembered account and stay within account features.
+
+**Fluxzero Cloud** offers Overview, Applications, Clusters and Integrations with links to the configured
+Dashboard. The Cloud section sits below local navigation, aligned to the bottom when space permits and separated
+by its logo and a muted blue-grey divider. Organization and plan selection will use authorized Cloud context; the current overview does not
+infer memberships or plan details from a local login. The overview keeps the local project visible and offers
+Git & CI, cluster and application entry points. GitHub connections open their existing Dashboard route; organization
+resources first open the organization overview. Links never include the local project name, path or preview URL.
+**App preview** returns to the same local frame. Expired sign-ins and locked secure storage have explicit recovery
+actions within Cloud; opening Cloud pages does not contact Cloud or unlock credentials.
+Monitoring starts collapsed unless you saved a preference.
+Its heading opens a local overview with Test Server and Auditlog status and links explaining each monitoring view;
+the separate chevron only expands or collapses navigation. The overview remains useful with monitoring disabled
+or the workspace stopped and does not load Auditlog or request Cloud access.
+Monitoring remains an observation page; monitoring configuration belongs to the project/development profile.
+Auditlog uses the same marketplace icon as Dashboard. Service versions have a separate aligned position.
+
+Local startup, compilation, tests, preview, monitoring and stop work without an account, including offline or
+when secure storage is locked. Reading account status never contacts the issuer or opens credential dialogs.
+The local MCP tools `get_account`, `start_login` and `logout` are also available without a running application.
+They return account status and customer-safe outcomes, never tokens or keys.
+
+The shared `io.fluxzero.tools:fluxzero-local-account` artifact owns the account lifecycle and macOS Keychain
+integration. CLI and Dev Server must use the same user-level `FLUXZERO_ACCOUNT_*` configuration; local and
+production environments have separate credentials. Cloud authorization remains a separate server-side check.
+`FLUXZERO_ACCOUNT_ACCOUNT_URL` defaults to the issuer's `/account`, `FLUXZERO_ACCOUNT_SESSIONS_URL` to its
+`/account/sessions`, and `FLUXZERO_ACCOUNT_DASHBOARD_URL` to `https://dashboard.fluxzero.io`.
+The shell exposes only that public Dashboard destination before sign-in, without creating account state, opening
+Keychain or making a network request. Invalid account configuration leaves local development available.
+Set an explicit local Dashboard URL when testing a local chain. These links never come from project configuration.
+
+### Cloud journey demo
+
+For product review, explicitly start the standalone server with `FLUXZERO_CLOUD_DEMO=true`.
+The Cloud section then uses a process-local mock API for organization, GitHub, deployment, domains, sign-in
+and email. Fixture scenarios are available through the local demo API; customer pages contain no scenario controls.
+Account actions in that UI never access native credentials; the normal account flow is unchanged when the
+option is absent. The demo contacts no external providers and sends no email. Local App preview remains independent.
+Cloud pages use a subtly different background from local development pages.
+See [the demo protocol and required live Cloud capabilities](docs/cloud-demo-api.md).
+The ordinary UI uses the same replaceable [Cloud adapter contract](docs/cloud-ui-adapter.md), with no scenario
+branches or example application/repository defaults. Choices and supported actions come from the adapter.
+Without a connected adapter, resources stay unknown and the UI offers Dashboard handoffs.
+
+## Devboard
+
 The dashboard's dev server selector only links to sessions whose gateway advertises
 `metadata.devConsoleVersion: "1"` in `.fluxzero/dev/session.json`. Older servers remain
 listed with a dashboard-unavailable message instead of routing into the customer app.
 Restart those environments with a dashboard-enabled Dev Server build to switch to them.
 
 The Total memory breakdown shows known versions after each service name, including the Dev Server,
-selected Fluxzero Test Server, dashboard app and bundled VictoriaLogs store. Current startup
+selected Fluxzero Test Server, Auditlog and bundled VictoriaLogs store. Current startup
 or update failures add a short notice and a navigation indicator. Tests shows its green success count
 beside blue pending, red failed and neutral skipped counts in one split navigation badge. During a full rerun,
 green starts at zero and blue holds the known total; each completed test moves from blue to its result segment.

@@ -15,6 +15,7 @@
 package io.fluxzero.devserver;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.fluxzero.tools.account.AccountConfiguration;
 import org.eclipse.jetty.http.HttpHeader;
 import org.eclipse.jetty.server.Request;
 import org.eclipse.jetty.server.Response;
@@ -40,6 +41,8 @@ final class DevConsole implements AutoCloseable {
     private final DevEnvironmentRegistry environments;
     private final FolderOpener folderOpener;
     private final DevConsoleProjectStarter projectStarter;
+    private final DevAccount account = new DevAccount();
+    private final CloudDemo cloudDemo = CloudDemo.enabled() ? new CloudDemo() : null;
     private final DevConsoleProjects projects;
     private java.util.function.Function<String, Runnable> maintenance;
     private Supplier<java.util.List<TestCatalog.Case>> testCases = java.util.List::of;
@@ -77,8 +80,9 @@ final class DevConsole implements AutoCloseable {
     }
 
     void start() { updates.start(); }
-    @Override public void close() { updates.close(); projectStarter.close();
-        projects.close(); }
+    @Override public void close() {
+        account.close(); updates.close(); projectStarter.close(); projects.close();
+    }
 
     boolean isApi(Request request) {
         String path = request.getHttpURI().getPath();
@@ -92,6 +96,8 @@ final class DevConsole implements AutoCloseable {
             return false;
         }
         if (isApi(request)) return false;
+        if (path.startsWith(ROOT + "cloud-demo/")) return cloudDemoAction(path, request, response, callback);
+        if (path.startsWith(ROOT + "account/")) return accountAction(path, request, response, callback);
         if (path.equals(ROOT + "startup-command.json")) {
             if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
             if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Requires the local console.");
@@ -168,12 +174,79 @@ final class DevConsole implements AutoCloseable {
                 content = input.readAllBytes();
             }
             type = contentType(name);
+            if (name.equals("index.html")) {
+                String dashboardUrl = "null";
+                try {
+                    String destination = AccountConfiguration.defaults().dashboardUrl().toString();
+                    int query = destination.indexOf('?');
+                    dashboardUrl = new ObjectMapper().writeValueAsString(query < 0 ? destination : destination.substring(0, query))
+                            .replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026");
+                } catch (Exception | LinkageError ignored) { /* Optional account configuration cannot prevent local development. */ }
+                content = new String(content, StandardCharsets.UTF_8).replace("<head>",
+                        "<head><script>window.fluxzeroDashboardUrl=" + dashboardUrl + ";"
+                                + (cloudDemo == null ? "" : "window.fluxzeroCloudDemo=true;")
+                                + "</script>").getBytes(StandardCharsets.UTF_8);
+            }
         }
         response.getHeaders().put(HttpHeader.CONTENT_TYPE, type);
         response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
         response.getHeaders().put("X-Content-Type-Options", "nosniff");
         response.write(true, request.getMethod().equals("HEAD") ? null : ByteBuffer.wrap(content), callback);
         return true;
+    }
+
+    private boolean accountAction(String path, Request request, Response response, Callback callback) throws Exception {
+        if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST for account actions.");
+        if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Open account features from Devboard.");
+        String action = path.substring((ROOT + "account/").length());
+        if (!java.util.Set.of("status", "login", "login-another", "cancel", "logout", "refresh", "logout-everywhere", "cancel-browser", "check", "check-interactive").contains(action))
+            return actionResult(response, callback, 404, "This account action is unavailable.");
+        var context = io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        if (java.util.Set.of("login", "login-another", "logout-everywhere").contains(action)) {
+            try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+                byte[] body = input.readNBytes(8193);
+                if (body.length > 8192) return actionResult(response, callback, 413, "Open account actions from your local Devboard.");
+                context = accountBrowserContext(request.getHeaders().get("Origin"), body);
+            } catch (java.io.IOException | IllegalArgumentException failure) {
+                return actionResult(response, callback, 400, "Open account actions from your local Devboard.");
+            }
+        }
+        response.getHeaders().put(HttpHeader.CONTENT_TYPE, "application/json");
+        response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
+        response.getHeaders().put("X-Content-Type-Options", "nosniff");
+        response.write(true, ByteBuffer.wrap(new ObjectMapper().writeValueAsBytes(account.call(action, context))), callback);
+        return true;
+    }
+
+    private boolean cloudDemoAction(String path, Request request, Response response, Callback callback) throws Exception {
+        if (cloudDemo == null || !path.equals(ROOT + "cloud-demo/action"))
+            return actionResult(response, callback, 404, "Cloud demo is not enabled.");
+        if (!"POST".equals(request.getMethod())) return actionResult(response, callback, 405, "Use POST.");
+        if (!localConsoleRequest(request)) return actionResult(response, callback, 403, "Open the demo in your local Devboard.");
+        try (var input = org.eclipse.jetty.io.Content.Source.asInputStream(request)) {
+            byte[] body = input.readNBytes(4097);
+            if (body.length > 4096) return actionResult(response, callback, 413, "Demo request is too large.");
+            Object result = cloudDemo.call(new ObjectMapper().readTree(body));
+            response.getHeaders().put(HttpHeader.CACHE_CONTROL, "no-store");
+            response.getHeaders().put("X-Content-Type-Options", "nosniff");
+            return projectJson(response, callback, result);
+        } catch (IllegalArgumentException | com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            return actionResult(response, callback, 400, invalid instanceof IllegalArgumentException
+                    ? invalid.getMessage() : "Choose a supported demo action.");
+        }
+    }
+
+    static io.fluxzero.tools.account.AccountBrowserContext accountBrowserContext(String origin, byte[] body) throws java.io.IOException {
+        if (body.length == 0) return io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        var json = new ObjectMapper().readTree(body);
+        if (json == null || !json.isObject() || json.size() > 1 || json.size() == 1 && !json.has("returnTo")) throw new IllegalArgumentException();
+        if (!json.has("returnTo")) return io.fluxzero.tools.account.AccountBrowserContext.devboard(null);
+        if (!json.path("returnTo").isTextual()) throw new IllegalArgumentException();
+        var target = java.net.URI.create(json.path("returnTo").asText());
+        var source = java.net.URI.create(origin);
+        if (!java.util.Objects.equals(target.getScheme(), source.getScheme())
+                || !java.util.Objects.equals(target.getRawAuthority(), source.getRawAuthority())) throw new IllegalArgumentException();
+        return io.fluxzero.tools.account.AccountBrowserContext.devboard(target);
     }
 
     private boolean maintenanceAction(String path, Request request, Response response, Callback callback) throws Exception {

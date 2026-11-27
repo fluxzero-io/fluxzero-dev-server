@@ -678,7 +678,7 @@ public class DevServer implements AutoCloseable {
         components.add(component("devserver", "Fluxzero Dev Server",
                 new DevSession.ServiceStatus("devserver", session.status(), publicUrl, session.gateway().port(), session.pid(), null), false));
         if (monitoring != null) {
-            components.add(component("auditlog", "Fluxzero Devboard", session.services().get("monitoring-auditlog"), false));
+            components.add(component("auditlog", "Fluxzero Auditlog", session.services().get("monitoring-auditlog"), false));
             components.add(component("storage", "Devboard Store", session.services().get("monitoring-storage"), false));
         }
         lastStartedApps.entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(entry -> {
@@ -813,6 +813,15 @@ public class DevServer implements AutoCloseable {
             case "testserver" -> session.runtime().metadata().get("runtimeSdkVersion");
             default -> service == null ? null : service.metadata().get("version");
         });
+        ProjectRuntime owningProject = application ? restartProject(id) : null;
+        if (owningProject != null) {
+            String project = owningProject.id;
+            Map<String, String> metadata = session.runtime().metadata();
+            if ("build".equals(metadata.get("project." + project + ".sdkVersionSource"))) {
+                result.put("sdkVersion", metadata.get("project." + project + ".sdkVersion"));
+                result.put("sdkVersionSource", "build");
+            }
+        }
         result.put("pid", service == null ? null : service.pid());
         Integer port = service == null ? null : service.port();
         String url = service == null ? null : service.url();
@@ -836,7 +845,7 @@ public class DevServer implements AutoCloseable {
         } else {
             url = null;
         }
-        result.put("restartSupported", application && id.startsWith("app-") && restartProject(id) != null);
+        result.put("restartSupported", owningProject != null);
         result.put("port", port);
         result.put("url", service != null && "running".equals(service.state()) ? url : null);
         return result;

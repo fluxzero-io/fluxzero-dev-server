@@ -42,6 +42,18 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      # Temporary candidate dependency: replace the snapshot with the published account version before release.
+      - name: Check out the exact shared account candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fluxzero-io/fluxzero-cli
+          ref: 5e73c2a79063295d8fef404dd51160ecb073fd9a
+          path: .private/account-source
+      - name: Build the shared account candidate locally
+        shell: bash
+        run: |
+          cd .private/account-source
+          ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Build and test
         timeout-minutes: 20
         run: ${{ matrix.maven }} -B clean install
@@ -74,6 +86,18 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      # Temporary candidate dependency: replace the snapshot with the published account version before release.
+      - name: Check out the exact shared account candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fluxzero-io/fluxzero-cli
+          ref: 5e73c2a79063295d8fef404dd51160ecb073fd9a
+          path: .private/account-source
+      - name: Build the shared account candidate locally
+        shell: bash
+        run: |
+          cd .private/account-source
+          ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Disable compiler annotations for negative tests
         run: echo "::remove-matcher owner=maven-javac::"
       - name: Verify Repair Cafe fixture
@@ -110,6 +134,18 @@ jobs:
           node-version: "26"
           cache: npm
           cache-dependency-path: src/test/resources/frontend-fixtures/**/package-lock.json
+      # Temporary candidate dependency: replace the snapshot with the published account version before release.
+      - name: Check out the exact shared account candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fluxzero-io/fluxzero-cli
+          ref: 5e73c2a79063295d8fef404dd51160ecb073fd9a
+          path: .private/account-source
+      - name: Build the shared account candidate locally
+        shell: bash
+        run: |
+          cd .private/account-source
+          ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Test Vite and Angular workflows
         run: ./mvnw -B verify -Pdev-server-frontend-e2e
 
@@ -127,6 +163,18 @@ jobs:
           distribution: temurin
           java-version: "25"
           cache: maven
+      # Temporary candidate dependency: replace the snapshot with the published account version before release.
+      - name: Check out the exact shared account candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: fluxzero-io/fluxzero-cli
+          ref: 5e73c2a79063295d8fef404dd51160ecb073fd9a
+          path: .private/account-source
+      - name: Build the shared account candidate locally
+        shell: bash
+        run: |
+          cd .private/account-source
+          ./gradlew :local-account:publishToMavenLocal -PappVersion=1-SNAPSHOT
       - name: Set local qualification version
         run: ./mvnw -B versions:set -DnewVersion=0.0.0
       - name: Deploy release attachments to a temporary Maven repository
