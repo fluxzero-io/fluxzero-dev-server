@@ -7,7 +7,7 @@
   <name>repair-cafe</name>
   <description>Repair Café work queue</description>
   <properties>
-    <spring-boot.version>3.5.16</spring-boot.version>
+    <spring-boot.version>4.2.0</spring-boot.version>
     <jetty.version>12.1.11</jetty.version>
     <fluxzero.version>1.268.0</fluxzero.version>
     <java.version>25</java.version>
