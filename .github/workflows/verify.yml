@@ -76,6 +76,16 @@ jobs:
           cache: maven
       - name: Disable compiler annotations for negative tests
         run: echo "::remove-matcher owner=maven-javac::"
+      - name: Verify Repair Cafe fixture
+        working-directory: src/test/resources/e2e-fixtures/repair-cafe
+        timeout-minutes: 10
+        run: ./mvnw -B verify
+      - name: Preserve Repair Cafe test reports
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repair-cafe-test-reports
+          path: src/test/resources/e2e-fixtures/repair-cafe/target/surefire-reports/
       - name: Test complete application workflows
         run: ./mvnw -B verify -Pdev-server-e2e
 
