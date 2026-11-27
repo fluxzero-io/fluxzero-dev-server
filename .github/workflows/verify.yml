@@ -47,7 +47,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: cded652932215c8ea45efd721f32679e2631fed8
+          ref: 6068797c3211a593d979e392102847cf9d3cc9c8
           path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
@@ -91,7 +91,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: cded652932215c8ea45efd721f32679e2631fed8
+          ref: 6068797c3211a593d979e392102847cf9d3cc9c8
           path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
@@ -139,7 +139,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: cded652932215c8ea45efd721f32679e2631fed8
+          ref: 6068797c3211a593d979e392102847cf9d3cc9c8
           path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
@@ -168,7 +168,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: fluxzero-io/fluxzero-cli
-          ref: cded652932215c8ea45efd721f32679e2631fed8
+          ref: 6068797c3211a593d979e392102847cf9d3cc9c8
           path: .private/account-source
       - name: Build the shared account candidate locally
         shell: bash
