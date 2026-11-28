@@ -35,6 +35,21 @@ final class DevServerBootstrap implements AutoCloseable {
     private static final ConcurrentHashMap<Path, ReentrantLock> LOCKS = new ConcurrentHashMap<>();
     private final AtomicReference<OwnedProcess> owned = new AtomicReference<>();
     private boolean closed;
+    private final StartupWaiter startupWaiter;
+
+    DevServerBootstrap() {
+        this((root, pid, allowEmpty, agentReady) -> DevServerControlMain.waitForStartup(
+                root, pid, Duration.ofMinutes(2), allowEmpty, agentReady));
+    }
+
+    DevServerBootstrap(StartupWaiter startupWaiter) {
+        this.startupWaiter = startupWaiter;
+    }
+
+    @FunctionalInterface
+    interface StartupWaiter {
+        int await(Path root, long pid, boolean allowEmpty, boolean agentReady) throws Exception;
+    }
 
     int run(Path directory, List<String> arguments, boolean background, boolean agentReady) throws Exception {
         Path root = directory.toAbsolutePath().normalize();
@@ -56,12 +71,12 @@ final class DevServerBootstrap implements AutoCloseable {
                 pid = active.pid();
                 if ("idle".equals(active.status())) {
                     startWorkspace(active);
-                    int ready = DevServerControlMain.waitForStartup(root, pid, Duration.ofMinutes(2), true, true);
+                    int ready = startupWaiter.await(root, pid, true, true);
                     if (ready != 0) return ready;
                 }
                 if (!background) owned.set(new OwnedProcess(pid, active.startedAt(), root));
                 if (agentReady && !"running".equals(active.mcp().state())) {
-                    int ready = DevServerControlMain.waitForStartup(root, pid, Duration.ofMinutes(2), true, true);
+                    int ready = startupWaiter.await(root, pid, true, true);
                     if (ready != 0) return ready;
                 }
             } else {
@@ -83,8 +98,13 @@ final class DevServerBootstrap implements AutoCloseable {
                     owned.set(new OwnedProcess(pid, startedAt, root));
                 }
                 if (Thread.currentThread().isInterrupted()) throw new InterruptedException("Bootstrap cancelled");
-                int ready = DevServerControlMain.waitForStartup(root, pid, Duration.ofMinutes(2), true, true);
-                if (ready != 0) return ready;
+                int ready = startupWaiter.await(root, pid, true, true);
+                if (ready != 0) {
+                    // Detached CLI sessions remain inspectable while starting or reporting problems.
+                    // Agent-owned starts and interrupted launches still retain cleanup ownership.
+                    if (background && !agentReady && ready == 1) owned.set(null);
+                    return ready;
+                }
             }
         } finally {
             local.unlock();
