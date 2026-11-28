@@ -133,6 +133,34 @@ class DevServerBootstrapTest {
         } finally { process.destroyForcibly(); stop(root); }
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({
+            "true, false, 1, true", "true, true, 1, false",
+            "false, false, 1, false", "true, false, 2, false"
+    })
+    void incompleteStartupRetainsOnlyDetachedCliServer(boolean background, boolean agentReady,
+                                                       int waitResult, boolean remainsAlive) throws Exception {
+        Path root = Files.createDirectory(directory.resolve("slow-project"));
+        var child = new java.util.concurrent.atomic.AtomicLong();
+        try {
+            try (var bootstrap = new DevServerBootstrap((project, pid, allowEmpty, requireAgent) -> {
+                child.set(pid);
+                assertTrue(ProcessUtils.isAlive(pid));
+                return waitResult;
+            })) {
+                assertEquals(waitResult, bootstrap.run(root, List.of(), background, agentReady));
+            }
+            assertEquals(remainsAlive, ProcessUtils.isAlive(child.get()),
+                    "Only an explicitly detached CLI start should outlive its launcher wait");
+        } finally {
+            ProcessHandle.of(child.get()).ifPresent(process -> {
+                process.descendants().forEach(ProcessHandle::destroyForcibly);
+                process.destroyForcibly();
+            });
+            stop(root);
+        }
+    }
+
     private Process process(Path root, boolean background) throws Exception {
         var args = new java.util.ArrayList<>(List.of("--project-dir", root.toString(), "--bootstrap-agent-ready"));
         if (background) args.add("--bootstrap-background");
